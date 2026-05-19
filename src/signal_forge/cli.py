@@ -6,7 +6,7 @@ from pathlib import Path
 from signal_forge.entry_edge import EntryEdgeConfig, EntryEdgeEvaluator
 from signal_forge.market_data import load_bars_from_csv, validate_bars
 from signal_forge.phase import PhaseConfig, PhaseRunner, parse_phase_mode
-from signal_forge.reporting import write_entry_edge_outputs
+from signal_forge.reporting import write_entry_edge_outputs, write_phase_outputs
 from signal_forge.strategies import (
     ConfluenceScoreStrategy,
     SmaCrossoverStrategy,
@@ -68,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     phase.add_argument("--entry-z", type=float, default=1.5)
     phase.add_argument("--exit-z", type=float, default=0.25)
     phase.add_argument("--threshold", type=float, default=3.0)
+    phase.add_argument("--output-dir", default="reports/generated")
+    phase.add_argument("--run-name")
 
     args = parser.parse_args(argv)
     if args.command == "entry-edge":
@@ -129,6 +131,11 @@ def _run_phase(args: argparse.Namespace) -> int:
         strategy,
         bars,
     )
+    paths = write_phase_outputs(
+        result,
+        Path(args.output_dir),
+        run_name=args.run_name,
+    )
 
     print(f"phase={result.mode}")
     print(f"adapter={result.adapter_name}")
@@ -147,6 +154,8 @@ def _run_phase(args: argparse.Namespace) -> int:
                 f"dry_run={intent.dry_run},"
                 f"submitted={intent.submitted}"
             )
+    print(f"phase_markdown={paths.markdown}")
+    print(f"phase_summary_json={paths.summary_json}")
     return 0
 
 

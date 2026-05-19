@@ -7,6 +7,7 @@ from pathlib import Path
 
 from signal_forge.entry_edge import EntryEdgeResult
 from signal_forge.market_data import BarValidationResult
+from signal_forge.phase import PhaseExecutionResult
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,12 @@ class EntryEdgeReportPaths:
     markdown: Path
     summary_json: Path
     trade_log_csv: Path
+
+
+@dataclass(frozen=True)
+class PhaseReportPaths:
+    markdown: Path
+    summary_json: Path
 
 
 def write_entry_edge_outputs(
@@ -50,6 +57,29 @@ def write_entry_edge_outputs(
     )
 
 
+def write_phase_outputs(
+    result: PhaseExecutionResult,
+    output_dir: str | Path,
+    *,
+    run_name: str | None = None,
+) -> PhaseReportPaths:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    stem = _safe_stem(run_name or f"phase-{result.mode}-{result.adapter_name}")
+    markdown_path = output_path / f"{stem}.md"
+    summary_path = output_path / f"{stem}.json"
+
+    summary = _phase_summary_dict(result)
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path.write_text(_phase_markdown_report(result), encoding="utf-8")
+
+    return PhaseReportPaths(markdown=markdown_path, summary_json=summary_path)
+
+
 def _summary_dict(
     result: EntryEdgeResult,
     data_validation: BarValidationResult | None,
@@ -81,6 +111,29 @@ def _summary_dict(
     }
 
 
+def _phase_summary_dict(result: PhaseExecutionResult) -> dict[str, object]:
+    summary: dict[str, object] = {
+        "phase": {
+            "mode": result.mode,
+            "adapter_name": result.adapter_name,
+            "dry_run": result.dry_run,
+        }
+    }
+    if result.entry_edge_result is not None:
+        entry_edge = result.entry_edge_result
+        summary["entry_edge"] = {
+            "strategy_name": entry_edge.strategy_name,
+            "decision": entry_edge.decision,
+            "profit_factor": entry_edge.profit_factor,
+            "profit_factor_status": entry_edge.profit_factor_status,
+            "trade_count": entry_edge.trade_count,
+            "end_equity": entry_edge.end_equity,
+        }
+    if result.order_intents is not None:
+        summary["order_intents"] = [asdict(intent) for intent in result.order_intents]
+    return summary
+
+
 def _trade_log_csv(result: EntryEdgeResult) -> str:
     import io
 
@@ -108,6 +161,47 @@ def _trade_log_csv(result: EntryEdgeResult) -> str:
     for trade in result.trades:
         writer.writerow(asdict(trade))
     return buffer.getvalue()
+
+
+def _phase_markdown_report(result: PhaseExecutionResult) -> str:
+    lines = [
+        f"# Phase Report - {result.mode}",
+        "",
+        "## Adapter Metadata",
+        "",
+        f"- Phase mode: {result.mode}",
+        f"- Adapter: {result.adapter_name}",
+        f"- Dry run: {result.dry_run}",
+    ]
+
+    if result.entry_edge_result is not None:
+        entry_edge = result.entry_edge_result
+        lines.extend(
+            [
+                "",
+                "## Backtest Result",
+                "",
+                f"- Strategy: {entry_edge.strategy_name}",
+                f"- Decision: {entry_edge.decision}",
+                f"- Profit Factor: {_format_profit_factor(entry_edge)}",
+                f"- Trades: {entry_edge.trade_count}",
+                f"- End equity: {entry_edge.end_equity:.2f}",
+            ]
+        )
+
+    if result.order_intents is not None:
+        lines.extend(["", "## Live Dry-Run Intents", ""])
+        if not result.order_intents:
+            lines.append("- No dry-run order intents were emitted.")
+        for index, intent in enumerate(result.order_intents, start=1):
+            lines.append(
+                f"- Intent {index}: {intent.timestamp}, {intent.side}, "
+                f"target={intent.target_position}, dry_run={intent.dry_run}, "
+                f"submitted={intent.submitted}, safety={intent.safety_note}"
+            )
+
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _markdown_report(

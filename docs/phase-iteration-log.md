@@ -30,3 +30,14 @@
 - 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`；`git diff --check`。
 - 結果：本輪目標是讓 readiness score 增加並維持全部測試通過。
 - 下一步：讓 phase report / CLI output 補上 adapter metadata，並更新 README 的 PowerShell 操作流程。
+
+## 2026-05-19 12:38 Asia/Taipei
+
+- 方法：完成 roadmap 第 5 項，讓 phase execution result 有獨立 Markdown/JSON 報告，不只印在 CLI stdout。
+- 程式碼：在 `src/signal_forge/reporting.py` 新增 `write_phase_outputs()`、`PhaseReportPaths`、phase summary JSON 與 phase markdown report。
+- CLI：`phase` subcommand 新增 `--output-dir` 與 `--run-name`，並印出 `phase_markdown`、`phase_summary_json` 路徑。
+- 安全邊界：live phase report 只序列化 dry-run `OrderIntent`，包含 `submitted=False` 與 `不送單` safety note，不包含 broker、API key 或送單介面。
+- 測試：更新 `tests/test_reporting.py` 與 `tests/test_cli.py`，確認 phase metadata、adapter name、dry-run intent 與 submitted 狀態都會被寫入/印出。
+- 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`；`$env:PYTHONPATH='src'; python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode live --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase-live-demo`；`git diff --check`。
+- 結果：本輪完成 planned milestone，readiness score 預期維持 110 並保持測試全綠。
+- 下一步：更新 README 的 PowerShell phase 操作流程，並把 phase mode 欄位加進策略蒸餾模板。

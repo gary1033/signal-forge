@@ -26,12 +26,15 @@ class CliTests(unittest.TestCase):
                     "1",
                     "--slow-window",
                     "2",
+                    "--output-dir",
+                    temp_dir,
                 ]
             )
 
         self.assertIn("phase=backtest", output)
         self.assertIn("adapter=backtest", output)
         self.assertIn("entry_edge_trades=1", output)
+        self.assertIn("phase_summary_json=", output)
 
     def test_phase_live_command_reports_dry_run_intent_without_submission(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -49,6 +52,8 @@ class CliTests(unittest.TestCase):
                     "1",
                     "--slow-window",
                     "2",
+                    "--output-dir",
+                    temp_dir,
                 ]
             )
 
@@ -57,6 +62,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("dry_run=True", output)
         self.assertIn("order_intents=1", output)
         self.assertIn("submitted=False", output)
+        self.assertIn("phase_markdown=", output)
 
 
 def _run_cli(argv: list[str]) -> str:
