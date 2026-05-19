@@ -420,6 +420,14 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
         for digest in digests
         if abs(digest.target_position) > 0 and abs(digest.position_change) < 1e-12
     )
+    open_count = 0
+    close_count = 0
+    for digest in digests:
+        previous_target_position = digest.target_position - digest.position_change
+        if abs(previous_target_position) < 1e-12 and abs(digest.target_position) > 1e-12:
+            open_count += 1
+        if abs(previous_target_position) > 1e-12 and abs(digest.target_position) < 1e-12:
+            close_count += 1
     nonzero_position_change_count = sum(
         1 for digest in digests if abs(digest.position_change) > 0
     )
@@ -436,10 +444,12 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     return {
         "trace_summary": {
             "bar_count": len(digests),
+            "close_count": close_count,
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
             "hold_count": hold_count,
             "nonzero_position_change_count": nonzero_position_change_count,
+            "open_count": open_count,
             "first_timestamp": first_timestamp,
             "last_timestamp": last_timestamp,
             "last_target_position": _round_float(last_target_position, 6),

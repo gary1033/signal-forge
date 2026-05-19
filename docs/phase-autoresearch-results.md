@@ -57,6 +57,7 @@ git diff --check
 | 2026-05-20 01:35 | Signals CSV 加入 `is_hold` | 110 -> 110 | pass | keep | pushed to `origin/main` | 由 `target_position` 與 `position_change` 穩定推導持倉 bar |
 | 2026-05-20 01:50 | Backtest digest validator 強化 position delta 連續性 | 110 -> 110 | pass | keep | pushed to `origin/main` | 讓 `position_change` 的稽核欄位可被一致性驗證 |
 | 2026-05-20 02:05 | Trace summary 加入 deterministic `reason_counts` | 110 -> 110 | pass | keep | pushed to `origin/main` | 用 frequency list 強化回測 artifacts 稽核可讀性 |
+| 2026-05-20 02:20 | Trace summary 加入 deterministic `open_count` / `close_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | 用 position 0/非0 transition 計數，便於稽核開倉/平倉次數 |
 
 ## 總結
 

@@ -59,6 +59,7 @@
 37. 回測 digest 可稽核性：`*_signals.csv` 加入 deterministic `is_hold`。
 38. 回測 digest validation：驗證 `position_change` 與 `target_position` delta 一致（連續性稽核）。
 39. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `reason_counts`（frequency list）。
+40. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `open_count` / `close_count`。
 
 ## 下一步候選
 

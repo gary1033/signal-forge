@@ -48,6 +48,7 @@
 | 2026-05-20 01:35 | 擴充 signals CSV 稽核欄位 | `*_signals.csv` 加入 deterministic `is_hold` | 110 -> 110；42 tests OK | keep |
 | 2026-05-20 01:50 | 強化 backtest digest validator | 驗證 `position_change` 與 `target_position` delta 連續性一致 | 110 -> 110；43 tests OK | keep |
 | 2026-05-20 02:05 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `reason_counts` | 110 -> 110；43 tests OK | keep |
+| 2026-05-20 02:20 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `open_count` / `close_count` | 110 -> 110；43 tests OK | keep |
 
 ## 方法紀錄
 
@@ -77,6 +78,6 @@
 ## 最後狀態
 
 - 最新已知 metric：`110`
-- 最新已知 guard：42 tests OK，`git diff --check` clean
+- 最新已知 guard：43 tests OK，`git diff --check` clean
 - 最後一輪 commit：已推送到 `origin/main`（以 `git log -5` 為準）
 - 下一步：只擴充 backtest verifiability 與 deterministic artifacts；live 在回測穩定前維持 dry-run only。
