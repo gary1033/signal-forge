@@ -36,3 +36,4 @@ git diff --check
 | 2026-05-19 19:13 | Backtest portability: ASCII-only warning + sample risk | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Avoid Windows terminal encoding garbling in report text |
 | 2026-05-19 19:29 | Entry Edge outputs: deterministic numeric formatting + golden contract | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Freeze Entry Edge summary/markdown/trade log as exact-text contracts |
 | 2026-05-19 19:42 | Entry Edge failure_reason: ASCII-only + deterministic test | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Avoid encoding-dependent failure messages; keep backtest verifiable |
+| 2026-05-19 19:58 | CLI wiring: `dry_run` reflects mode | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Backtest uses `dry_run=False`; live uses `dry_run=True` (still intent-only) |

@@ -275,3 +275,21 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider adding lightweight coverage/trace visibility for backtest runs without introducing any broker/API key integration.
+
+## 2026-05-19 19:58 +08:00
+
+- Goal: keep Phase readiness at max while making backtest vs live switching in the CLI unambiguous (`dry_run` reflects mode).
+- Change set:
+  - Updated `signal-forge phase` CLI to pass `PhaseConfig(dry_run=False)` for backtest and `PhaseConfig(dry_run=True)` for live.
+- Method:
+  - Keep live safety unchanged (still dry-run only; `submitted=False`; no broker; no API keys).
+  - Preserve deterministic output contracts; only adjust CLI wiring to match mode semantics.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (33 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: add lightweight backtest trace visibility (e.g., deterministic per-bar signal digest) without any broker/API key integration.

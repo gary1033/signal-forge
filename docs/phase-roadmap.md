@@ -37,6 +37,7 @@ Done (2026-05-19):
 16. Backtest portability: ASCII-only warning + sample risk text (avoid encoding-dependent garbling)
 17. Backtest determinism: Entry Edge outputs contract (summary JSON + markdown + trade log CSV)
 18. Backtest portability: Entry Edge failure_reason is ASCII-only and deterministic
+19. CLI correctness: backtest uses `dry_run=False`; live uses `dry_run=True` in `PhaseConfig`
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration
