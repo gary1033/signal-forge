@@ -486,3 +486,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider adding a backtest-only invariant gate for digest content (e.g., allowlist reasons or explicit "hold" vs "entry" normalization) only if deterministic and test-covered; live remains dry-run only.
+
+## 2026-05-19 22:42 +08:00
+
+- Goal: keep Phase readiness at max while improving backtest audit readability by adding a deterministic "top reasons" frequency line into the Phase markdown invariants section (no live trading changes).
+- Change set:
+  - Phase backtest markdown now includes `Top reasons: <reason>(<count>)` derived from signal digests (sorted deterministically).
+  - Updated the backtest Phase markdown exact-text contract test accordingly.
+- Method:
+  - Keep `backtest` verifiable: only add deterministic, input-derived summaries (reason counts are digest-derived).
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (37 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: consider adding a deterministic allowlist/normalization for digest reasons only if stable and test-covered; live remains dry-run only.

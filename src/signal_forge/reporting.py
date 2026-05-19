@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -418,7 +419,14 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None
     last_target_position = digests[-1].target_position if digests else 0.0
-    reasons = sorted({digest.reason for digest in digests if digest.reason})
+    reasons = [digest.reason for digest in digests if digest.reason]
+    reason_counts = Counter(reasons)
+    top_reasons = [
+        f"{reason}({count})"
+        for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))[
+            :5
+        ]
+    ]
 
     return {
         "bar_count": len(digests),
@@ -428,7 +436,8 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
         "first_timestamp": first_timestamp,
         "last_timestamp": last_timestamp,
         "last_target_position": _round_float(last_target_position, 6),
-        "reason_count": len(reasons),
+        "reason_count": len(set(reasons)),
+        "top_reasons": top_reasons,
     }
 
 
@@ -460,6 +469,7 @@ def _phase_markdown_report(result: PhaseExecutionResult) -> str:
 
     if result.mode == "backtest" and result.signal_digests is not None:
         invariants = _signal_digest_invariants_summary(result.signal_digests)
+        top_reasons = ", ".join(invariants.get("top_reasons") or []) or "n/a"
         lines.extend(
             [
                 "",
@@ -473,6 +483,7 @@ def _phase_markdown_report(result: PhaseExecutionResult) -> str:
                 f"- Last timestamp: {invariants['last_timestamp']}",
                 f"- Last target position: {invariants['last_target_position']}",
                 f"- Unique reasons: {invariants['reason_count']}",
+                f"- Top reasons: {top_reasons}",
             ]
         )
 

@@ -386,6 +386,7 @@ class ReportingTests(unittest.TestCase):
                     "- Last timestamp: 2026-01-02",
                     "- Last target position: 0.0",
                     "- Unique reasons: 1",
+                    "- Top reasons: entry(2)",
                     "",
                     "## Live Dry-Run Intents",
                     "",
