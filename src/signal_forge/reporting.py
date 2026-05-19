@@ -611,6 +611,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "first_target_position": (int, float),
         "first_timestamp": (type(None), str),
         "flatten_count": int,
+        "flatten_to_long_count": int,
         "flatten_to_short_count": int,
         "flatten_to_zero_count": int,
         "flip_count": int,
@@ -672,6 +673,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "close_count": int(trace_summary["close_count"]),
         "entry_count": int(trace_summary["entry_count"]),
         "flatten_count": int(trace_summary["flatten_count"]),
+        "flatten_to_long_count": int(trace_summary["flatten_to_long_count"]),
         "flatten_to_short_count": int(trace_summary["flatten_to_short_count"]),
         "flatten_to_zero_count": int(trace_summary["flatten_to_zero_count"]),
         "flip_count": int(trace_summary["flip_count"]),
@@ -697,11 +699,13 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         )
 
     if (
-        counts["flatten_to_short_count"] + counts["flatten_to_zero_count"]
+        counts["flatten_to_long_count"]
+        + counts["flatten_to_short_count"]
+        + counts["flatten_to_zero_count"]
         != counts["flatten_count"]
     ):
         raise ValueError(
-            "trace summary trace_summary.flatten_to_short_count + flatten_to_zero_count must equal flatten_count"
+            "trace summary trace_summary.flatten_to_long_count + flatten_to_short_count + flatten_to_zero_count must equal flatten_count"
         )
 
     if counts["flip_count"] > counts["nonzero_position_change_count"]:
@@ -933,6 +937,9 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
 def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]:
     long_entry_count = sum(1 for digest in digests if digest.is_long_entry)
     flatten_count = sum(1 for digest in digests if digest.is_flatten)
+    flatten_to_long_count = sum(
+        1 for digest in digests if digest.is_flatten and digest.target_position > 1e-12
+    )
     flatten_to_short_count = sum(
         1 for digest in digests if digest.is_flatten and digest.target_position < -1e-12
     )
@@ -992,7 +999,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     end_date = _extract_iso8601_date(last_timestamp)
     return {
         "trace_summary": {
-            "schema_version": 2,
+            "schema_version": 3,
             "bar_count": len(digests),
             "close_count": close_count,
             "end_date": end_date,
@@ -1000,6 +1007,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
+            "flatten_to_long_count": flatten_to_long_count,
             "flip_count": flip_count,
             "flatten_to_short_count": flatten_to_short_count,
             "flatten_to_zero_count": flatten_to_zero_count,

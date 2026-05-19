@@ -68,6 +68,7 @@
 | 2026-05-20 06:23 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `flip_count`（反手次數），並驗證 `flip_count <= nonzero_position_change_count` | 110 -> 110；49 tests OK | keep |
 | 2026-05-20 06:35 | 修正 signals CSV `is_hold` epsilon 一致性 | `write_signal_digest_csv(...)` 與 `*_trace_summary.json` 的 `hold_count` 統一使用 epsilon（避免 tiny position 造成 flags mismatch），並加入 regression test | 110 -> 110；50 tests OK | keep |
 | 2026-05-20 07:06 | 擴充 trace summary timestamp 稽核欄位 | `*_trace_summary.json` 加入 deterministic `start_date` / `end_date`（由 ISO-8601 timestamp 萃取） | 110 -> 110；52 tests OK | keep |
+| 2026-05-20 07:22 | Trace summary 擴充 flatten buckets | `*_trace_summary.json` 追加 deterministic `flatten_to_long_count`，並用 validator 驗證 `flatten_to_long_count + flatten_to_short_count + flatten_to_zero_count == flatten_count`（schema_version=3） | 110 -> 110；52 tests OK | keep |
 
 ## 方法紀錄
 
