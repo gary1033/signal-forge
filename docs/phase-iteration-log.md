@@ -70,7 +70,7 @@
 | 2026-05-20 07:06 | 擴充 trace summary timestamp 稽核欄位 | `*_trace_summary.json` 加入 deterministic `start_date` / `end_date`（由 ISO-8601 timestamp 萃取） | 110 -> 110；52 tests OK | keep |
 | 2026-05-20 07:22 | Trace summary 擴充 flatten buckets | `*_trace_summary.json` 追加 deterministic `flatten_to_long_count`，並用 validator 驗證 `flatten_to_long_count + flatten_to_short_count + flatten_to_zero_count == flatten_count`（schema_version=3） | 110 -> 110；52 tests OK | keep |
 | 2026-05-20 07:38 | Trace summary 擴充 hold side buckets | `*_trace_summary.json` 追加 deterministic `hold_long_count` / `hold_short_count`，並用 validator 驗證 `hold_long_count + hold_short_count == hold_count`（schema_version=4） | 110 -> 110；52 tests OK | keep |
-| 2026-05-20 08:02 | Signals CSV 增加 `hold_side` 稽核欄位 | `*_signals.csv` 追加 deterministic `hold_side`（none/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 per-row hold side 語意與 `hold_long_count` / `hold_short_count` 一致 | 110 -> 110；53 tests OK | keep |
+| 2026-05-20 07:52 | Signals CSV 增加 `hold_side` 稽核欄位 | `*_signals.csv` 追加 deterministic `hold_side`（none/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 per-row hold side 語意與 `hold_long_count` / `hold_short_count` 一致 | 110 -> 110；53 tests OK | keep |
 
 ## 方法紀錄
 

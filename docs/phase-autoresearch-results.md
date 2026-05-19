@@ -79,7 +79,7 @@ git diff --check
 | 2026-05-20 07:06 | Trace summary 加入 `start_date` / `end_date` | 110 -> 110 | pass | keep | `1f1cd9c` pushed | `*_trace_summary.json` 從 ISO-8601 timestamp 萃取日期（schema_version=2），讓人工核對 backtest 期間更直覺（test-covered）。 |
 | 2026-05-20 07:22 | Trace summary 擴充 `flatten_to_long_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic `flatten_to_long_count`（schema_version=3），並驗證 flatten buckets 加總等於 `flatten_count`（test-covered）。 |
 | 2026-05-20 07:38 | Trace summary 擴充 `hold_long_count` / `hold_short_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic hold side buckets，並驗證 `hold_long_count + hold_short_count == hold_count`（schema_version=4，test-covered）。 |
-| 2026-05-20 08:02 | Signals CSV 擴充 `hold_side` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_signals.csv` 追加 deterministic `hold_side`（none/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 per-row hold side 語意與 `hold_long_count` / `hold_short_count` 一致（test-covered）。 |
+| 2026-05-20 07:52 | Signals CSV 擴充 `hold_side` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_signals.csv` 追加 deterministic `hold_side`（none/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 per-row hold side 語意與 `hold_long_count` / `hold_short_count` 一致（test-covered）。 |
 
 ## 總結
 
