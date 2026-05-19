@@ -466,3 +466,23 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: optionally add a backtest-only "digest invariant report" section into Phase markdown (still deterministic; still no broker/API keys).
+
+## 2026-05-19 22:27 +08:00
+
+- Goal: keep Phase readiness at max while making backtest results easier to audit by surfacing deterministic signal-digest invariants directly in the Phase markdown report.
+- Change set:
+  - Phase backtest markdown now includes a `Backtest Digest Invariants` section derived from `SignalDigest` (counts, timestamp range, last position, unique reasons).
+  - Ensured backtest digest invariants are validated before any Phase artifacts are written to disk.
+  - Updated unit tests to freeze the updated backtest Phase markdown contract.
+- Method:
+  - Keep `backtest` verifiable: only add deterministic, input-derived fields that do not depend on OS locale/encoding.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (37 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: consider adding a backtest-only invariant gate for digest content (e.g., allowlist reasons or explicit "hold" vs "entry" normalization) only if deterministic and test-covered; live remains dry-run only.

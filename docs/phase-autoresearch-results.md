@@ -46,3 +46,4 @@ git diff --check
 | 2026-05-19 21:42 | Backtest trace visibility: deterministic `*_trace_summary.json` | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Signals-derived counts + reasons summary JSON (test-covered) |
 | 2026-05-19 21:57 | Backtest trace summary: add timestamp range | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Deterministic first/last timestamps in trace summary JSON (test-covered) |
 | 2026-05-19 22:13 | Backtest digest: validate ordering invariants | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Enforce monotonic index + non-decreasing timestamp before writing digest/trace artifacts |
+| 2026-05-19 22:27 | Backtest visibility: Phase markdown digest invariant section | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Surface deterministic digest invariants (counts + timestamp range) in Phase markdown |

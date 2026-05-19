@@ -47,6 +47,7 @@ Done (2026-05-19):
  26. Backtest trace visibility: deterministic `*_trace_summary.json` (signals-derived counts)
  27. Backtest trace visibility: `*_trace_summary.json` includes deterministic timestamp range (first/last)
  28. Backtest trace safety: validate signal digest invariants (index/timestamp monotonicity)
+ 29. Backtest visibility: Phase markdown includes deterministic digest invariants summary
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

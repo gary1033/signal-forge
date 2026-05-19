@@ -78,6 +78,9 @@ def write_phase_outputs(
     signal_digest_path = output_path / f"{stem}_signals.csv"
     trace_summary_path = output_path / f"{stem}_trace_summary.json"
 
+    if result.mode == "backtest" and result.signal_digests is not None:
+        validate_signal_digests(result.signal_digests)
+
     summary = _phase_summary_dict(result)
     validate_phase_summary(summary)
     summary_path.write_text(
@@ -89,7 +92,6 @@ def write_phase_outputs(
     signal_digest_csv: Path | None = None
     trace_summary_json: Path | None = None
     if result.mode == "backtest" and result.signal_digests is not None:
-        validate_signal_digests(result.signal_digests)
         signal_digest_path.write_text(
             _signal_digest_csv(result.signal_digests),
             encoding="utf-8",
@@ -397,6 +399,39 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     }
 
 
+def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, object]:
+    index_increasing = True
+    timestamp_non_decreasing = True
+    timestamps_non_empty = True
+    previous_index: int | None = None
+    previous_timestamp: str | None = None
+    for digest in digests:
+        if not digest.timestamp:
+            timestamps_non_empty = False
+        if previous_index is not None and digest.index <= previous_index:
+            index_increasing = False
+        if previous_timestamp is not None and digest.timestamp < previous_timestamp:
+            timestamp_non_decreasing = False
+        previous_index = digest.index
+        previous_timestamp = digest.timestamp
+
+    first_timestamp = digests[0].timestamp if digests else None
+    last_timestamp = digests[-1].timestamp if digests else None
+    last_target_position = digests[-1].target_position if digests else 0.0
+    reasons = sorted({digest.reason for digest in digests if digest.reason})
+
+    return {
+        "bar_count": len(digests),
+        "timestamps_non_empty": timestamps_non_empty,
+        "index_increasing": index_increasing,
+        "timestamp_non_decreasing": timestamp_non_decreasing,
+        "first_timestamp": first_timestamp,
+        "last_timestamp": last_timestamp,
+        "last_target_position": _round_float(last_target_position, 6),
+        "reason_count": len(reasons),
+    }
+
+
 def _phase_markdown_report(result: PhaseExecutionResult) -> str:
     lines = [
         f"# Phase Report - {result.mode}",
@@ -420,6 +455,24 @@ def _phase_markdown_report(result: PhaseExecutionResult) -> str:
                 f"- Profit Factor: {_format_profit_factor(entry_edge)}",
                 f"- Trades: {entry_edge.trade_count}",
                 f"- End equity: {entry_edge.end_equity:.2f}",
+            ]
+        )
+
+    if result.mode == "backtest" and result.signal_digests is not None:
+        invariants = _signal_digest_invariants_summary(result.signal_digests)
+        lines.extend(
+            [
+                "",
+                "## Backtest Digest Invariants",
+                "",
+                f"- Signal digests: {invariants['bar_count']}",
+                f"- Timestamps non-empty: {invariants['timestamps_non_empty']}",
+                f"- Index strictly increasing: {invariants['index_increasing']}",
+                f"- Timestamp non-decreasing: {invariants['timestamp_non_decreasing']}",
+                f"- First timestamp: {invariants['first_timestamp']}",
+                f"- Last timestamp: {invariants['last_timestamp']}",
+                f"- Last target position: {invariants['last_target_position']}",
+                f"- Unique reasons: {invariants['reason_count']}",
             ]
         )
 
