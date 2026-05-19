@@ -226,6 +226,9 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     tolerance = 1e-9
     long_entry_count = 0
     flatten_count = 0
+    flatten_to_short_count = 0
+    flatten_to_zero_count = 0
+    flip_count = 0
     hold_count = 0
     nonzero_target_position_count = 0
     nonzero_position_change_count = 0
@@ -304,6 +307,10 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
             long_entry_count += 1
         if is_flatten:
             flatten_count += 1
+            if target_position < -1e-12:
+                flatten_to_short_count += 1
+            elif abs(target_position) <= 1e-12:
+                flatten_to_zero_count += 1
         if is_hold:
             hold_count += 1
         if abs(target_position) > 1e-12:
@@ -314,18 +321,30 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
             open_count += 1
         if abs(previous_target_position) > 1e-12 and abs(target_position) < 1e-12:
             close_count += 1
+        if (
+            abs(previous_target_position) > 1e-12
+            and abs(target_position) > 1e-12
+            and ((previous_target_position > 0) != (target_position > 0))
+        ):
+            flip_count += 1
 
         previous_index = index
         previous_timestamp = timestamp
 
+    short_entry_count = open_count - long_entry_count
     expected_counts = {
         "close_count": close_count,
+        "entry_count": open_count,
         "flatten_count": flatten_count,
+        "flatten_to_short_count": flatten_to_short_count,
+        "flatten_to_zero_count": flatten_to_zero_count,
+        "flip_count": flip_count,
         "hold_count": hold_count,
         "long_entry_count": long_entry_count,
         "nonzero_target_position_count": nonzero_target_position_count,
         "nonzero_position_change_count": nonzero_position_change_count,
         "open_count": open_count,
+        "short_entry_count": short_entry_count,
     }
     for name, expected_value in expected_counts.items():
         actual_value = int(trace[name])
@@ -366,6 +385,11 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         raise ValueError(
             "signal digest csv last_timestamp must match trace summary: "
             f"csv={last_timestamp} trace_summary={trace['last_timestamp']}"
+        )
+
+    if trace.get("timestamps_iso8601") is not True:
+        raise ValueError(
+            "signal digest csv timestamps are ISO-8601 but trace summary timestamps_iso8601 is not true"
         )
 
 
