@@ -49,6 +49,7 @@ Done (2026-05-19):
  28. Backtest trace safety: validate signal digest invariants (index/timestamp monotonicity)
  29. Backtest visibility: Phase markdown includes deterministic digest invariants summary
  30. Backtest visibility: Phase markdown includes deterministic top reasons frequency (audit-friendly)
+ 31. Backtest digest determinism: enforce ASCII-only, single-line, non-empty `SignalDigest.reason` invariants
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

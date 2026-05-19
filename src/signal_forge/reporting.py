@@ -254,6 +254,23 @@ def validate_signal_digests(digests: list[SignalDigest]) -> None:
                 f"signal digest timestamp must be non-empty (position={position})"
             )
 
+        reason = digest.reason
+        reason_stripped = reason.strip()
+        if not reason_stripped:
+            raise ValueError(
+                f"signal digest reason must be non-empty (position={position})"
+            )
+        if reason_stripped != reason:
+            raise ValueError(
+                "signal digest reason must not have leading/trailing whitespace "
+                f"(position={position})"
+            )
+        if not reason.isascii() or any(char in {"\r", "\n", "\t"} for char in reason):
+            raise ValueError(
+                "signal digest reason must be ASCII-only and single-line "
+                f"(position={position})"
+            )
+
         if previous_index is not None and digest.index <= previous_index:
             raise ValueError(
                 "signal digests must be sorted by increasing index "
@@ -404,11 +421,22 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
     index_increasing = True
     timestamp_non_decreasing = True
     timestamps_non_empty = True
+    reasons_non_empty = True
+    reasons_ascii_single_line = True
+    reasons_trimmed = True
     previous_index: int | None = None
     previous_timestamp: str | None = None
     for digest in digests:
         if not digest.timestamp:
             timestamps_non_empty = False
+        if not digest.reason.strip():
+            reasons_non_empty = False
+        if digest.reason.strip() != digest.reason:
+            reasons_trimmed = False
+        if (not digest.reason.isascii()) or any(
+            char in {"\r", "\n", "\t"} for char in digest.reason
+        ):
+            reasons_ascii_single_line = False
         if previous_index is not None and digest.index <= previous_index:
             index_increasing = False
         if previous_timestamp is not None and digest.timestamp < previous_timestamp:
@@ -433,6 +461,9 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
         "timestamps_non_empty": timestamps_non_empty,
         "index_increasing": index_increasing,
         "timestamp_non_decreasing": timestamp_non_decreasing,
+        "reasons_non_empty": reasons_non_empty,
+        "reasons_trimmed": reasons_trimmed,
+        "reasons_ascii_single_line": reasons_ascii_single_line,
         "first_timestamp": first_timestamp,
         "last_timestamp": last_timestamp,
         "last_target_position": _round_float(last_target_position, 6),
@@ -479,6 +510,9 @@ def _phase_markdown_report(result: PhaseExecutionResult) -> str:
                 f"- Timestamps non-empty: {invariants['timestamps_non_empty']}",
                 f"- Index strictly increasing: {invariants['index_increasing']}",
                 f"- Timestamp non-decreasing: {invariants['timestamp_non_decreasing']}",
+                f"- Reasons non-empty: {invariants['reasons_non_empty']}",
+                f"- Reasons trimmed: {invariants['reasons_trimmed']}",
+                f"- Reasons ASCII single-line: {invariants['reasons_ascii_single_line']}",
                 f"- First timestamp: {invariants['first_timestamp']}",
                 f"- Last timestamp: {invariants['last_timestamp']}",
                 f"- Last target position: {invariants['last_target_position']}",

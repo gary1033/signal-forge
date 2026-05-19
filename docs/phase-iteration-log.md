@@ -505,3 +505,23 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider adding a deterministic allowlist/normalization for digest reasons only if stable and test-covered; live remains dry-run only.
+
+## 2026-05-19 22:58 +08:00
+
+- Goal: keep Phase readiness at max while enforcing deterministic backtest digest reason invariants (ASCII-only, single-line, non-empty), without changing live safety.
+- Change set:
+  - Extended `validate_signal_digests(...)` to validate `SignalDigest.reason` invariants (trimmed, ASCII-only, single-line, non-empty).
+  - Surfaced the new reason invariants booleans in backtest Phase markdown under `Backtest Digest Invariants`.
+  - Added unit tests for the new validator cases and updated the backtest Phase markdown exact-text contract.
+- Method:
+  - Treat backtest digest reason text as part of the deterministic contract (portable across OS/terminal encodings).
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110 (expected)
+- Guard: pass (39 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: consider backtest-only digest reason allowlist/normalizer only if deterministic and test-covered; live remains dry-run only.

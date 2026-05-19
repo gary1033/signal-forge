@@ -83,6 +83,38 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sorted by non-decreasing timestamp"):
             validate_signal_digests(digests)
 
+    def test_signal_digest_validator_rejects_empty_reason(self) -> None:
+        digests = [
+            SignalDigest(
+                index=0,
+                timestamp="2026-01-01",
+                target_position=1.0,
+                position_change=1.0,
+                reason="",
+                score=1.0,
+                is_long_entry=True,
+                is_flatten=False,
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "reason must be non-empty"):
+            validate_signal_digests(digests)
+
+    def test_signal_digest_validator_rejects_non_ascii_reason(self) -> None:
+        digests = [
+            SignalDigest(
+                index=0,
+                timestamp="2026-01-01",
+                target_position=1.0,
+                position_change=1.0,
+                reason="進場",
+                score=1.0,
+                is_long_entry=True,
+                is_flatten=False,
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "reason must be ASCII-only"):
+            validate_signal_digests(digests)
+
     def test_writes_markdown_json_and_trade_log(self) -> None:
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
@@ -382,6 +414,9 @@ class ReportingTests(unittest.TestCase):
                     "- Timestamps non-empty: True",
                     "- Index strictly increasing: True",
                     "- Timestamp non-decreasing: True",
+                    "- Reasons non-empty: True",
+                    "- Reasons trimmed: True",
+                    "- Reasons ASCII single-line: True",
                     "- First timestamp: 2026-01-01",
                     "- Last timestamp: 2026-01-02",
                     "- Last target position: 0.0",
