@@ -65,15 +65,49 @@ class ReportingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = write_phase_outputs(result, temp_dir, run_name="phase-live")
-            summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
+            summary_text = paths.summary_json.read_text(encoding="utf-8")
+            summary = json.loads(summary_text)
             markdown = paths.markdown.read_text(encoding="utf-8")
 
         validate_phase_summary(summary)
         self.assertEqual(summary["phase"]["mode"], "live")
         self.assertEqual(summary["phase"]["adapter_name"], "live")
+        self.assertEqual(summary["phase"]["dry_run"], True)
+        self.assertEqual(summary_text, json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        self.assertEqual(
+            summary["order_intents"],
+            [
+                {
+                    "timestamp": "2026-01-01",
+                    "side": "buy",
+                    "target_position": 1.0,
+                    "reason": "entry",
+                    "dry_run": True,
+                    "submitted": False,
+                    "safety_note": "LIVE_DRY_RUN_ONLY: dry_run order intent only; no broker; no api keys; submitted=False",
+                }
+            ],
+        )
         self.assertEqual(summary["order_intents"][0]["submitted"], False)
-        self.assertIn("Adapter Metadata", markdown)
-        self.assertIn("submitted=False", markdown)
+        self.assertEqual(
+            markdown,
+            "\n".join(
+                [
+                    "# Phase Report - live",
+                    "",
+                    "## Adapter Metadata",
+                    "",
+                    "- Phase mode: live",
+                    "- Adapter: live",
+                    "- Dry run: True",
+                    "",
+                    "## Live Dry-Run Intents",
+                    "",
+                    "- Intent 1: 2026-01-01, buy, target=1.0, dry_run=True, submitted=False, safety=LIVE_DRY_RUN_ONLY: dry_run order intent only; no broker; no api keys; submitted=False",
+                    "",
+                ]
+            ),
+        )
 
     def test_writes_phase_output_backtest_has_stable_summary_contract(self) -> None:
         bars = [

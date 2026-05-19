@@ -198,3 +198,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: add a small golden regression for live mode Phase outputs (still dry-run only; no broker integration).
+
+## 2026-05-19 18:57 +08:00
+
+- Goal: keep Phase readiness at max while improving verifiability via a deterministic golden contract for live Phase outputs (dry-run only).
+- Change set:
+  - Strengthened unit test to assert exact live Phase summary JSON formatting (`sort_keys=True` + newline) and exact markdown output.
+- Method:
+  - Treat live mode report text as a stable contract, while keeping live safety unchanged:
+    - live remains dry-run only (`dry_run=True`)
+    - intents remain order-intent only (`submitted=False`; no broker / no API keys)
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (31 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pending push)
+- Next step: extend golden regressions to Entry Edge outputs (keep live dry-run only).
