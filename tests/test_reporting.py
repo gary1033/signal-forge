@@ -127,6 +127,8 @@ class ReportingTests(unittest.TestCase):
         trace = trace_summary["trace_summary"]
         self.assertEqual(int(trace["nonzero_target_position_count"]), 0)
         self.assertEqual(int(trace["hold_count"]), 0)
+        self.assertEqual(int(trace["hold_long_count"]), 0)
+        self.assertEqual(int(trace["hold_short_count"]), 0)
 
         lines = csv_text.splitlines()
         header = lines[0].split(",")
@@ -613,6 +615,8 @@ class ReportingTests(unittest.TestCase):
                             '    "flatten_to_zero_count": 1,',
                             '    "flip_count": 0,',
                             '    "hold_count": 0,',
+                            '    "hold_long_count": 0,',
+                            '    "hold_short_count": 0,',
                             '    "last_previous_target_position": 1.0,',
                             '    "last_target_position": 0.0,',
                             '    "last_timestamp": "2026-01-02",',
@@ -631,7 +635,7 @@ class ReportingTests(unittest.TestCase):
                             '    "reasons": [',
                             '      "entry"',
                             "    ],",
-                            '    "schema_version": 3,',
+                            '    "schema_version": 4,',
                             '    "short_entry_count": 0,',
                             '    "start_date": "2026-01-01",',
                             '    "timestamps_iso8601": true,',

@@ -616,6 +616,8 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "flatten_to_zero_count": int,
         "flip_count": int,
         "hold_count": int,
+        "hold_long_count": int,
+        "hold_short_count": int,
         "last_previous_target_position": (int, float),
         "last_target_position": (int, float),
         "last_timestamp": (type(None), str),
@@ -678,6 +680,8 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "flatten_to_zero_count": int(trace_summary["flatten_to_zero_count"]),
         "flip_count": int(trace_summary["flip_count"]),
         "hold_count": int(trace_summary["hold_count"]),
+        "hold_long_count": int(trace_summary["hold_long_count"]),
+        "hold_short_count": int(trace_summary["hold_short_count"]),
         "long_entry_count": int(trace_summary["long_entry_count"]),
         "nonzero_target_position_count": int(trace_summary["nonzero_target_position_count"]),
         "nonzero_position_change_count": int(trace_summary["nonzero_position_change_count"]),
@@ -716,6 +720,11 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     if counts["hold_count"] > counts["nonzero_target_position_count"]:
         raise ValueError(
             "trace summary trace_summary.hold_count must be <= nonzero_target_position_count"
+        )
+
+    if counts["hold_long_count"] + counts["hold_short_count"] != counts["hold_count"]:
+        raise ValueError(
+            "trace summary trace_summary.hold_long_count + hold_short_count must equal hold_count"
         )
 
     if counts["open_count"] + counts["close_count"] > counts["nonzero_position_change_count"]:
@@ -955,6 +964,16 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
         for digest in digests
         if abs(digest.target_position) > epsilon and abs(digest.position_change) <= epsilon
     )
+    hold_long_count = sum(
+        1
+        for digest in digests
+        if digest.target_position > epsilon and abs(digest.position_change) <= epsilon
+    )
+    hold_short_count = sum(
+        1
+        for digest in digests
+        if digest.target_position < -epsilon and abs(digest.position_change) <= epsilon
+    )
     open_count = 0
     close_count = 0
     short_entry_count = 0
@@ -999,7 +1018,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     end_date = _extract_iso8601_date(last_timestamp)
     return {
         "trace_summary": {
-            "schema_version": 3,
+            "schema_version": 4,
             "bar_count": len(digests),
             "close_count": close_count,
             "end_date": end_date,
@@ -1012,6 +1031,8 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "flatten_to_short_count": flatten_to_short_count,
             "flatten_to_zero_count": flatten_to_zero_count,
             "hold_count": hold_count,
+            "hold_long_count": hold_long_count,
+            "hold_short_count": hold_short_count,
             "last_previous_target_position": _round_float(last_previous_target_position, 6),
             "nonzero_target_position_count": nonzero_target_position_count,
             "nonzero_position_change_count": nonzero_position_change_count,

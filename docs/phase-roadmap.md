@@ -77,6 +77,7 @@
 54. 回測 trace 可稽核性：`*_trace_summary.json` 新增 deterministic `flatten_to_long_count`，並驗證 flatten buckets 加總等於 `flatten_count`（schema_version=3，test-covered）。
 54. 回測 artifact validation：`validate_signal_digest_csv(...)` 交叉驗證 `entry_count` / `short_entry_count` / flatten buckets / `flip_count` / `timestamps_iso8601` 與 `*_trace_summary.json` 一致（test-covered）。
 55. 回測 trace timestamp 可稽核性：`*_trace_summary.json` 加入 deterministic `start_date` / `end_date`（由 ISO-8601 timestamp 萃取），方便人工核對 backtest 期間（test-covered）。
+56. 回測 trace 可稽核性：`*_trace_summary.json` 追加 deterministic `hold_long_count` / `hold_short_count`（side buckets），並用 validator 驗證 `hold_long_count + hold_short_count == hold_count`（schema_version=4，test-covered）。
 
 ## 下一步候選
 
