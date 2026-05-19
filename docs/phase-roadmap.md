@@ -43,6 +43,7 @@ Done (2026-05-19):
 22. Backtest trace visibility: `*_signals.csv` includes deterministic `is_long_entry` derived field
 23. Backtest digest: `*_signals.csv` includes deterministic `is_flatten` derived field
 24. Live output determinism: Phase report markdown has a stable exact-text contract (dry-run intent only)
+25. Backtest digest: `*_signals.csv` includes deterministic `position_change` (target_position delta) derived field
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

@@ -68,6 +68,7 @@ class SignalDigest:
     index: int
     timestamp: str
     target_position: float
+    position_change: float
     reason: str
     score: float
     is_long_entry: bool
@@ -103,12 +104,14 @@ class BacktestExecutionAdapter:
         for signal in signals:
             is_long_entry = signal.target_position > 0 and previous_target <= 0
             is_flatten = signal.target_position <= 0 and previous_target > 0
+            position_change = signal.target_position - previous_target
             previous_target = signal.target_position
             digests.append(
                 SignalDigest(
                     index=signal.index,
                     timestamp=signal.timestamp,
                     target_position=signal.target_position,
+                    position_change=position_change,
                     reason=signal.reason,
                     score=signal.score,
                     is_long_entry=is_long_entry,

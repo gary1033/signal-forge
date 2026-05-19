@@ -311,6 +311,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "index",
             "timestamp",
             "target_position",
+            "position_change",
             "reason",
             "score",
             "is_long_entry",
@@ -322,6 +323,8 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
         row = asdict(digest)
         if isinstance(row.get("target_position"), float):
             row["target_position"] = f"{row['target_position']:.6f}"
+        if isinstance(row.get("position_change"), float):
+            row["position_change"] = f"{row['position_change']:.6f}"
         if isinstance(row.get("score"), float):
             row["score"] = f"{row['score']:.6f}"
         writer.writerow(row)
