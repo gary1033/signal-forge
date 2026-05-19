@@ -10,3 +10,13 @@
 - 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`。
 - 結果：本輪目標是讓 readiness score 增加並維持全部測試通過。
 - 下一步：建立 `PhaseRunner` 與 execution adapter skeleton，先接 `BacktestExecutionAdapter`，再補 `LiveExecutionAdapter` dry-run intent。
+
+## 2026-05-19 12:08 Asia/Taipei
+
+- 方法：完成 roadmap 第 2、3、6、7 項的最小可驗證 adapter skeleton，先把 execution 邊界接起來，不碰 CLI 與外部交易接入。
+- 程式碼：在 `src/signal_forge/phase.py` 新增 `PhaseRunner`、`BacktestExecutionAdapter`、`LiveExecutionAdapter`、`PhaseExecutionResult` 與 `OrderIntent`。
+- 安全邊界：`LiveExecutionAdapter` 只產生 dry-run order intent；`OrderIntent.submitted` 固定為 `False`，`safety_note` 標示 `不送單`。
+- 測試：更新 `tests/test_phase.py`，確認 backtest mode 會產生 entry-edge result，live mode 僅回傳 dry-run intent 且不送單。
+- 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`；`git diff --check`。
+- 結果：本輪目標是讓 readiness score 增加並維持全部測試通過。
+- 下一步：替 CLI 加上 `phase --mode backtest|live` 入口，live 入口仍只能 dry-run。

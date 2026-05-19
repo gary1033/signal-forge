@@ -9,21 +9,35 @@ from signal_forge.market_data import (
     load_bars_from_csv,
     validate_bars,
 )
-from signal_forge.phase import PhaseConfig, PhaseMode, parse_phase_mode
+from signal_forge.phase import (
+    BacktestExecutionAdapter,
+    LiveExecutionAdapter,
+    OrderIntent,
+    PhaseConfig,
+    PhaseExecutionResult,
+    PhaseMode,
+    PhaseRunner,
+    parse_phase_mode,
+)
 from signal_forge.strategy import Signal, Strategy
 
 __all__ = [
     "Backtester",
     "BacktestConfig",
+    "BacktestExecutionAdapter",
     "BacktestResult",
     "Bar",
     "BarValidationResult",
     "EntryEdgeConfig",
     "EntryEdgeEvaluator",
     "EntryEdgeResult",
+    "LiveExecutionAdapter",
     "MarketDataValidationError",
+    "OrderIntent",
     "PhaseConfig",
+    "PhaseExecutionResult",
     "PhaseMode",
+    "PhaseRunner",
     "Signal",
     "Strategy",
     "load_bars_from_csv",

@@ -27,12 +27,12 @@ SignalForge 的 Phase 架構要同時支援兩種模式：
 12 個 15 分鐘 heartbeat，每次做一個聚焦 iteration：
 
 1. 建立 phase mode 型別與設定資料結構。`2026-05-19 11:53` 完成：新增 `PhaseMode`、`PhaseConfig` 與 live dry-run guard。
-2. 建立 backtest adapter，接上現有 entry-edge evaluator。
-3. 建立 live adapter stub，只輸出 intent，不接交易 API。
+2. 建立 backtest adapter，接上現有 entry-edge evaluator。`2026-05-19 12:08` 完成：`BacktestExecutionAdapter` 會呼叫 `EntryEdgeEvaluator`。
+3. 建立 live adapter stub，只輸出 intent，不接交易 API。`2026-05-19 12:08` 完成：`LiveExecutionAdapter` 只回傳 dry-run `OrderIntent`，不送單。
 4. CLI 增加 phase/backtest 入口，保留 live dry-run 入口。
 5. 報告輸出補 phase mode 與 adapter metadata。
-6. 測試 backtest mode 能維持既有結果。
-7. 測試 live mode 不會送單，只產生 dry-run intent。
+6. 測試 backtest mode 能維持既有結果。`2026-05-19 12:08` 完成：`PhaseRunner` backtest 測試會檢查 entry-edge trade count。
+7. 測試 live mode 不會送單，只產生 dry-run intent。`2026-05-19 12:08` 完成：測試確認 `submitted=False` 並保留 `不送單` safety note。
 8. 補 failure mode：未知 mode、缺資料、live 未啟用。
 9. 更新 README 的 PowerShell 操作流程。
 10. 更新策略蒸餾模板，把 phase mode 與 live stub 欄位加進去。
