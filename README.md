@@ -72,6 +72,9 @@ python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode 
 
 - `docs/phase1-data-preparation.md`
 - `docs/phase1-strategy-intake-template.md`
+- `docs/phase-autoresearch-results.md`
+- `docs/phase-roadmap.md`
+- `docs/phase-iteration-log.md`
 
 ## 專案路線
 
