@@ -84,3 +84,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: expand backtest determinism to cover report schema validation and/or stable JSON ordering (still no live broker integration).
+
+## 2026-05-19 17:27 +08:00
+
+- Goal: keep Phase readiness at max while strengthening backtest verifiability via a schema-level contract guard for Phase summary JSON.
+- Change set:
+  - Added `validate_phase_summary(...)` and invoked it in `write_phase_outputs(...)` to enforce a deterministic summary contract.
+  - Updated unit tests to assert the schema validator passes for live/backtest outputs and rejects missing required keys.
+- Method:
+  - Add a lightweight deterministic schema validator (type/required-field checks).
+  - Keep backtest/live mode split unchanged; live remains dry-run only (no broker, no API keys, `submitted=False`).
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (29 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: add a small backtest schema regression test that asserts stable key set + required ordering (keep live dry-run only).

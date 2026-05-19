@@ -14,7 +14,11 @@ from signal_forge import (
     Strategy,
     validate_bars,
 )
-from signal_forge.reporting import write_entry_edge_outputs, write_phase_outputs
+from signal_forge.reporting import (
+    validate_phase_summary,
+    write_entry_edge_outputs,
+    write_phase_outputs,
+)
 
 
 class OneTradeStrategy(Strategy):
@@ -61,6 +65,7 @@ class ReportingTests(unittest.TestCase):
             summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
             markdown = paths.markdown.read_text(encoding="utf-8")
 
+        validate_phase_summary(summary)
         self.assertEqual(summary["phase"]["mode"], "live")
         self.assertEqual(summary["phase"]["adapter_name"], "live")
         self.assertEqual(summary["order_intents"][0]["submitted"], False)
@@ -79,6 +84,7 @@ class ReportingTests(unittest.TestCase):
             summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
             markdown = paths.markdown.read_text(encoding="utf-8")
 
+        validate_phase_summary(summary)
         self.assertEqual(summary["phase"]["mode"], "backtest")
         self.assertEqual(summary["phase"]["adapter_name"], "backtest")
         self.assertEqual(summary["phase"]["dry_run"], False)
@@ -91,6 +97,10 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("Backtest Result", markdown)
         self.assertIn("Profit Factor: Infinity", markdown)
         self.assertIn("End equity: 10995.80", markdown)
+
+    def test_phase_summary_schema_validator_rejects_missing_phase(self) -> None:
+        with self.assertRaisesRegex(ValueError, "missing required dict key: phase"):
+            validate_phase_summary({})
 
 
 if __name__ == "__main__":

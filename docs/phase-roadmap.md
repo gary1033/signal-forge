@@ -27,8 +27,8 @@ Done (2026-05-19):
 6. Failure modes: unknown mode / hold period / bar validation + tests
 7. Docs: Phase workflow documented for PowerShell
 8. Backtest regression: Phase report contract test (fixed bars -> stable summary/markdown)
+9. Phase report: validate summary JSON schema (contract guardrail)
 
 Next candidates (keep live safety unchanged):
 - Backtest stability: determinism and golden regression tests
-- Report contract validation: schema and regression checks
 - Coverage/trace visibility without any real trading integration

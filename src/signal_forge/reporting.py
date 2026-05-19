@@ -71,6 +71,7 @@ def write_phase_outputs(
     summary_path = output_path / f"{stem}.json"
 
     summary = _phase_summary_dict(result)
+    validate_phase_summary(summary)
     summary_path.write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -133,6 +134,84 @@ def _phase_summary_dict(result: PhaseExecutionResult) -> dict[str, object]:
         summary["order_intents"] = [asdict(intent) for intent in result.order_intents]
     return summary
 
+
+def validate_phase_summary(summary: dict[str, object]) -> None:
+    allowed_keys = {"phase", "entry_edge", "order_intents"}
+    extra_keys = sorted(set(summary.keys()) - allowed_keys)
+    if extra_keys:
+        raise ValueError(f"phase summary has unexpected keys: {extra_keys}")
+
+    phase = summary.get("phase")
+    if not isinstance(phase, dict):
+        raise ValueError("phase summary missing required dict key: phase")
+
+    mode = phase.get("mode")
+    adapter_name = phase.get("adapter_name")
+    dry_run = phase.get("dry_run")
+    if mode not in {"backtest", "live"}:
+        raise ValueError("phase summary phase.mode must be 'backtest' or 'live'")
+    if not isinstance(adapter_name, str) or not adapter_name:
+        raise ValueError("phase summary phase.adapter_name must be a non-empty str")
+    if not isinstance(dry_run, bool):
+        raise ValueError("phase summary phase.dry_run must be a bool")
+
+    order_intents = summary.get("order_intents")
+    if order_intents is not None:
+        if not isinstance(order_intents, list):
+            raise ValueError("phase summary order_intents must be a list when present")
+        for index, intent in enumerate(order_intents, start=1):
+            if not isinstance(intent, dict):
+                raise ValueError(
+                    f"phase summary order_intents[{index}] must be a dict"
+                )
+            _validate_order_intent_dict(intent, index)
+
+    entry_edge = summary.get("entry_edge")
+    if entry_edge is not None:
+        if not isinstance(entry_edge, dict):
+            raise ValueError("phase summary entry_edge must be a dict when present")
+        _validate_entry_edge_dict(entry_edge)
+
+
+def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:
+    required_fields = {
+        "timestamp": str,
+        "side": str,
+        "target_position": (int, float),
+        "reason": str,
+        "dry_run": bool,
+        "submitted": bool,
+        "safety_note": str,
+    }
+    missing = sorted(field for field in required_fields if field not in intent)
+    if missing:
+        raise ValueError(f"phase summary order_intents[{index}] missing keys: {missing}")
+    for field, expected in required_fields.items():
+        value = intent.get(field)
+        if not isinstance(value, expected):
+            raise ValueError(
+                f"phase summary order_intents[{index}].{field} has invalid type"
+            )
+    if intent.get("side") not in {"buy"}:
+        raise ValueError(f"phase summary order_intents[{index}].side must be 'buy'")
+
+
+def _validate_entry_edge_dict(entry_edge: dict[str, object]) -> None:
+    required_fields = {
+        "strategy_name": str,
+        "decision": str,
+        "profit_factor": (type(None), int, float),
+        "profit_factor_status": str,
+        "trade_count": int,
+        "end_equity": (int, float),
+    }
+    missing = sorted(field for field in required_fields if field not in entry_edge)
+    if missing:
+        raise ValueError(f"phase summary entry_edge missing keys: {missing}")
+    for field, expected in required_fields.items():
+        value = entry_edge.get(field)
+        if not isinstance(value, expected):
+            raise ValueError(f"phase summary entry_edge.{field} has invalid type")
 
 def _trade_log_csv(result: EntryEdgeResult) -> str:
     import io
