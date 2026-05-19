@@ -89,6 +89,7 @@ def write_phase_outputs(
     signal_digest_csv: Path | None = None
     trace_summary_json: Path | None = None
     if result.mode == "backtest" and result.signal_digests is not None:
+        validate_signal_digests(result.signal_digests)
         signal_digest_path.write_text(
             _signal_digest_csv(result.signal_digests),
             encoding="utf-8",
@@ -237,6 +238,32 @@ def validate_phase_summary(summary: dict[str, object]) -> None:
             raise ValueError("phase summary backtest mode must include entry_edge")
         if order_intents is not None and order_intents:
             raise ValueError("phase summary backtest mode must not include any order_intents")
+
+
+def validate_signal_digests(digests: list[SignalDigest]) -> None:
+    """Enforce deterministic invariants for backtest signal digests."""
+
+    previous_index: int | None = None
+    previous_timestamp: str | None = None
+    for position, digest in enumerate(digests):
+        if not digest.timestamp:
+            raise ValueError(
+                f"signal digest timestamp must be non-empty (position={position})"
+            )
+
+        if previous_index is not None and digest.index <= previous_index:
+            raise ValueError(
+                "signal digests must be sorted by increasing index "
+                f"(position={position})"
+            )
+        if previous_timestamp is not None and digest.timestamp < previous_timestamp:
+            raise ValueError(
+                "signal digests must be sorted by non-decreasing timestamp "
+                f"(position={position})"
+            )
+
+        previous_index = digest.index
+        previous_timestamp = digest.timestamp
 
 
 def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:

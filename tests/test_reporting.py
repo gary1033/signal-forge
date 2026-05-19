@@ -16,9 +16,11 @@ from signal_forge import (
 )
 from signal_forge.reporting import (
     validate_phase_summary,
+    validate_signal_digests,
     write_entry_edge_outputs,
     write_phase_outputs,
 )
+from signal_forge.phase import SignalDigest
 
 
 class OneTradeStrategy(Strategy):
@@ -29,6 +31,58 @@ class OneTradeStrategy(Strategy):
 
 
 class ReportingTests(unittest.TestCase):
+    def test_signal_digest_validator_rejects_non_monotonic_index(self) -> None:
+        digests = [
+            SignalDigest(
+                index=1,
+                timestamp="2026-01-02",
+                target_position=0.0,
+                position_change=0.0,
+                reason="hold",
+                score=0.0,
+                is_long_entry=False,
+                is_flatten=False,
+            ),
+            SignalDigest(
+                index=0,
+                timestamp="2026-01-01",
+                target_position=1.0,
+                position_change=1.0,
+                reason="entry",
+                score=1.0,
+                is_long_entry=True,
+                is_flatten=False,
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "sorted by increasing index"):
+            validate_signal_digests(digests)
+
+    def test_signal_digest_validator_rejects_decreasing_timestamp(self) -> None:
+        digests = [
+            SignalDigest(
+                index=0,
+                timestamp="2026-01-02",
+                target_position=1.0,
+                position_change=1.0,
+                reason="entry",
+                score=1.0,
+                is_long_entry=True,
+                is_flatten=False,
+            ),
+            SignalDigest(
+                index=1,
+                timestamp="2026-01-01",
+                target_position=0.0,
+                position_change=-1.0,
+                reason="flatten",
+                score=0.0,
+                is_long_entry=False,
+                is_flatten=True,
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "sorted by non-decreasing timestamp"):
+            validate_signal_digests(digests)
+
     def test_writes_markdown_json_and_trade_log(self) -> None:
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),

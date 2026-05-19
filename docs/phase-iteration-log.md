@@ -446,3 +446,23 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider adding backtest-only digest invariants (e.g., timestamp monotonicity) as a validator, still with deterministic tests and no broker/API keys.
+
+## 2026-05-19 22:13 +08:00
+
+- Goal: keep Phase readiness at max while adding backtest-only deterministic invariants for `SignalDigest` ordering (no live trading changes).
+- Change set:
+  - Added `validate_signal_digests(...)` to enforce monotonic index + non-decreasing timestamp.
+  - Invoked the validator before writing backtest `*_signals.csv` / `*_trace_summary.json`.
+  - Added unit tests that assert the validator rejects out-of-order digests.
+- Method:
+  - Treat backtest digests as an explicit contract: stable ordering is required for deterministic trace summaries.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (37 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: optionally add a backtest-only "digest invariant report" section into Phase markdown (still deterministic; still no broker/API keys).
