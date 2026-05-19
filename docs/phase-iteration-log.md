@@ -177,3 +177,24 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: `773e52b` (pushed to `origin/main`)
 - Next step: expand golden tests incrementally (keep live dry-run only).
+
+## 2026-05-19 18:42 +08:00
+
+- Goal: keep Phase readiness at max while strengthening safety invariants for mode switching (`backtest` vs `live`) at the Phase summary contract layer.
+- Change set:
+  - Tightened `validate_phase_summary(...)` to enforce cross-field invariants:
+    - `live`: requires `phase.dry_run=True`, requires `order_intents`, forbids `entry_edge`, and forbids any `submitted=True` intent.
+    - `backtest`: requires `phase.dry_run=False`, requires `entry_edge`, and forbids non-empty `order_intents`.
+  - Added unit tests that assert the validator rejects (1) a submitted live intent and (2) a backtest summary missing `entry_edge`.
+- Method:
+  - Keep live safety unchanged (still dry-run only); make the JSON summary validator catch unsafe/mismatched states early.
+  - Preserve deterministic output contracts; add safety invariants without introducing broker/API key flows.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (31 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: add a small golden regression for live mode Phase outputs (still dry-run only; no broker integration).

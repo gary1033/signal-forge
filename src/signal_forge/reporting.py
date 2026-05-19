@@ -172,6 +172,38 @@ def validate_phase_summary(summary: dict[str, object]) -> None:
             raise ValueError("phase summary entry_edge must be a dict when present")
         _validate_entry_edge_dict(entry_edge)
 
+    # Cross-field invariants (safety + clarity):
+    # - live must be dry-run only; never allow submitted intents in summaries.
+    # - backtest must include entry_edge; must not claim dry_run.
+    if mode == "live":
+        if dry_run is not True:
+            raise ValueError("phase summary live mode must have phase.dry_run=True")
+        if entry_edge is not None:
+            raise ValueError("phase summary live mode must not include entry_edge")
+        if order_intents is None:
+            raise ValueError("phase summary live mode must include order_intents")
+        for index, intent in enumerate(order_intents, start=1):
+            if intent.get("dry_run") is not True:
+                raise ValueError(
+                    f"phase summary order_intents[{index}].dry_run must be True in live mode"
+                )
+            if intent.get("submitted") is not False:
+                raise ValueError(
+                    f"phase summary order_intents[{index}].submitted must be False in live mode"
+                )
+            safety_note = intent.get("safety_note")
+            if not isinstance(safety_note, str) or "LIVE_DRY_RUN_ONLY" not in safety_note:
+                raise ValueError(
+                    f"phase summary order_intents[{index}].safety_note must include LIVE_DRY_RUN_ONLY"
+                )
+    else:
+        if dry_run is not False:
+            raise ValueError("phase summary backtest mode must have phase.dry_run=False")
+        if entry_edge is None:
+            raise ValueError("phase summary backtest mode must include entry_edge")
+        if order_intents is not None and order_intents:
+            raise ValueError("phase summary backtest mode must not include any order_intents")
+
 
 def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:
     required_fields = {

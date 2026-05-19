@@ -137,6 +137,36 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing required dict key: phase"):
             validate_phase_summary({})
 
+    def test_phase_summary_schema_validator_rejects_live_submitted_intent(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="live"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-live")
+            summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
+
+        summary["order_intents"][0]["submitted"] = True
+        with self.assertRaisesRegex(ValueError, "submitted must be False"):
+            validate_phase_summary(summary)
+
+    def test_phase_summary_schema_validator_rejects_backtest_missing_entry_edge(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-backtest")
+            summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
+
+        del summary["entry_edge"]
+        with self.assertRaisesRegex(ValueError, "backtest mode must include entry_edge"):
+            validate_phase_summary(summary)
+
 
 if __name__ == "__main__":
     unittest.main()

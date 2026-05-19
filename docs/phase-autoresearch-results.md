@@ -31,3 +31,4 @@ git diff --check
 | 2026-05-19 18:02 | Entry Edge report ASCII-only labels | 110 -> 110 | pass | keep | `d54d9e7` (pushed) | Windows-friendly backtest report output |
 | 2026-05-19 18:12 | Backtest determinism: Phase summary JSON text contract | 110 -> 110 | pass | keep | `c69428c` (pushed) | Assert exact JSON formatting (sorted keys + newline) |
 | 2026-05-19 18:28 | Backtest determinism: Phase markdown text contract | 110 -> 110 | pass | keep | `773e52b` (pushed) | Assert exact markdown output (stable lines + trailing newline) |
+| 2026-05-19 18:42 | Phase summary: enforce live/backtest invariants | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Live: dry-run + submitted=False only; Backtest: requires entry_edge |

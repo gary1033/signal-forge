@@ -32,6 +32,7 @@ Done (2026-05-19):
 11. Backtest portability: Entry Edge report + CLI strategy spec ASCII-only (Windows-friendly)
 12. Backtest determinism: Phase summary JSON text contract (sorted keys + newline)
 13. Backtest determinism: Phase markdown text contract (exact text + trailing newline)
+14. Phase report: enforce cross-field invariants (live dry-run only; backtest requires entry_edge)
 
 Next candidates (keep live safety unchanged):
 - Backtest stability: determinism and golden regression tests
