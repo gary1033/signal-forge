@@ -5,6 +5,7 @@ from pathlib import Path
 
 from signal_forge.entry_edge import EntryEdgeConfig, EntryEdgeEvaluator
 from signal_forge.market_data import load_bars_from_csv, validate_bars
+from signal_forge.phase import PhaseConfig, PhaseRunner, parse_phase_mode
 from signal_forge.reporting import write_entry_edge_outputs
 from signal_forge.strategies import (
     ConfluenceScoreStrategy,
@@ -43,9 +44,36 @@ def main(argv: list[str] | None = None) -> int:
     entry_edge.add_argument("--exit-z", type=float, default=0.25)
     entry_edge.add_argument("--threshold", type=float, default=3.0)
 
+    phase = subparsers.add_parser(
+        "phase",
+        help="run phase mode through backtest or live dry-run adapters",
+    )
+    phase.add_argument("--csv", required=True, help="OHLCV CSV path")
+    phase.add_argument(
+        "--mode",
+        choices=("backtest", "live"),
+        default="backtest",
+        help="phase mode; live is dry-run only",
+    )
+    phase.add_argument(
+        "--strategy",
+        choices=("sma-crossover", "vwap-reversion", "confluence-score"),
+        default="sma-crossover",
+    )
+    phase.add_argument("--hold-bars-per-day", type=int, default=1)
+    phase.add_argument("--fast-window", type=int, default=20)
+    phase.add_argument("--slow-window", type=int, default=200)
+    phase.add_argument("--vwap-window", type=int, default=20)
+    phase.add_argument("--rsi-window", type=int, default=14)
+    phase.add_argument("--entry-z", type=float, default=1.5)
+    phase.add_argument("--exit-z", type=float, default=0.25)
+    phase.add_argument("--threshold", type=float, default=3.0)
+
     args = parser.parse_args(argv)
     if args.command == "entry-edge":
         return _run_entry_edge(args)
+    if args.command == "phase":
+        return _run_phase(args)
     raise ValueError(f"unsupported command {args.command}")
 
 
@@ -83,6 +111,42 @@ def _run_entry_edge(args: argparse.Namespace) -> int:
     print(f"markdown={paths.markdown}")
     print(f"summary_json={paths.summary_json}")
     print(f"trade_log_csv={paths.trade_log_csv}")
+    return 0
+
+
+def _run_phase(args: argparse.Namespace) -> int:
+    bars = load_bars_from_csv(args.csv)
+    strategy = _build_strategy(args)
+    mode = parse_phase_mode(args.mode)
+    result = PhaseRunner().run(
+        PhaseConfig(
+            mode=mode,
+            strategy=args.strategy,
+            csv_path=args.csv,
+            hold_bars_per_day=args.hold_bars_per_day,
+            dry_run=True,
+        ),
+        strategy,
+        bars,
+    )
+
+    print(f"phase={result.mode}")
+    print(f"adapter={result.adapter_name}")
+    print(f"dry_run={result.dry_run}")
+    if result.entry_edge_result is not None:
+        print(f"entry_edge_trades={result.entry_edge_result.trade_count}")
+        print(f"entry_edge_decision={result.entry_edge_result.decision}")
+    else:
+        intents = result.order_intents or []
+        print(f"order_intents={len(intents)}")
+        for index, intent in enumerate(intents, start=1):
+            print(
+                f"intent_{index}="
+                f"{intent.timestamp},{intent.side},"
+                f"target={intent.target_position},"
+                f"dry_run={intent.dry_run},"
+                f"submitted={intent.submitted}"
+            )
     return 0
 
 
