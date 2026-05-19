@@ -120,10 +120,11 @@ class BacktestExecutionAdapter:
         ).run(strategy, bars)
 
         previous_target = 0.0
+        epsilon = 1e-12
         digests: list[SignalDigest] = []
         for signal in signals:
-            is_long_entry = signal.target_position > 0 and previous_target <= 0
-            is_flatten = signal.target_position <= 0 and previous_target > 0
+            is_long_entry = signal.target_position > epsilon and previous_target <= epsilon
+            is_flatten = signal.target_position <= epsilon and previous_target > epsilon
             position_change = signal.target_position - previous_target
             previous_target = signal.target_position
             digests.append(
@@ -163,8 +164,9 @@ class LiveExecutionAdapter:
 
         order_intents: list[OrderIntent] = []
         previous_target = 0.0
+        epsilon = 1e-12
         for signal in signals:
-            is_long_entry = signal.target_position > 0 and previous_target <= 0
+            is_long_entry = signal.target_position > epsilon and previous_target <= epsilon
             previous_target = signal.target_position
             if not is_long_entry:
                 continue

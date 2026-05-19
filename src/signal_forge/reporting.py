@@ -857,7 +857,8 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
     writer.writeheader()
     for digest in digests:
         previous_target_position = digest.target_position - digest.position_change
-        is_hold = abs(digest.target_position) > 0 and abs(digest.position_change) < 1e-12
+        epsilon = 1e-12
+        is_hold = abs(digest.target_position) > epsilon and abs(digest.position_change) <= epsilon
         row = {
             "index": digest.index,
             "timestamp": digest.timestamp,
@@ -886,10 +887,11 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     nonzero_target_position_count = sum(
         1 for digest in digests if abs(digest.target_position) > 1e-12
     )
+    epsilon = 1e-12
     hold_count = sum(
         1
         for digest in digests
-        if abs(digest.target_position) > 0 and abs(digest.position_change) < 1e-12
+        if abs(digest.target_position) > epsilon and abs(digest.position_change) <= epsilon
     )
     open_count = 0
     close_count = 0
@@ -911,7 +913,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
         ):
             flip_count += 1
     nonzero_position_change_count = sum(
-        1 for digest in digests if abs(digest.position_change) > 0
+        1 for digest in digests if abs(digest.position_change) > epsilon
     )
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None

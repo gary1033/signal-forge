@@ -32,6 +32,16 @@ class OneTradeStrategy(Strategy):
         return [Signal(index, bar.timestamp, 1.0 if index == 0 else 0.0, "entry") for index, bar in enumerate(bars)]
 
 
+class TinyPositionStrategy(Strategy):
+    name = "tiny_position"
+
+    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        # Use a position that is below the reporting epsilon threshold so that
+        # trace_summary + CSV flags remain deterministic and consistent.
+        tiny_position = 1e-13
+        return [Signal(index, bar.timestamp, tiny_position, "tiny") for index, bar in enumerate(bars)]
+
+
 class ReportingTests(unittest.TestCase):
     def test_signal_digest_csv_validator_matches_trace_summary(self) -> None:
         bars = [
@@ -59,6 +69,33 @@ class ReportingTests(unittest.TestCase):
         bad_csv = "\n".join(lines) + "\n"
         with self.assertRaisesRegex(ValueError, "first_target_position must match"):
             validate_signal_digest_csv(trace_summary, bad_csv)
+
+    def test_signal_digest_csv_validator_handles_tiny_positions_deterministically(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+            Bar("2026-01-03", 11, 12.0, 10.5, 11.5, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), TinyPositionStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-tiny")
+            csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, csv_text)
+
+        trace = trace_summary["trace_summary"]
+        self.assertEqual(int(trace["nonzero_target_position_count"]), 0)
+        self.assertEqual(int(trace["hold_count"]), 0)
+
+        lines = csv_text.splitlines()
+        header = lines[0].split(",")
+        hold_index = header.index("is_hold")
+        for row_text in lines[1:]:
+            row = row_text.split(",")
+            self.assertEqual(row[hold_index], "False")
 
     def test_signal_digest_csv_validator_rejects_non_iso8601_timestamp(self) -> None:
         bars = [
