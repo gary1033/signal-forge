@@ -19,8 +19,23 @@
 - 使用方式與 PowerShell 指令：`README.md`
 - 策略蒸餾模板：`docs/phase1-strategy-intake-template.md`
 - CLI 產生的本機報告：`reports/generated/`
+- Codex raw automation transcript：`C:\Users\gary1\.codex\sessions\2026\05\19\rollout-2026-05-19T10-08-01-019e3dfd-751d-7b33-b100-2a92001dea60.jsonl`
 
 `reports/generated/` 是本機執行 CLI smoke 或研究命令後的輸出位置，包含 Markdown、JSON 與 trade log。這些檔案是研究產物，不是 autoresearch 的主要紀錄；autoresearch 的可追蹤紀錄以 docs 與 git commit 為主。
+
+Codex heartbeat automation 目前不會在 `C:\Users\gary1\.codex\automations\signalforge-phase-autoresearch\` 下面建立每輪結果檔；該資料夾只有 `automation.toml` 排程設定。完整 stdout、tool calls、final heartbeat XML 會被寫進 target thread 的 session JSONL。後續 wakeup 已要求同步更新本文件的 run log，讓可讀結果留在 repo 內。
+
+## Automation Run Log
+
+| Wakeup | Milestone | Metric | Guard | Decision | Commit / Push | Notes |
+|---|---|---|---|---|---|---|
+| 2026-05-19 11:53 | Phase mode config | 45 -> 55 | pass | keep | `3231ecb`, pushed | `docs/phase-iteration-log.md` |
+| 2026-05-19 12:08 | Phase runner adapters | 55 -> 100 | pass | keep | `b22a700`, pushed | `docs/phase-iteration-log.md` |
+| 2026-05-19 12:23 | Phase CLI mode | 100 -> 110 | pass | keep | `ace3dc7`, pushed | `docs/phase-iteration-log.md` |
+| 2026-05-19 12:38 | Phase report metadata | 110 -> 110 | pass | keep planned milestone | `24c2907`, pushed | `docs/phase-iteration-log.md` |
+| 2026-05-19 12:53 | README/template workflow docs | 110 -> 110 | pass | keep planned milestone | `cfa1c5b`, pushed | `docs/phase-iteration-log.md` |
+| 2026-05-19 13:08 | Phase failure modes | 110 -> 110 | pass | keep planned milestone | `972685d`, pushed | `docs/phase-iteration-log.md` |
+| 2026-05-19 14:56 | Results index visibility | 110 -> 110 | pass | keep support note | `d63b456`, pushed | `docs/phase-autoresearch-results.md` |
 
 ## 已保留的 autoresearch commits
 
