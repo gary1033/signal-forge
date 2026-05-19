@@ -37,9 +37,17 @@ class PhaseConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PhaseConfig(mode="paper")  # type: ignore[arg-type]
 
+    def test_rejects_invalid_hold_period(self) -> None:
+        with self.assertRaises(ValueError):
+            PhaseConfig(hold_bars_per_day=0)
+
     def test_parse_phase_mode_normalizes_valid_values(self) -> None:
         self.assertEqual(parse_phase_mode(" BACKTEST "), "backtest")
         self.assertEqual(parse_phase_mode("live"), "live")
+
+    def test_parse_phase_mode_rejects_unknown_value(self) -> None:
+        with self.assertRaises(ValueError):
+            parse_phase_mode("paper")
 
     def test_phase_runner_routes_backtest_to_entry_edge_adapter(self) -> None:
         result = PhaseRunner().run(
@@ -70,6 +78,22 @@ class PhaseConfigTests(unittest.TestCase):
         self.assertTrue(intent.dry_run)
         self.assertFalse(intent.submitted)
         self.assertIn("不送單", intent.safety_note)
+
+    def test_phase_runner_rejects_missing_data_before_live_adapter(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no bars were loaded"):
+            PhaseRunner().run(
+                PhaseConfig(mode="live"),
+                OneEntryStrategy(),
+                [],
+            )
+
+    def test_phase_runner_rejects_insufficient_data_for_hold_period(self) -> None:
+        with self.assertRaisesRegex(ValueError, "at least 3 bars are required"):
+            PhaseRunner().run(
+                PhaseConfig(mode="backtest", hold_bars_per_day=2),
+                OneEntryStrategy(),
+                sample_bars(),
+            )
 
 
 if __name__ == "__main__":

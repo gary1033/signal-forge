@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from signal_forge.entry_edge import EntryEdgeConfig, EntryEdgeEvaluator, EntryEdgeResult
-from signal_forge.market_data import Bar
+from signal_forge.market_data import Bar, validate_bars
 from signal_forge.strategy import Strategy
 
 
@@ -130,6 +130,11 @@ class PhaseRunner:
     def run(
         self, config: PhaseConfig, strategy: Strategy, bars: list[Bar]
     ) -> PhaseExecutionResult:
+        validation = validate_bars(bars, min_bars=config.hold_bars_per_day + 1)
+        if not validation.is_valid:
+            errors = "; ".join(validation.errors)
+            raise ValueError(f"phase input data invalid: {errors}")
+
         if config.is_backtest:
             return self.backtest_adapter.run(config, strategy, bars)
         return self.live_adapter.run(config, strategy, bars)

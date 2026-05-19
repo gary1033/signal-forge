@@ -51,3 +51,13 @@
 - 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`；`$env:PYTHONPATH='src'; python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode live --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase-live-demo`；`git diff --check`。
 - 結果：本輪完成 planned milestone，readiness score 應維持 110 並保持 guard 全綠。
 - 下一步：補一份方法筆記，說明 backtest/live 邊界、dry-run intent 與暫不接 broker 的工程理由。
+
+## 2026-05-19 13:08 Asia/Taipei
+
+- 方法：完成 roadmap 第 8 項，把 failure mode 收斂到 `PhaseRunner` 入口，讓資料錯誤在 adapter 執行前被拒絕。
+- 程式碼：更新 `src/signal_forge/phase.py`，在 `PhaseRunner.run()` 呼叫 `validate_bars()`，依 `hold_bars_per_day + 1` 計算最小資料量。
+- 測試：更新 `tests/test_phase.py`，覆蓋 unknown mode、unknown parse value、invalid hold period、缺資料、資料不足與 live 非 dry-run 禁止。
+- 安全邊界：live path 仍只會在有效資料下產生 dry-run order intent；缺資料會在 adapter 前失敗，不會建立 intent 或觸發任何交易側效果。
+- 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`；`$env:PYTHONPATH='src'; python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode live --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase-live-demo`；`git diff --check`。
+- 結果：本輪完成 planned milestone，readiness score 應維持 110 並保持 guard 全綠。
+- 下一步：補一份方法筆記，說明 backtest/live 邊界、dry-run intent 與暫不接 broker 的工程理由。

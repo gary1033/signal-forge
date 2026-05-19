@@ -33,7 +33,7 @@ SignalForge 的 Phase 架構要同時支援兩種模式：
 5. 報告輸出補 phase mode 與 adapter metadata。`2026-05-19 12:38` 完成：`write_phase_outputs()` 會輸出 Phase Markdown/JSON，記錄 mode、adapter、dry-run 與 result/intent metadata。
 6. 測試 backtest mode 能維持既有結果。`2026-05-19 12:08` 完成：`PhaseRunner` backtest 測試會檢查 entry-edge trade count。
 7. 測試 live mode 不會送單，只產生 dry-run intent。`2026-05-19 12:08` 完成：測試確認 `submitted=False` 並保留 `不送單` safety note。
-8. 補 failure mode：未知 mode、缺資料、live 未啟用。
+8. 補 failure mode：未知 mode、缺資料、live 未啟用。`2026-05-19 13:08` 完成：`PhaseRunner` 在 adapter 前驗證 bars，測試覆蓋 unknown mode、invalid hold period、缺資料、資料不足與 live dry-run guard。
 9. 更新 README 的 PowerShell 操作流程。`2026-05-19 12:53` 完成：README 補上 `phase --mode backtest|live` 範例、輸出檔案與 dry-run 邊界。
 10. 更新策略蒸餾模板，把 phase mode 與 live stub 欄位加進去。`2026-05-19 12:53` 完成：策略蒸餾模板新增 Phase 執行紀錄、adapter 與 live dry-run 安全確認欄位。
 11. 補一份方法筆記，記錄 backtest/live 邊界與不接 broker 的理由。
@@ -60,6 +60,7 @@ live mode 只能在以下條件都滿足後才考慮接入外部交易 API：
 - report 可同時記錄 backtest result 與 live dry-run intent。
 - 所有 live tests 都證明不會送出真實訂單。
 - README 明確標示本專案不是投資建議，也不是自動交易系統。
+- failure-mode tests 已覆蓋 unknown mode、缺資料、資料不足與 live 非 dry-run 禁止。
 
 ## 迭代紀錄
 
