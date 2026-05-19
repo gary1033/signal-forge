@@ -1,32 +1,32 @@
 # SignalForge
 
-SignalForge is a research-oriented trading signal sandbox. It supports a Phase workflow that can switch between:
+SignalForge 是研究導向的交易訊號沙盒，用來把 TradingView / Pine Script 的策略想法拆成可驗證的 Python 研究流程。現在的主線是 Phase 工作流，可以在兩種模式之間切換：
 
-- `backtest`: prioritized for stability, repeatability, and verification.
-- `live`: DRY-RUN ONLY until backtests are stable (no broker, no API keys, no real orders).
+- `backtest`：優先穩定性、可重複性與機械驗證。
+- `live`：回測穩定前只允許 dry-run，不接 broker、不讀 API key、不送真實訂單。
 
-## Live safety (must hold)
+## Live 安全邊界
 
-In `live` mode, the system must only produce order intent (dry-run) artifacts:
+`live` 模式目前只能產生 order intent，也就是乾跑用的下單意圖紀錄。以下條件必須永遠成立：
 
 - `dry_run=True`
 - `submitted=False`
-- no broker connections
-- no credential loading
-- no real order submission
+- 不建立 broker 連線
+- 不讀取 credential
+- 不送出真實訂單
 
-## Quickstart (PowerShell)
+## 快速執行（PowerShell）
 
 ```powershell
-# Metric
+# readiness metric
 python tools\phase_readiness_score.py
 
-# Guard
+# guard
 $env:PYTHONPATH='src'
 python -m unittest discover -s tests
 git diff --check
 
-# Phase examples
+# Phase backtest 範例
 python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --mode backtest `
@@ -36,6 +36,7 @@ python -m signal_forge.cli phase `
   --output-dir reports\generated `
   --run-name phase-backtest-demo
 
+# Phase live dry-run 範例
 python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --mode live `
@@ -46,14 +47,15 @@ python -m signal_forge.cli phase `
   --run-name phase-live-demo
 ```
 
-## Phase concepts
+## Phase 核心概念
 
-- `PhaseConfig`: shared config for `backtest` and `live` (live enforces dry-run).
-- `PhaseRunner`: routes to an execution adapter by mode.
-  - `BacktestExecutionAdapter`: produces verifiable backtest results via `EntryEdgeEvaluator`.
-  - `LiveExecutionAdapter`: produces only dry-run `OrderIntent` artifacts (not submitted).
+- `PhaseConfig`：`backtest` / `live` 共用設定；`dry_run` 由 mode 推導，避免 CLI 與核心設定各自維護一份語意。
+- `PhaseRunner`：依照 mode 路由到對應 execution adapter。
+  - `BacktestExecutionAdapter`：透過 `EntryEdgeEvaluator` 產生可驗證的回測結果。
+  - `LiveExecutionAdapter`：只產生 dry-run `OrderIntent`，不送出訂單。
+- `OrderIntent`：live dry-run 的意圖紀錄；`safety_note` 會帶有 `LIVE_DRY_RUN_ONLY` 方便稽核。
 
-## Autoresearch docs
+## Autoresearch 筆記
 
 - `docs/phase-roadmap.md`
 - `docs/phase-iteration-log.md`
