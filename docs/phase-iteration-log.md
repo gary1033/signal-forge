@@ -47,3 +47,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: start backtest determinism work (golden regression tests) without touching live broker integration.
+
+## 2026-05-19 16:57 +08:00
+
+- Goal: keep Phase readiness at max while removing non-ASCII safety-note text that can display inconsistently across terminals/encodings.
+- Change set:
+  - Replaced `OrderIntent.safety_note` with an ASCII-only invariant (keeps `LIVE_DRY_RUN_ONLY`; explicitly states no broker / no API keys / `submitted=False`).
+  - Updated unit tests to assert the ASCII-only safety-note invariants.
+- Method:
+  - Keep the safety marker deterministic (ASCII) and validate via unit tests.
+  - Keep live mode dry-run only; no broker, no credentials, no submissions.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (27 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: add a small deterministic backtest golden test (fixed input bars -> fixed report/summary contract) without changing live safety.

@@ -78,7 +78,9 @@ class PhaseConfigTests(unittest.TestCase):
         self.assertTrue(intent.dry_run)
         self.assertFalse(intent.submitted)
         self.assertIn("LIVE_DRY_RUN_ONLY", intent.safety_note)
-        self.assertIn("不送單", intent.safety_note)
+        self.assertIn("no broker", intent.safety_note)
+        self.assertIn("no api keys", intent.safety_note)
+        self.assertIn("submitted=False", intent.safety_note)
 
     def test_phase_runner_rejects_missing_data_before_live_adapter(self) -> None:
         with self.assertRaisesRegex(ValueError, "no bars were loaded"):

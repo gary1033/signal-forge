@@ -24,3 +24,4 @@ git diff --check
 |---|---|---|---|---|---|---|
 | 2026-05-19 16:27 | Docs encoding + readiness needle | 110 -> 110 | pass | keep | see `git log -1 --oneline` | includes `50ade1b` |
 | 2026-05-19 16:42 | Stable live dry-run marker (`LIVE_DRY_RUN_ONLY`) | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | ASCII marker for safety/audit invariants |
+| 2026-05-19 16:57 | ASCII-only `OrderIntent.safety_note` invariants | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | Avoid terminal/encoding-dependent safety text |
