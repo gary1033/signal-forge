@@ -72,6 +72,7 @@
 50. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `min_target_position` / `max_target_position`，並以 validator 驗證首尾部位落在 min/max 範圍內（test-covered）。
 51. 回測 artifact validation：`validate_signal_digest_csv(...)` 強制每列 `timestamp` 必須為 ISO-8601，避免 CSV timestamp drift（test-covered）。
 51. 回測 timestamp 可稽核性：強制 `SignalDigest.timestamp` 為 ISO-8601（`YYYY-MM-DD` 或 `YYYY-MM-DDTHH:MM:SS...`），並在 `*_trace_summary.json` 追加 `timestamps_iso8601` 欄位（test-covered）。
+52. 回測 trace schema 演進：`*_trace_summary.json` 加入 deterministic `schema_version`（validator + exact-text regression）。
 
 ## 下一步候選
 

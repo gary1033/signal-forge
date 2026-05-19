@@ -562,6 +562,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         raise ValueError("trace summary missing required dict key: trace_summary")
 
     required_fields: dict[str, object] = {
+        "schema_version": int,
         "bar_count": int,
         "close_count": int,
         "entry_count": int,
@@ -595,6 +596,10 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         value = trace_summary.get(field)
         if not isinstance(value, expected):
             raise ValueError(f"trace summary trace_summary.{field} has invalid type")
+
+    schema_version = int(trace_summary["schema_version"])
+    if schema_version < 1:
+        raise ValueError("trace summary trace_summary.schema_version must be >= 1")
 
     bar_count = int(trace_summary["bar_count"])
     if bar_count < 0:
@@ -914,6 +919,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     timestamps_iso8601 = all(_is_iso8601_timestamp(digest.timestamp) for digest in digests)
     return {
         "trace_summary": {
+            "schema_version": 1,
             "bar_count": len(digests),
             "close_count": close_count,
             "entry_count": open_count,

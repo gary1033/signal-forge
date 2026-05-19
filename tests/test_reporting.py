@@ -553,6 +553,7 @@ class ReportingTests(unittest.TestCase):
                             '    "reasons": [',
                             '      "entry"',
                             "    ],",
+                            '    "schema_version": 1,',
                             '    "short_entry_count": 0,',
                             '    "timestamps_iso8601": true,',
                             '    "unique_reason_count": 1',
