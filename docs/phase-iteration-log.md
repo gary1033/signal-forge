@@ -256,3 +256,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (this wakeup)
 - Next step: consider fixing Entry Edge `failure_reason` garbled/encoding-dependent text without changing the evaluation logic.
+
+## 2026-05-19 19:42 +08:00
+
+- Goal: keep Phase readiness at max while improving backtest portability by making Entry Edge `failure_reason` ASCII-only and deterministic.
+- Change set:
+  - Replaced Entry Edge `failure_reason` strings with stable ASCII-only English messages.
+  - Added a unit test that asserts deterministic `failure_reason` values for two fail scenarios.
+- Method:
+  - Treat `failure_reason` as part of the verifiability contract; avoid terminal/encoding-dependent garbling on Windows.
+  - Live safety unchanged: live mode remains dry-run only; no broker; no API keys; `submitted=False`.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (33 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: consider adding lightweight coverage/trace visibility for backtest runs without introducing any broker/API key integration.

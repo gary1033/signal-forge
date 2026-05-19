@@ -178,7 +178,7 @@ def _build_result(
         profit_factor = None
         profit_factor_status: ProfitFactorStatus = "undefined"
         decision: Decision = "fail"
-        failure_reason = "沒有可關閉的純多進場交易"
+        failure_reason = "No closed long-entry trades to evaluate."
     elif gross_loss == 0 and gross_profit > 0:
         profit_factor = None
         profit_factor_status = "infinite"
@@ -190,7 +190,7 @@ def _build_result(
         profit_factor = None
         profit_factor_status = "undefined"
         decision = "fail"
-        failure_reason = "沒有正報酬的已關閉交易"
+        failure_reason = "No profitable closed trades."
     else:
         profit_factor = gross_profit / abs(gross_loss)
         profit_factor_status = "finite"
@@ -199,7 +199,7 @@ def _build_result(
         else:
             decision = "fail"
             failure_reason = (
-                f"Profit Factor {profit_factor:.3f} 未高於 "
+                f"Profit Factor {profit_factor:.3f} did not exceed "
                 f"{config.pass_profit_factor:.3f}"
             )
 

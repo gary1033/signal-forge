@@ -84,6 +84,23 @@ class EntryEdgeTests(unittest.TestCase):
         self.assertEqual(result.profit_factor_status, "finite")
         self.assertEqual(result.decision, "fail")
 
+    def test_failure_reason_is_ascii_and_deterministic(self) -> None:
+        bars = bars_with_prices([(10, 10), (10, 11), (11, 11)])
+        strategy = StaticSignalStrategy([-1.0, 0.0, 0.0])
+        result = EntryEdgeEvaluator(EntryEdgeConfig(commission_bps=0, slippage_bps=0)).run(
+            strategy, bars
+        )
+        self.assertEqual(result.decision, "fail")
+        self.assertEqual(result.failure_reason, "No closed long-entry trades to evaluate.")
+
+        flat_bars = bars_with_prices([(10, 10), (10, 10), (10, 10)])
+        flat_strategy = StaticSignalStrategy([1.0, 0.0, 0.0])
+        flat_result = EntryEdgeEvaluator(
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0)
+        ).run(flat_strategy, flat_bars)
+        self.assertEqual(flat_result.decision, "fail")
+        self.assertEqual(flat_result.failure_reason, "No profitable closed trades.")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -36,7 +36,7 @@ Done (2026-05-19):
 15. Live determinism: Phase summary + markdown text contract (order intent regression)
 16. Backtest portability: ASCII-only warning + sample risk text (avoid encoding-dependent garbling)
 17. Backtest determinism: Entry Edge outputs contract (summary JSON + markdown + trade log CSV)
+18. Backtest portability: Entry Edge failure_reason is ASCII-only and deterministic
 
 Next candidates (keep live safety unchanged):
-- Backtest stability: fix Entry Edge failure_reason encoding/portability (keep report text deterministic)
 - Coverage/trace visibility without any real trading integration
