@@ -84,7 +84,8 @@ class ReportingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             paths = write_phase_outputs(result, temp_dir, run_name="phase-backtest")
-            summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
+            summary_text = paths.summary_json.read_text(encoding="utf-8")
+            summary = json.loads(summary_text)
             markdown = paths.markdown.read_text(encoding="utf-8")
 
         validate_phase_summary(summary)
@@ -97,6 +98,10 @@ class ReportingTests(unittest.TestCase):
         self.assertIsNone(summary["entry_edge"]["profit_factor"])
         self.assertEqual(summary["entry_edge"]["trade_count"], 1)
         self.assertAlmostEqual(summary["entry_edge"]["end_equity"], 10995.8, places=6)
+        self.assertEqual(
+            summary_text,
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
         self.assertIn("Backtest Result", markdown)
         self.assertIn("Profit Factor: Infinity", markdown)
         self.assertIn("End equity: 10995.80", markdown)

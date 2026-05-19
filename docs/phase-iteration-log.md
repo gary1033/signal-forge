@@ -141,3 +141,21 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: `d54d9e7`
 - Next step: continue backtest determinism/golden tests while keeping live dry-run only.
+
+## 2026-05-19 18:12 +08:00
+
+- Goal: keep Phase readiness at max while tightening backtest verifiability with an exact Phase summary JSON text contract.
+- Change set:
+  - Added a unit test assertion that the backtest Phase summary JSON file matches `json.dumps(..., indent=2, sort_keys=True) + "\\n"` exactly (stable formatting and key ordering).
+- Method:
+  - Strengthen the deterministic contract: content + formatting (sorted keys + newline).
+  - Live safety unchanged: live mode remains dry-run only; no broker; no API keys; `submitted=False`.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (see this wakeup verification output)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pending push)
+- Next step: if stable, consider adding a similar exact-text contract for Phase markdown output (still no live trading integration).
