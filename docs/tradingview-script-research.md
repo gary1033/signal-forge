@@ -13,6 +13,24 @@
 - **是否有風控**：停損、停利、倉位、曝險切換是否清楚。
 - **是否可解釋**：虧損時能不能知道是趨勢失效、震盪失效，還是成交成本吃掉優勢。
 
+## 第一期蒸餾規則
+
+第一期只驗證進場訊號，不驗證完整交易系統。每個 TradingView 腳本先拆成以下欄位：
+
+- 原始 Pine Script 與來源連結。
+- 純多進場條件。
+- short 條件、濾網、停損、停利、加碼與出場條件。
+- 是否使用 `request.security`、pivot、未確認 bar 或可能 repaint 的訊號。
+- SignalForge 對應策略與參數。
+
+進場優勢驗證採固定規則：
+
+- 訊號於 bar close 後成立。
+- 下一根 bar open 進場。
+- 固定持有 `hold_bars_per_day` 後，以 exit bar close 出場。
+- 只測純多，short 訊號忽略並計數。
+- Profit Factor 必須大於 1.2 才通過第一關。
+
 ## 類型一：均線趨勢策略
 
 白話想法：短期平均價格站上長期平均價格，代表市場可能進入上升趨勢；反過來則偏弱。
@@ -73,4 +91,3 @@ SignalForge 對應策略：`ConfluenceScoreStrategy`。
 - Order block / SMC：可以先拆成區間偵測、回測區間、成交量確認，不要直接相信圖形標註。
 - 價格密度 / value area：適合研究均值回歸與價格分布，但需要小心樣本窗口與趨勢市場。
 - Macro/risk filter：不直接決定方向，而是控制策略是否應該降低曝險。
-

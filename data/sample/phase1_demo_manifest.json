@@ -1,0 +1,10 @@
+{
+  "symbol": "DEMO",
+  "timeframe": "1D",
+  "timezone": "Asia/Taipei",
+  "session": "sample-only",
+  "data_source": "handcrafted deterministic sample",
+  "csv_path": "data/sample/phase1_demo_ohlcv.csv",
+  "hold_bars_per_day": 1,
+  "notes": "Small public sample for first-phase CLI smoke tests. Do not use as market evidence."
+}

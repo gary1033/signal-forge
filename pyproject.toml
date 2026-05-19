@@ -11,6 +11,8 @@ requires-python = ">=3.10"
 authors = [{ name = "gary1033" }]
 dependencies = []
 
+[project.scripts]
+signal-forge = "signal_forge.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
-
