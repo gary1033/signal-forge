@@ -46,6 +46,7 @@
 | 2026-05-20 01:04 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `hold_count` | 110 -> 110；42 tests OK | keep |
 | 2026-05-20 01:20 | 擴充 signals CSV 稽核欄位 | `*_signals.csv` 加入 deterministic `previous_target_position` | 110 -> 110；42 tests OK | keep |
 | 2026-05-20 01:35 | 擴充 signals CSV 稽核欄位 | `*_signals.csv` 加入 deterministic `is_hold` | 110 -> 110；42 tests OK | keep |
+| 2026-05-20 01:50 | 強化 backtest digest validator | 驗證 `position_change` 與 `target_position` delta 連續性一致 | 110 -> 110；43 tests OK | keep |
 
 ## 方法紀錄
 

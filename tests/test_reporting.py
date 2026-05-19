@@ -115,6 +115,32 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "reason must be ASCII-only"):
             validate_signal_digests(digests)
 
+    def test_signal_digest_validator_rejects_mismatched_position_delta(self) -> None:
+        digests = [
+            SignalDigest(
+                index=0,
+                timestamp="2026-01-01",
+                target_position=1.0,
+                position_change=1.0,
+                reason="entry",
+                score=1.0,
+                is_long_entry=True,
+                is_flatten=False,
+            ),
+            SignalDigest(
+                index=1,
+                timestamp="2026-01-02",
+                target_position=0.0,
+                position_change=0.0,
+                reason="hold",
+                score=0.0,
+                is_long_entry=False,
+                is_flatten=False,
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "position_change must match"):
+            validate_signal_digests(digests)
+
     def test_writes_markdown_json_and_trade_log(self) -> None:
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),

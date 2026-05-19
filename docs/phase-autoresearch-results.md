@@ -55,6 +55,7 @@ git diff --check
 | 2026-05-20 01:04 | Trace summary 加入 `hold_count` | 110 -> 110 | pass | keep | `8411af0` pushed | 由 signal digest 派生 deterministic 持倉 bar count |
 | 2026-05-20 01:20 | Signals CSV 加入 `previous_target_position` | 110 -> 110 | pass | keep | pushed to `origin/main` | 由 digest 欄位穩定推導前一根 bar 的 target position |
 | 2026-05-20 01:35 | Signals CSV 加入 `is_hold` | 110 -> 110 | pass | keep | pushed to `origin/main` | 由 `target_position` 與 `position_change` 穩定推導持倉 bar |
+| 2026-05-20 01:50 | Backtest digest validator 強化 position delta 連續性 | 110 -> 110 | pass | keep | pushed to `origin/main` | 讓 `position_change` 的稽核欄位可被一致性驗證 |
 
 ## 總結
 

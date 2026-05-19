@@ -248,6 +248,7 @@ def validate_signal_digests(digests: list[SignalDigest]) -> None:
 
     previous_index: int | None = None
     previous_timestamp: str | None = None
+    previous_target_position: float | None = None
     for position, digest in enumerate(digests):
         if not digest.timestamp:
             raise ValueError(
@@ -282,8 +283,17 @@ def validate_signal_digests(digests: list[SignalDigest]) -> None:
                 f"(position={position})"
             )
 
+        if previous_target_position is not None:
+            expected_previous_position = digest.target_position - digest.position_change
+            if abs(expected_previous_position - previous_target_position) > 1e-9:
+                raise ValueError(
+                    "signal digest position_change must match target_position delta "
+                    f"(position={position})"
+                )
+
         previous_index = digest.index
         previous_timestamp = digest.timestamp
+        previous_target_position = digest.target_position
 
 
 def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:
