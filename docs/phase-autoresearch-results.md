@@ -27,3 +27,4 @@ git diff --check
 | 2026-05-19 16:57 | ASCII-only `OrderIntent.safety_note` invariants | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | Avoid terminal/encoding-dependent safety text |
 | 2026-05-19 17:13 | Backtest Phase report contract regression test | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | Fixed bars -> stable summary/markdown invariants |
 | 2026-05-19 17:27 | Phase report summary schema validation | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | Enforce deterministic Phase summary JSON contract |
+| 2026-05-19 17:42 | Reporting: stable JSON key ordering (`sort_keys=True`) | 110 -> 110 | pass | keep | (pending) | Deterministic diffs for report JSON |

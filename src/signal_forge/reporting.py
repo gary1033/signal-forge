@@ -41,7 +41,7 @@ def write_entry_edge_outputs(
 
     summary = _summary_dict(result, data_validation, strategy_spec)
     summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     trade_log_path.write_text(_trade_log_csv(result), encoding="utf-8", newline="")
@@ -73,7 +73,7 @@ def write_phase_outputs(
     summary = _phase_summary_dict(result)
     validate_phase_summary(summary)
     summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     markdown_path.write_text(_phase_markdown_report(result), encoding="utf-8")

@@ -103,3 +103,21 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: add a small backtest schema regression test that asserts stable key set + required ordering (keep live dry-run only).
+
+## 2026-05-19 17:42 +08:00
+
+- Goal: keep Phase readiness at max while improving backtest verifiability via deterministic JSON output ordering (stable diffs).
+- Change set:
+  - Added `sort_keys=True` to `json.dumps(...)` in `write_phase_outputs(...)` and `write_entry_edge_outputs(...)`.
+- Method:
+  - Make report JSON deterministic regardless of dict insertion order to support golden/regression workflows.
+  - Live safety unchanged: live mode remains dry-run only; no broker; no API keys; `submitted=False`.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (29 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: (pending)
+- Next step: if stable, consider tightening backtest golden tests to compare exact JSON text (still no live trading integration).

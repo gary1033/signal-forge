@@ -28,6 +28,7 @@ Done (2026-05-19):
 7. Docs: Phase workflow documented for PowerShell
 8. Backtest regression: Phase report contract test (fixed bars -> stable summary/markdown)
 9. Phase report: validate summary JSON schema (contract guardrail)
+10. Reporting: stable JSON key ordering for deterministic diffs
 
 Next candidates (keep live safety unchanged):
 - Backtest stability: determinism and golden regression tests
