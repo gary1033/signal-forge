@@ -217,3 +217,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: `55d37ac` (pushed to `origin/main`)
 - Next step: extend golden regressions to Entry Edge outputs (keep live dry-run only).
+
+## 2026-05-19 19:13 +08:00
+
+- Goal: keep Phase readiness at max while removing encoding-dependent (non-ASCII) text from backtest outputs to improve cross-platform verifiability.
+- Change set:
+  - Replaced the `validate_bars(...)` low-sample warning string with an ASCII-only English message.
+  - Replaced the Entry Edge `sample_risk` message for "PF infinite" with an ASCII-only English message.
+- Method:
+  - Treat report text as part of the verifiability contract; avoid console/encoding-dependent garbling on Windows.
+  - Live safety unchanged: live mode remains dry-run only; no broker; no API keys; `submitted=False`.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (31 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: add golden regressions for Entry Edge outputs (summary/markdown/trade log), keeping live dry-run only.

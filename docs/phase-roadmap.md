@@ -34,6 +34,7 @@ Done (2026-05-19):
 13. Backtest determinism: Phase markdown text contract (exact text + trailing newline)
 14. Phase report: enforce cross-field invariants (live dry-run only; backtest requires entry_edge)
 15. Live determinism: Phase summary + markdown text contract (order intent regression)
+16. Backtest portability: ASCII-only warning + sample risk text (avoid encoding-dependent garbling)
 
 Next candidates (keep live safety unchanged):
 - Backtest stability: extend golden regressions to Entry Edge outputs (summary/markdown/trade log)

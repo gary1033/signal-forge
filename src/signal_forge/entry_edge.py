@@ -183,7 +183,9 @@ def _build_result(
         profit_factor = None
         profit_factor_status = "infinite"
         decision = "pass"
-        sample_risk = "沒有虧損交易；PF 為無限大，需人工檢查樣本數與代表性"
+        sample_risk = (
+            "No losing trades; PF is infinite. Manually inspect sample size and representativeness."
+        )
     elif gross_loss == 0:
         profit_factor = None
         profit_factor_status = "undefined"

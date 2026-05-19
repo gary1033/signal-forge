@@ -114,7 +114,7 @@ def validate_bars(bars: list[Bar], *, min_bars: int = 2) -> BarValidationResult:
             errors.append(f"{row_label} contains a non-positive price")
 
     if len(bars) < 30:
-        warnings.append("樣本少於 30 根 bar；PF 可能不穩定")
+        warnings.append("Sample has fewer than 30 bars; profit factor may be unstable.")
 
     return BarValidationResult(
         bar_count=len(bars),
