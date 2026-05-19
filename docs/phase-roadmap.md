@@ -41,9 +41,10 @@ Done (2026-05-19):
 20. Backtest trace visibility: Phase report emits deterministic `*_signals.csv` (per-bar signal digest)
 21. Mode semantics: `PhaseConfig` derives and validates `dry_run` from `mode` by default
 22. Backtest trace visibility: `*_signals.csv` includes deterministic `is_long_entry` derived field
-23. Backtest digest: `*_signals.csv` includes deterministic `is_flatten` derived field
-24. Live output determinism: Phase report markdown has a stable exact-text contract (dry-run intent only)
-25. Backtest digest: `*_signals.csv` includes deterministic `position_change` (target_position delta) derived field
+ 23. Backtest digest: `*_signals.csv` includes deterministic `is_flatten` derived field
+ 24. Live output determinism: Phase report markdown has a stable exact-text contract (dry-run intent only)
+ 25. Backtest digest: `*_signals.csv` includes deterministic `position_change` (target_position delta) derived field
+ 26. Backtest trace visibility: deterministic `*_trace_summary.json` (signals-derived counts)
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

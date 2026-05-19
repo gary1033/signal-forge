@@ -333,6 +333,25 @@ This log is the audit trail for bounded autoresearch.
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: keep tightening backtest trace/coverage visibility while preserving deterministic output contracts and live dry-run safety.
 
+## 2026-05-19 21:42 +08:00
+
+- Goal: keep Phase readiness at max while improving backtest trace visibility with a deterministic summary artifact (no live trading changes).
+- Change set:
+  - Backtest-only: emit `*_trace_summary.json` derived from `SignalDigest` (counts + last target position + sorted reasons).
+  - Added an exact-text contract test for the new summary JSON output.
+- Method:
+  - Treat trace outputs as stable contracts: deterministic fields only, `sort_keys=True`, newline-terminated JSON.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (35 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: consider extending trace summary with deterministic timestamp range (from digests) or add a minimal backtest-only invariant checker (still no broker/API keys).
+
 ## 2026-05-19 20:42 +08:00
 
 - Goal: keep Phase readiness at max while improving backtest verifiability by enriching the deterministic signal digest contract (no live trading changes).

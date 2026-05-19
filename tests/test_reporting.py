@@ -250,6 +250,7 @@ class ReportingTests(unittest.TestCase):
             summary = json.loads(summary_text)
             markdown = paths.markdown.read_text(encoding="utf-8")
             self.assertIsNotNone(paths.signal_digest_csv)
+            self.assertIsNotNone(paths.trace_summary_json)
             self.assertTrue((paths.signal_digest_csv or paths.summary_json).exists())
             if paths.signal_digest_csv:
                 self.assertEqual(
@@ -259,6 +260,27 @@ class ReportingTests(unittest.TestCase):
                             "index,timestamp,target_position,position_change,reason,score,is_long_entry,is_flatten",
                             "0,2026-01-01,1.000000,1.000000,entry,0.000000,True,False",
                             "1,2026-01-02,0.000000,-1.000000,entry,0.000000,False,True",
+                            "",
+                        ]
+                    ),
+                )
+            if paths.trace_summary_json:
+                self.assertEqual(
+                    paths.trace_summary_json.read_text(encoding="utf-8"),
+                    "\n".join(
+                        [
+                            "{",
+                            '  "trace_summary": {',
+                            '    "bar_count": 2,',
+                            '    "flatten_count": 1,',
+                            '    "last_target_position": 0.0,',
+                            '    "long_entry_count": 1,',
+                            '    "nonzero_position_change_count": 2,',
+                            '    "reasons": [',
+                            '      "entry"',
+                            "    ]",
+                            "  }",
+                            "}",
                             "",
                         ]
                     ),

@@ -26,6 +26,7 @@ class PhaseReportPaths:
     markdown: Path
     summary_json: Path
     signal_digest_csv: Path | None = None
+    trace_summary_json: Path | None = None
 
 
 def write_entry_edge_outputs(
@@ -75,6 +76,7 @@ def write_phase_outputs(
     markdown_path = output_path / f"{stem}.md"
     summary_path = output_path / f"{stem}.json"
     signal_digest_path = output_path / f"{stem}_signals.csv"
+    trace_summary_path = output_path / f"{stem}_trace_summary.json"
 
     summary = _phase_summary_dict(result)
     validate_phase_summary(summary)
@@ -85,6 +87,7 @@ def write_phase_outputs(
     markdown_path.write_text(_phase_markdown_report(result), encoding="utf-8")
 
     signal_digest_csv: Path | None = None
+    trace_summary_json: Path | None = None
     if result.mode == "backtest" and result.signal_digests is not None:
         signal_digest_path.write_text(
             _signal_digest_csv(result.signal_digests),
@@ -92,11 +95,23 @@ def write_phase_outputs(
             newline="",
         )
         signal_digest_csv = signal_digest_path
+        trace_summary_path.write_text(
+            json.dumps(
+                _signal_trace_summary_dict(result.signal_digests),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        trace_summary_json = trace_summary_path
 
     return PhaseReportPaths(
         markdown=markdown_path,
         summary_json=summary_path,
         signal_digest_csv=signal_digest_csv,
+        trace_summary_json=trace_summary_json,
     )
 
 
@@ -329,6 +344,26 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             row["score"] = f"{row['score']:.6f}"
         writer.writerow(row)
     return buffer.getvalue()
+
+
+def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]:
+    long_entry_count = sum(1 for digest in digests if digest.is_long_entry)
+    flatten_count = sum(1 for digest in digests if digest.is_flatten)
+    nonzero_position_change_count = sum(
+        1 for digest in digests if abs(digest.position_change) > 0
+    )
+    last_target_position = digests[-1].target_position if digests else 0.0
+    reasons = sorted({digest.reason for digest in digests if digest.reason})
+    return {
+        "trace_summary": {
+            "bar_count": len(digests),
+            "long_entry_count": long_entry_count,
+            "flatten_count": flatten_count,
+            "nonzero_position_change_count": nonzero_position_change_count,
+            "last_target_position": _round_float(last_target_position, 6),
+            "reasons": reasons,
+        }
+    }
 
 
 def _phase_markdown_report(result: PhaseExecutionResult) -> str:
