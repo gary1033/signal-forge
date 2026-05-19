@@ -70,6 +70,7 @@
 48. 回測報表可稽核性：Backtest Digest Invariants 追加 trace summary cross-check（`bar_count` / `unique_reason_count` / `last_target_position`），並用 exact-text regression test 鎖住。
 49. 回測 trace 可稽核性：`*_trace_summary.json` 將 `flatten_count` 拆成 `flatten_to_zero_count` / `flatten_to_short_count`，提升平倉 vs 反手的可稽核性（test-covered）。
 50. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `min_target_position` / `max_target_position`，並以 validator 驗證首尾部位落在 min/max 範圍內（test-covered）。
+51. 回測 timestamp 可稽核性：強制 `SignalDigest.timestamp` 為 ISO-8601（`YYYY-MM-DD` 或 `YYYY-MM-DDTHH:MM:SS...`），並在 `*_trace_summary.json` 追加 `timestamps_iso8601` 欄位（test-covered）。
 
 ## 下一步候選
 

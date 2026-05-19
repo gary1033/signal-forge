@@ -60,6 +60,7 @@
 | 2026-05-20 04:35 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `short_entry_count`（並驗證 `long_entry_count + short_entry_count == entry_count`） | 110 -> 110；46 tests OK | keep |
 | 2026-05-20 04:50 | 擴充 trace summary flatten 分解稽核欄位 | `*_trace_summary.json` 追加 `flatten_to_zero_count` / `flatten_to_short_count`，並驗證兩者加總等於 `flatten_count` | 110 -> 110；46 tests OK | keep |
 | 2026-05-20 05:06 | 擴充 trace summary min/max 部位稽核欄位 | `*_trace_summary.json` 追加 deterministic `min_target_position` / `max_target_position`，並驗證首尾部位落在 min/max 範圍內 | 110 -> 110；46 tests OK | keep |
+| 2026-05-20 05:22 | 強化 backtest timestamp 格式稽核 | 強制 `SignalDigest.timestamp` 為 ISO-8601，並在 `*_trace_summary.json` 追加 `timestamps_iso8601` 欄位 | 110 -> 110；47 tests OK | keep |
 
 ## 方法紀錄
 
