@@ -160,7 +160,7 @@ This log is the audit trail for bounded autoresearch.
 - Commit: `c69428c` (pushed to `origin/main`)
 - Next step: if stable, consider adding a similar exact-text contract for Phase markdown output (still no live trading integration).
 
-## 2026-05-19 18:35 +08:00
+## 2026-05-19 18:28 +08:00
 
 - Goal: keep Phase readiness at max while tightening backtest verifiability with an exact Phase markdown text contract.
 - Change set:
@@ -175,5 +175,5 @@ This log is the audit trail for bounded autoresearch.
 - Metric: 110 -> 110
 - Guard: pass (29 tests OK; `git diff --check` clean)
 - Decision: keep
-- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Commit: `773e52b` (pushed to `origin/main`)
 - Next step: expand golden tests incrementally (keep live dry-run only).
