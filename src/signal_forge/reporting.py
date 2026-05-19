@@ -232,6 +232,13 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     for row in rows:
         index = parse_int(row["index"], field="index")
         timestamp = row["timestamp"]
+        if not timestamp:
+            raise ValueError(f"signal digest csv timestamp must be non-empty: index={index}")
+        if not _is_iso8601_timestamp(timestamp):
+            raise ValueError(
+                "signal digest csv timestamp must be ISO-8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS[.ffffff][Z|+HH:MM]): "
+                f"index={index} timestamp={timestamp!r}"
+            )
         previous_target_position = parse_float(
             row["previous_target_position"], field="previous_target_position"
         )
