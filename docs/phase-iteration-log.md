@@ -370,3 +370,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider adding a deterministic `position_change` (delta) column to the digest only if it stays stable and is test-covered.
+
+## 2026-05-19 21:12 +08:00
+
+- Goal: keep Phase readiness at max while tightening the `live` dry-run output contract (no broker/API key integration; no real submissions).
+- Change set:
+  - Added a stable regression test that asserts the exact `live` Phase report markdown output, including `LIVE_DRY_RUN_ONLY` and `submitted=False`.
+  - Ensured the `live` Phase summary JSON remains deterministic (`sort_keys=True` formatting + trailing newline).
+- Method:
+  - `live` remains DRY-RUN ONLY: emit order intents only; `dry_run=True`; `submitted=False`; no broker; no API keys.
+  - Keep tests explicit and ASCII-stable to avoid platform encoding drift.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (35 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: add deterministic `position_change` (delta) to backtest `*_signals.csv` only if it stays stable and is test-covered.

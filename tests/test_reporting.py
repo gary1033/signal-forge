@@ -309,6 +309,57 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("Profit Factor: Infinity", markdown)
         self.assertIn("End equity: 10995.80", markdown)
 
+    def test_writes_phase_output_live_has_stable_contract(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="live"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-live-contract")
+            summary_text = paths.summary_json.read_text(encoding="utf-8")
+            summary = json.loads(summary_text)
+            markdown = paths.markdown.read_text(encoding="utf-8")
+            self.assertIsNone(paths.signal_digest_csv)
+
+        validate_phase_summary(summary)
+        self.assertEqual(summary["phase"]["mode"], "live")
+        self.assertEqual(summary["phase"]["adapter_name"], "live")
+        self.assertEqual(summary["phase"]["dry_run"], True)
+        self.assertIsNone(summary.get("entry_edge"))
+        self.assertEqual(len(summary.get("order_intents") or []), 1)
+
+        intent = (summary.get("order_intents") or [])[0]
+        self.assertEqual(intent["side"], "buy")
+        self.assertTrue(intent["dry_run"])
+        self.assertFalse(intent["submitted"])
+        self.assertIn("LIVE_DRY_RUN_ONLY", intent["safety_note"])
+
+        self.assertEqual(
+            summary_text,
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        self.assertEqual(
+            markdown,
+            "\n".join(
+                [
+                    "# Phase Report - live",
+                    "",
+                    "## Adapter Metadata",
+                    "",
+                    "- Phase mode: live",
+                    "- Adapter: live",
+                    "- Dry run: True",
+                    "",
+                    "## Live Dry-Run Intents",
+                    "",
+                    "- Intent 1: 2026-01-01, buy, target=1.0, dry_run=True, submitted=False, safety=LIVE_DRY_RUN_ONLY: dry_run order intent only; no broker; no api keys; submitted=False",
+                    "",
+                ]
+            ),
+        )
+
     def test_phase_summary_schema_validator_rejects_missing_phase(self) -> None:
         with self.assertRaisesRegex(ValueError, "missing required dict key: phase"):
             validate_phase_summary({})
