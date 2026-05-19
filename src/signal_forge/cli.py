@@ -126,7 +126,6 @@ def _run_phase(args: argparse.Namespace) -> int:
             strategy=args.strategy,
             csv_path=args.csv,
             hold_bars_per_day=args.hold_bars_per_day,
-            dry_run=(mode == "live"),
         ),
         strategy,
         bars,

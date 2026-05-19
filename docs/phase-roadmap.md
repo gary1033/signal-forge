@@ -52,6 +52,7 @@ Done (2026-05-19):
  31. Backtest digest determinism: enforce ASCII-only, single-line, non-empty `SignalDigest.reason` invariants
  32. Phase adapter: normalize signal `reason` (digest + live intent) to deterministic ASCII-only text contract
  33. Phase adapter: truncate normalized `reason` to fixed max length (stable backtest artifacts; live dry-run unchanged)
+ 34. Phase CLI: rely on `PhaseConfig` derived `dry_run` (no redundant wiring)
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

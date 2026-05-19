@@ -566,3 +566,21 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: (this wakeup) `experiment:` commit to be pushed after docs update
 - Next step: consider backtest-only reason allowlist only if deterministic + test-covered; keep live dry-run only.
+
+## 2026-05-19 23:41 +08:00
+
+- Goal: keep Phase readiness at max while making Phase mode semantics less error-prone by relying on `PhaseConfig` to derive `dry_run` (no redundant CLI wiring).
+- Change set:
+  - Removed explicit `dry_run=(mode == "live")` from Phase CLI config construction; `PhaseConfig.__post_init__` remains the single source of truth.
+- Method:
+  - Reduce duplication: CLI no longer re-states `dry_run` mapping; prevents future drift if mode semantics change.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110 (expected)
+- Guard: pass (42 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: (this wakeup) `experiment:` commit to be pushed after docs update
+- Next step: keep expanding backtest verifiability only (deterministic artifacts + regression tests); live stays dry-run only until backtests are stable.
