@@ -27,11 +27,15 @@ class PhaseConfigTests(unittest.TestCase):
         config = PhaseConfig()
         self.assertTrue(config.is_backtest)
         self.assertFalse(config.is_live)
-        self.assertTrue(config.dry_run)
+        self.assertFalse(config.dry_run)
 
     def test_live_mode_is_dry_run_only(self) -> None:
         with self.assertRaises(ValueError):
             PhaseConfig(mode="live", dry_run=False)
+
+    def test_backtest_mode_rejects_dry_run_true(self) -> None:
+        with self.assertRaises(ValueError):
+            PhaseConfig(mode="backtest", dry_run=True)
 
     def test_rejects_unknown_mode(self) -> None:
         with self.assertRaises(ValueError):

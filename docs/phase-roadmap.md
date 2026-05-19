@@ -10,7 +10,7 @@ This roadmap drives bounded autoresearch. The goal is to keep Phase readiness hi
 ## Types and architecture (keyword: PhaseMode)
 
 - `PhaseMode`: `backtest` / `live`
-- `PhaseConfig`: shared config (live enforces dry-run)
+- `PhaseConfig`: shared config (`dry_run` derived from mode: backtest=False, live=True)
 - `PhaseRunner`: routes execution by mode
   - `BacktestExecutionAdapter`: backtest execution path
   - `LiveExecutionAdapter`: live dry-run path (order intent only)
@@ -39,6 +39,7 @@ Done (2026-05-19):
 18. Backtest portability: Entry Edge failure_reason is ASCII-only and deterministic
 19. CLI correctness: backtest uses `dry_run=False`; live uses `dry_run=True` in `PhaseConfig`
 20. Backtest trace visibility: Phase report emits deterministic `*_signals.csv` (per-bar signal digest)
+21. Mode semantics: `PhaseConfig` derives and validates `dry_run` from `mode` by default
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

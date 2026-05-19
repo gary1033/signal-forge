@@ -312,3 +312,23 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider enriching the backtest digest with stable derived fields (e.g., entry flag) while keeping contracts deterministic.
+
+## 2026-05-19 20:27 +08:00
+
+- Goal: make backtest vs live mode switching unambiguous in `PhaseConfig` itself (avoid backtest defaulting to dry-run).
+- Change set:
+  - Updated `PhaseConfig` so `dry_run` is derived from `mode` by default: backtest -> `dry_run=False`, live -> `dry_run=True`.
+  - Added a validation guardrail: reject `PhaseConfig(mode="backtest", dry_run=True)` to prevent confusing/unsafe semantics.
+  - Updated unit tests to reflect the new default behavior and validation rule.
+- Method:
+  - Keep live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+  - Keep deterministic output contracts unchanged.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: keep tightening backtest trace/coverage visibility while preserving deterministic output contracts and live dry-run safety.

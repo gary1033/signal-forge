@@ -22,15 +22,24 @@ class PhaseConfig:
     csv_path: str | Path | None = None
     output_dir: str | Path = "reports/generated"
     hold_bars_per_day: int = 1
-    dry_run: bool = True
+    dry_run: bool | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in {"backtest", "live"}:
             raise ValueError("mode must be either 'backtest' or 'live'")
         if self.hold_bars_per_day <= 0:
             raise ValueError("hold_bars_per_day must be positive")
-        if self.mode == "live" and not self.dry_run:
-            raise ValueError("live mode is dry-run only until backtests are stable")
+        if self.mode == "live":
+            if self.dry_run is False:
+                raise ValueError(
+                    "live mode is dry-run only until backtests are stable"
+                )
+            object.__setattr__(self, "dry_run", True)
+            return
+
+        if self.dry_run is True:
+            raise ValueError("backtest mode must set dry_run=False")
+        object.__setattr__(self, "dry_run", False)
 
     @property
     def is_backtest(self) -> bool:
