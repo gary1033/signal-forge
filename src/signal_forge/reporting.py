@@ -379,11 +379,13 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "score",
             "is_long_entry",
             "is_flatten",
+            "is_hold",
         ],
     )
     writer.writeheader()
     for digest in digests:
         previous_target_position = digest.target_position - digest.position_change
+        is_hold = abs(digest.target_position) > 0 and abs(digest.position_change) < 1e-12
         row = {
             "index": digest.index,
             "timestamp": digest.timestamp,
@@ -394,6 +396,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "score": f"{digest.score:.6f}",
             "is_long_entry": digest.is_long_entry,
             "is_flatten": digest.is_flatten,
+            "is_hold": is_hold,
         }
         writer.writerow(row)
     return buffer.getvalue()

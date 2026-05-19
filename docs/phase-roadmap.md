@@ -56,6 +56,7 @@
 34. Phase CLI：改由 `PhaseConfig` 推導 `dry_run`，移除重複 wiring。
 35. 回測 trace visibility：`*_trace_summary.json` 加入 deterministic `hold_count`。
 36. 回測 digest 可稽核性：`*_signals.csv` 加入 deterministic `previous_target_position`。
+37. 回測 digest 可稽核性：`*_signals.csv` 加入 deterministic `is_hold`。
 
 ## 下一步候選
 

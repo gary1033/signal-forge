@@ -343,9 +343,9 @@ class ReportingTests(unittest.TestCase):
                     paths.signal_digest_csv.read_text(encoding="utf-8"),
                     "\n".join(
                         [
-                            "index,timestamp,previous_target_position,target_position,position_change,reason,score,is_long_entry,is_flatten",
-                            "0,2026-01-01,0.000000,1.000000,1.000000,entry,0.000000,True,False",
-                            "1,2026-01-02,1.000000,0.000000,-1.000000,entry,0.000000,False,True",
+                            "index,timestamp,previous_target_position,target_position,position_change,reason,score,is_long_entry,is_flatten,is_hold",
+                            "0,2026-01-01,0.000000,1.000000,1.000000,entry,0.000000,True,False,False",
+                            "1,2026-01-02,1.000000,0.000000,-1.000000,entry,0.000000,False,True,False",
                             "",
                         ]
                     ),
