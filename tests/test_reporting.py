@@ -466,6 +466,8 @@ class ReportingTests(unittest.TestCase):
                             '    "first_target_position": 1.0,',
                             '    "first_timestamp": "2026-01-01",',
                             '    "flatten_count": 1,',
+                            '    "flatten_to_short_count": 0,',
+                            '    "flatten_to_zero_count": 1,',
                             '    "hold_count": 0,',
                             '    "last_previous_target_position": 1.0,',
                             '    "last_target_position": 0.0,',

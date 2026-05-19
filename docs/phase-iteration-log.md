@@ -58,6 +58,7 @@
 | 2026-05-20 04:05 | Phase markdown 顯示 trace summary 摘要 | Backtest mode 時在 Phase markdown 追加 `Backtest Trace Summary` 區段（counts/首尾部位/原因數）並用 exact-text test 鎖住 | 110 -> 110；46 tests OK | keep |
 | 2026-05-20 04:19 | Phase markdown digest/trace summary 對照 | Backtest Digest Invariants 追加 trace summary cross-check（bar_count / unique reasons / last target position）並更新 exact-text regression | 110 -> 110；46 tests OK | keep |
 | 2026-05-20 04:35 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `short_entry_count`（並驗證 `long_entry_count + short_entry_count == entry_count`） | 110 -> 110；46 tests OK | keep |
+| 2026-05-20 04:50 | 擴充 trace summary flatten 分解稽核欄位 | `*_trace_summary.json` 追加 `flatten_to_zero_count` / `flatten_to_short_count`，並驗證兩者加總等於 `flatten_count` | 110 -> 110；46 tests OK | keep |
 
 ## 方法紀錄
 

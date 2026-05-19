@@ -68,6 +68,7 @@
 46. 回測 artifact validation：強化 `validate_signal_digest_csv(...)`，加入 per-row semantic checks（position delta 與 flags 一致性），避免 CSV 被局部篡改仍通過 counts 檢查。
 47. 回測報表可稽核性：Phase markdown 顯示 deterministic `*_trace_summary.json` 重點欄位摘要，讓人工檢查更直接。
 48. 回測報表可稽核性：Backtest Digest Invariants 追加 trace summary cross-check（`bar_count` / `unique_reason_count` / `last_target_position`），並用 exact-text regression test 鎖住。
+49. 回測 trace 可稽核性：`*_trace_summary.json` 將 `flatten_count` 拆成 `flatten_to_zero_count` / `flatten_to_short_count`，提升平倉 vs 反手的可稽核性（test-covered）。
 
 ## 下一步候選
 
