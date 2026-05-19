@@ -219,6 +219,43 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "is_long_entry mismatch"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
+    def test_signal_digest_csv_validator_rejects_hold_side_mismatch(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+            Bar("2026-01-03", 11, 12.0, 10.5, 11.5, 100),
+        ]
+
+        class HoldLongStrategy(Strategy):
+            name = "hold_long"
+
+            def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+                return [
+                    Signal(index, bar.timestamp, 1.0 if index == 0 else 1.0, "hold")
+                    for index, bar in enumerate(bars)
+                ]
+
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), HoldLongStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-hold-side")
+            csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, csv_text)
+
+        lines = csv_text.splitlines()
+        header = lines[0].split(",")
+        hold_side_index = header.index("hold_side")
+        row = lines[2].split(",")
+        row[hold_side_index] = "short"
+        lines[2] = ",".join(row)
+        bad_csv = "\n".join(lines) + "\n"
+
+        with self.assertRaisesRegex(ValueError, "hold_side mismatch"):
+            validate_signal_digest_csv(trace_summary, bad_csv)
+
     def test_signal_digest_validator_rejects_non_monotonic_index(self) -> None:
         digests = [
             SignalDigest(
@@ -589,9 +626,9 @@ class ReportingTests(unittest.TestCase):
                     paths.signal_digest_csv.read_text(encoding="utf-8"),
                     "\n".join(
                         [
-                            "index,timestamp,previous_target_position,target_position,position_change,reason,score,is_long_entry,is_flatten,is_hold",
-                            "0,2026-01-01,0.000000,1.000000,1.000000,entry,0.000000,True,False,False",
-                            "1,2026-01-02,1.000000,0.000000,-1.000000,entry,0.000000,False,True,False",
+                            "index,timestamp,previous_target_position,target_position,position_change,reason,score,is_long_entry,is_flatten,is_hold,hold_side",
+                            "0,2026-01-01,0.000000,1.000000,1.000000,entry,0.000000,True,False,False,none",
+                            "1,2026-01-02,1.000000,0.000000,-1.000000,entry,0.000000,False,True,False,none",
                             "",
                         ]
                     ),

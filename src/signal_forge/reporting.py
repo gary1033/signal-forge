@@ -193,6 +193,7 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         "is_long_entry",
         "is_flatten",
         "is_hold",
+        "hold_side",
     }
     fieldnames = set(reader.fieldnames or [])
     if fieldnames != expected:
@@ -247,6 +248,8 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     flatten_to_zero_count = 0
     flip_count = 0
     hold_count = 0
+    hold_long_count = 0
+    hold_short_count = 0
     nonzero_target_position_count = 0
     nonzero_position_change_count = 0
     open_count = 0
@@ -290,6 +293,12 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         is_long_entry = parse_bool(row["is_long_entry"], field="is_long_entry")
         is_flatten = parse_bool(row["is_flatten"], field="is_flatten")
         is_hold = parse_bool(row["is_hold"], field="is_hold")
+        hold_side = row["hold_side"]
+        if hold_side not in ("none", "long", "short"):
+            raise ValueError(
+                "signal digest csv hold_side must be one of 'none', 'long', 'short': "
+                f"index={index} hold_side={hold_side!r}"
+            )
 
         if previous_index is not None and index <= previous_index:
             raise ValueError("signal digest csv rows must be sorted by increasing index")
@@ -306,12 +315,18 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         computed_is_long_entry = target_position > epsilon and previous_target_position <= epsilon
         computed_is_flatten = target_position <= epsilon and previous_target_position > epsilon
         computed_is_hold = abs(target_position) > epsilon and abs(position_change) <= epsilon
+        if computed_is_hold:
+            computed_hold_side = "long" if target_position > 0 else "short"
+        else:
+            computed_hold_side = "none"
         if is_long_entry != computed_is_long_entry:
             raise ValueError(f"signal digest csv is_long_entry mismatch: index={index}")
         if is_flatten != computed_is_flatten:
             raise ValueError(f"signal digest csv is_flatten mismatch: index={index}")
         if is_hold != computed_is_hold:
             raise ValueError(f"signal digest csv is_hold mismatch: index={index}")
+        if hold_side != computed_hold_side:
+            raise ValueError(f"signal digest csv hold_side mismatch: index={index}")
 
         if first_timestamp is None:
             first_timestamp = timestamp
@@ -330,6 +345,10 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
                 flatten_to_zero_count += 1
         if is_hold:
             hold_count += 1
+            if hold_side == "long":
+                hold_long_count += 1
+            elif hold_side == "short":
+                hold_short_count += 1
         if abs(target_position) > 1e-12:
             nonzero_target_position_count += 1
         if abs(position_change) > 1e-12:
@@ -357,6 +376,8 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         "flatten_to_zero_count": flatten_to_zero_count,
         "flip_count": flip_count,
         "hold_count": hold_count,
+        "hold_long_count": hold_long_count,
+        "hold_short_count": hold_short_count,
         "long_entry_count": long_entry_count,
         "nonzero_target_position_count": nonzero_target_position_count,
         "nonzero_position_change_count": nonzero_position_change_count,
@@ -920,6 +941,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "is_long_entry",
             "is_flatten",
             "is_hold",
+            "hold_side",
         ],
     )
     writer.writeheader()
@@ -927,6 +949,10 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
         previous_target_position = digest.target_position - digest.position_change
         epsilon = 1e-12
         is_hold = abs(digest.target_position) > epsilon and abs(digest.position_change) <= epsilon
+        if is_hold:
+            hold_side = "long" if digest.target_position > 0 else "short"
+        else:
+            hold_side = "none"
         row = {
             "index": digest.index,
             "timestamp": digest.timestamp,
@@ -938,6 +964,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "is_long_entry": digest.is_long_entry,
             "is_flatten": digest.is_flatten,
             "is_hold": is_hold,
+            "hold_side": hold_side,
         }
         writer.writerow(row)
     return buffer.getvalue()
