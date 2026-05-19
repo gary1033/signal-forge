@@ -7,7 +7,7 @@ from pathlib import Path
 
 from signal_forge.entry_edge import EntryEdgeResult
 from signal_forge.market_data import BarValidationResult
-from signal_forge.phase import PhaseExecutionResult
+from signal_forge.phase import PhaseExecutionResult, SignalDigest
 
 
 def _round_float(value: float, decimals: int) -> float:
@@ -25,6 +25,7 @@ class EntryEdgeReportPaths:
 class PhaseReportPaths:
     markdown: Path
     summary_json: Path
+    signal_digest_csv: Path | None = None
 
 
 def write_entry_edge_outputs(
@@ -73,6 +74,7 @@ def write_phase_outputs(
     stem = _safe_stem(run_name or f"phase-{result.mode}-{result.adapter_name}")
     markdown_path = output_path / f"{stem}.md"
     summary_path = output_path / f"{stem}.json"
+    signal_digest_path = output_path / f"{stem}_signals.csv"
 
     summary = _phase_summary_dict(result)
     validate_phase_summary(summary)
@@ -82,7 +84,20 @@ def write_phase_outputs(
     )
     markdown_path.write_text(_phase_markdown_report(result), encoding="utf-8")
 
-    return PhaseReportPaths(markdown=markdown_path, summary_json=summary_path)
+    signal_digest_csv: Path | None = None
+    if result.mode == "backtest" and result.signal_digests is not None:
+        signal_digest_path.write_text(
+            _signal_digest_csv(result.signal_digests),
+            encoding="utf-8",
+            newline="",
+        )
+        signal_digest_csv = signal_digest_path
+
+    return PhaseReportPaths(
+        markdown=markdown_path,
+        summary_json=summary_path,
+        signal_digest_csv=signal_digest_csv,
+    )
 
 
 def _summary_dict(
@@ -282,6 +297,25 @@ def _trade_log_csv(result: EntryEdgeResult) -> str:
             row["return_pct"] = f"{row['return_pct']:.6f}"
         if isinstance(row.get("signal_score"), float):
             row["signal_score"] = f"{row['signal_score']:.6f}"
+        writer.writerow(row)
+    return buffer.getvalue()
+
+
+def _signal_digest_csv(digests: list[SignalDigest]) -> str:
+    import io
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=["index", "timestamp", "target_position", "reason", "score"],
+    )
+    writer.writeheader()
+    for digest in digests:
+        row = asdict(digest)
+        if isinstance(row.get("target_position"), float):
+            row["target_position"] = f"{row['target_position']:.6f}"
+        if isinstance(row.get("score"), float):
+            row["score"] = f"{row['score']:.6f}"
         writer.writerow(row)
     return buffer.getvalue()
 

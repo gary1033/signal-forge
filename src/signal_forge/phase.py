@@ -55,12 +55,22 @@ class OrderIntent:
 
 
 @dataclass(frozen=True)
+class SignalDigest:
+    index: int
+    timestamp: str
+    target_position: float
+    reason: str
+    score: float
+
+
+@dataclass(frozen=True)
 class PhaseExecutionResult:
     mode: PhaseMode
     adapter_name: str
     dry_run: bool
     entry_edge_result: EntryEdgeResult | None = None
     order_intents: list[OrderIntent] | None = None
+    signal_digests: list[SignalDigest] | None = None
 
 
 class BacktestExecutionAdapter:
@@ -69,6 +79,10 @@ class BacktestExecutionAdapter:
     def run(
         self, config: PhaseConfig, strategy: Strategy, bars: list[Bar]
     ) -> PhaseExecutionResult:
+        signals = strategy.generate_signals(bars)
+        if len(signals) != len(bars):
+            raise ValueError("strategy must return exactly one signal per bar")
+
         result = EntryEdgeEvaluator(
             EntryEdgeConfig(hold_bars_per_day=config.hold_bars_per_day)
         ).run(strategy, bars)
@@ -78,6 +92,16 @@ class BacktestExecutionAdapter:
             dry_run=False,
             entry_edge_result=result,
             order_intents=[],
+            signal_digests=[
+                SignalDigest(
+                    index=signal.index,
+                    timestamp=signal.timestamp,
+                    target_position=signal.target_position,
+                    reason=signal.reason,
+                    score=signal.score,
+                )
+                for signal in signals
+            ],
         )
 
 

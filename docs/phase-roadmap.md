@@ -38,6 +38,7 @@ Done (2026-05-19):
 17. Backtest determinism: Entry Edge outputs contract (summary JSON + markdown + trade log CSV)
 18. Backtest portability: Entry Edge failure_reason is ASCII-only and deterministic
 19. CLI correctness: backtest uses `dry_run=False`; live uses `dry_run=True` in `PhaseConfig`
+20. Backtest trace visibility: Phase report emits deterministic `*_signals.csv` (per-bar signal digest)
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

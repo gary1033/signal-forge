@@ -195,6 +195,7 @@ class ReportingTests(unittest.TestCase):
             summary_text = paths.summary_json.read_text(encoding="utf-8")
             summary = json.loads(summary_text)
             markdown = paths.markdown.read_text(encoding="utf-8")
+            self.assertIsNone(paths.signal_digest_csv)
 
         validate_phase_summary(summary)
         self.assertEqual(summary["phase"]["mode"], "live")
@@ -248,6 +249,20 @@ class ReportingTests(unittest.TestCase):
             summary_text = paths.summary_json.read_text(encoding="utf-8")
             summary = json.loads(summary_text)
             markdown = paths.markdown.read_text(encoding="utf-8")
+            self.assertIsNotNone(paths.signal_digest_csv)
+            self.assertTrue((paths.signal_digest_csv or paths.summary_json).exists())
+            if paths.signal_digest_csv:
+                self.assertEqual(
+                    paths.signal_digest_csv.read_text(encoding="utf-8"),
+                    "\n".join(
+                        [
+                            "index,timestamp,target_position,reason,score",
+                            "0,2026-01-01,1.000000,entry,0.000000",
+                            "1,2026-01-02,0.000000,entry,0.000000",
+                            "",
+                        ]
+                    ),
+                )
 
         validate_phase_summary(summary)
         self.assertEqual(summary["phase"]["mode"], "backtest")
