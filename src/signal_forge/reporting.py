@@ -314,6 +314,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "reason",
             "score",
             "is_long_entry",
+            "is_flatten",
         ],
     )
     writer.writeheader()

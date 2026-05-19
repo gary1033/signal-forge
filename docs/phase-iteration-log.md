@@ -351,3 +351,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: consider adding more deterministic derived fields to the backtest digest (e.g., exit/flatten markers) only when test-covered.
+
+## 2026-05-19 20:57 +08:00
+
+- Goal: keep Phase readiness at max while enriching the deterministic backtest signal digest contract with an explicit flatten/exit marker (no live trading changes).
+- Change set:
+  - Added a derived boolean `is_flatten` field to backtest `SignalDigest` and exported it in `*_signals.csv`.
+  - Updated unit tests to assert the deterministic CSV contract.
+- Method:
+  - Treat the backtest signal digest as a stable contract; add derived fields only when deterministic and test-covered.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (34 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: consider adding a deterministic `position_change` (delta) column to the digest only if it stays stable and is test-covered.

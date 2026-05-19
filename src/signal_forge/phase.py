@@ -71,6 +71,7 @@ class SignalDigest:
     reason: str
     score: float
     is_long_entry: bool
+    is_flatten: bool
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,7 @@ class BacktestExecutionAdapter:
         digests: list[SignalDigest] = []
         for signal in signals:
             is_long_entry = signal.target_position > 0 and previous_target <= 0
+            is_flatten = signal.target_position <= 0 and previous_target > 0
             previous_target = signal.target_position
             digests.append(
                 SignalDigest(
@@ -110,6 +112,7 @@ class BacktestExecutionAdapter:
                     reason=signal.reason,
                     score=signal.score,
                     is_long_entry=is_long_entry,
+                    is_flatten=is_flatten,
                 )
             )
         return PhaseExecutionResult(

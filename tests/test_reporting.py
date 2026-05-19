@@ -256,9 +256,9 @@ class ReportingTests(unittest.TestCase):
                     paths.signal_digest_csv.read_text(encoding="utf-8"),
                     "\n".join(
                         [
-                            "index,timestamp,target_position,reason,score,is_long_entry",
-                            "0,2026-01-01,1.000000,entry,0.000000,True",
-                            "1,2026-01-02,0.000000,entry,0.000000,False",
+                            "index,timestamp,target_position,reason,score,is_long_entry,is_flatten",
+                            "0,2026-01-01,1.000000,entry,0.000000,True,False",
+                            "1,2026-01-02,0.000000,entry,0.000000,False,True",
                             "",
                         ]
                     ),
