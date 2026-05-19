@@ -35,7 +35,8 @@ Done (2026-05-19):
 14. Phase report: enforce cross-field invariants (live dry-run only; backtest requires entry_edge)
 15. Live determinism: Phase summary + markdown text contract (order intent regression)
 16. Backtest portability: ASCII-only warning + sample risk text (avoid encoding-dependent garbling)
+17. Backtest determinism: Entry Edge outputs contract (summary JSON + markdown + trade log CSV)
 
 Next candidates (keep live safety unchanged):
-- Backtest stability: extend golden regressions to Entry Edge outputs (summary/markdown/trade log)
+- Backtest stability: fix Entry Edge failure_reason encoding/portability (keep report text deterministic)
 - Coverage/trace visibility without any real trading integration

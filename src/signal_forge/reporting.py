@@ -10,6 +10,10 @@ from signal_forge.market_data import BarValidationResult
 from signal_forge.phase import PhaseExecutionResult
 
 
+def _round_float(value: float, decimals: int) -> float:
+    return float(f"{value:.{decimals}f}")
+
+
 @dataclass(frozen=True)
 class EntryEdgeReportPaths:
     markdown: Path
@@ -94,17 +98,17 @@ def _summary_dict(
         "profit_factor_status": result.profit_factor_status,
         "sample_risk": result.sample_risk,
         "metrics": {
-            "gross_profit": result.gross_profit,
-            "gross_loss": result.gross_loss,
+            "gross_profit": _round_float(result.gross_profit, 2),
+            "gross_loss": _round_float(result.gross_loss, 2),
             "trade_count": result.trade_count,
             "ignored_short_count": result.ignored_short_count,
             "unclosed_signal_count": result.unclosed_signal_count,
             "overlapping_signal_count": result.overlapping_signal_count,
-            "win_rate": result.win_rate,
-            "average_net_pnl": result.average_net_pnl,
-            "max_drawdown": result.max_drawdown,
-            "start_equity": result.start_equity,
-            "end_equity": result.end_equity,
+            "win_rate": _round_float(result.win_rate, 6),
+            "average_net_pnl": _round_float(result.average_net_pnl, 2),
+            "max_drawdown": _round_float(result.max_drawdown, 6),
+            "start_equity": _round_float(result.start_equity, 2),
+            "end_equity": _round_float(result.end_equity, 2),
         },
         "config": asdict(result.config),
         "data_validation": asdict(data_validation) if data_validation else None,
@@ -270,7 +274,15 @@ def _trade_log_csv(result: EntryEdgeResult) -> str:
     )
     writer.writeheader()
     for trade in result.trades:
-        writer.writerow(asdict(trade))
+        row = asdict(trade)
+        for money_key in ("gross_pnl", "cost", "net_pnl"):
+            if isinstance(row.get(money_key), float):
+                row[money_key] = f"{row[money_key]:.2f}"
+        if isinstance(row.get("return_pct"), float):
+            row["return_pct"] = f"{row['return_pct']:.6f}"
+        if isinstance(row.get("signal_score"), float):
+            row["signal_score"] = f"{row['signal_score']:.6f}"
+        writer.writerow(row)
     return buffer.getvalue()
 
 

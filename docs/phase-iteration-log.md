@@ -236,3 +236,23 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: add golden regressions for Entry Edge outputs (summary/markdown/trade log), keeping live dry-run only.
+
+## 2026-05-19 19:29 +08:00
+
+- Goal: keep Phase readiness at max while improving backtest verifiability by making Entry Edge outputs deterministic and human-readable.
+- Change set:
+  - Rounded Entry Edge report numeric fields in summary JSON (money to 2dp; ratios to fixed precision) to avoid float artifact noise.
+  - Made Entry Edge trade log CSV numeric formatting deterministic (`.2f` money, `.6f` ratios).
+  - Added a golden regression test asserting exact Entry Edge summary JSON + markdown + trade log CSV output for a fixed 2-bar input.
+- Method:
+  - Treat Entry Edge outputs as contracts (exact text) to enable stable diffs and easy regression detection.
+  - Keep live safety unchanged: live mode remains dry-run only; no broker; no API keys; `submitted=False`.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (32 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (this wakeup)
+- Next step: consider fixing Entry Edge `failure_reason` garbled/encoding-dependent text without changing the evaluation logic.

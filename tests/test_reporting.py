@@ -56,6 +56,133 @@ class ReportingTests(unittest.TestCase):
                 paths.markdown.read_text(encoding="utf-8"),
             )
 
+    def test_entry_edge_outputs_have_stable_contract(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = EntryEdgeEvaluator(
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0)
+        ).run(OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_entry_edge_outputs(
+                result,
+                temp_dir,
+                run_name="entry-edge-contract",
+                data_validation=validate_bars(bars),
+                strategy_spec={"entry_side": "long_only"},
+            )
+            summary_text = paths.summary_json.read_text(encoding="utf-8")
+            summary = json.loads(summary_text)
+            markdown_text = paths.markdown.read_text(encoding="utf-8")
+            trade_csv_text = paths.trade_log_csv.read_text(encoding="utf-8")
+
+        expected_summary = {
+            "config": {
+                "commission_bps": 0,
+                "hold_bars_per_day": 1,
+                "initial_equity": 10000.0,
+                "pass_profit_factor": 1.2,
+                "slippage_bps": 0,
+            },
+            "data_validation": {
+                "bar_count": 2,
+                "end_timestamp": "2026-01-02",
+                "errors": [],
+                "start_timestamp": "2026-01-01",
+                "warnings": [
+                    "Sample has fewer than 30 bars; profit factor may be unstable."
+                ],
+            },
+            "decision": "pass",
+            "failure_reason": None,
+            "metrics": {
+                "average_net_pnl": 1000.0,
+                "end_equity": 11000.0,
+                "gross_loss": 0.0,
+                "gross_profit": 1000.0,
+                "ignored_short_count": 0,
+                "max_drawdown": 0.0,
+                "overlapping_signal_count": 0,
+                "start_equity": 10000.0,
+                "trade_count": 1,
+                "unclosed_signal_count": 0,
+                "win_rate": 1.0,
+            },
+            "profit_factor": None,
+            "profit_factor_status": "infinite",
+            "sample_risk": "No losing trades; PF is infinite. Manually inspect sample size and representativeness.",
+            "strategy_name": "one_trade",
+            "strategy_spec": {"entry_side": "long_only"},
+        }
+        self.assertEqual(summary, expected_summary)
+        self.assertEqual(
+            summary_text,
+            json.dumps(expected_summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        self.assertEqual(
+            markdown_text,
+            "\n".join(
+                [
+                    "# Entry Edge Report - one_trade",
+                    "",
+                    "## Conclusion",
+                    "",
+                    "- Decision: PASS",
+                    "- Profit Factor: Infinity",
+                    "- Trades: 1",
+                    "- Win rate: 100.00%",
+                    "- Average net PnL: 1000.00",
+                    "- Max drawdown: 0.00%",
+                    "- Sample risk: No losing trades; PF is infinite. Manually inspect sample size and representativeness.",
+                    "",
+                    "## Backtest Settings",
+                    "",
+                    "- Initial equity: 10000.00",
+                    "- Commission (bps): 0.00",
+                    "- Slippage (bps): 0.00",
+                    "- Fixed hold bars: 1",
+                    "- Pass threshold PF: >1.20",
+                    "- Execution: signal confirmed at bar close; enter at next bar open; exit at exit bar close after fixed hold.",
+                    "- Phase 1 constraints: long-only; ignore short signals; no stops/take-profit/filters/parameter optimization.",
+                    "",
+                    "## Data Validation",
+                    "",
+                    "- Bars: 2",
+                    "- Start: 2026-01-01",
+                    "- End: 2026-01-02",
+                    "- Errors: 0",
+                    "- Warnings: 1",
+                    "- Warning: Sample has fewer than 30 bars; profit factor may be unstable.",
+                    "",
+                    "## Strategy Spec (Distilled)",
+                    "",
+                    "- entry_side: long_only",
+                    "",
+                    "## Trade Statistics",
+                    "",
+                    "- Gross profit: 1000.00",
+                    "- Gross loss: 0.00",
+                    "- Ignored short signals: 0",
+                    "- Unclosed signals: 0",
+                    "- Overlapping ignored signals: 0",
+                    "- End equity: 11000.00",
+                    "",
+                ]
+            ),
+        )
+        self.assertEqual(
+            trade_csv_text,
+            "\n".join(
+                [
+                    "signal_index,signal_timestamp,entry_index,entry_timestamp,exit_index,exit_timestamp,entry_price,exit_price,gross_pnl,cost,net_pnl,return_pct,signal_reason,signal_score",
+                    "0,2026-01-01,1,2026-01-02,1,2026-01-02,10,11,1000.00,0.00,1000.00,0.100000,entry,0.000000",
+                    "",
+                ]
+            ),
+        )
+
     def test_writes_phase_output_with_adapter_metadata(self) -> None:
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),

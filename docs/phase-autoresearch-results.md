@@ -34,3 +34,4 @@ git diff --check
 | 2026-05-19 18:42 | Phase summary: enforce live/backtest invariants | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Live: dry-run + submitted=False only; Backtest: requires entry_edge |
 | 2026-05-19 18:57 | Live determinism: Phase report contract regression test | 110 -> 110 | pass | keep | `55d37ac` (pushed) | Assert exact live summary/markdown text (safe order intent only) |
 | 2026-05-19 19:13 | Backtest portability: ASCII-only warning + sample risk | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Avoid Windows terminal encoding garbling in report text |
+| 2026-05-19 19:29 | Entry Edge outputs: deterministic numeric formatting + golden contract | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Freeze Entry Edge summary/markdown/trade log as exact-text contracts |
