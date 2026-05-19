@@ -372,6 +372,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
         fieldnames=[
             "index",
             "timestamp",
+            "previous_target_position",
             "target_position",
             "position_change",
             "reason",
@@ -382,13 +383,18 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
     )
     writer.writeheader()
     for digest in digests:
-        row = asdict(digest)
-        if isinstance(row.get("target_position"), float):
-            row["target_position"] = f"{row['target_position']:.6f}"
-        if isinstance(row.get("position_change"), float):
-            row["position_change"] = f"{row['position_change']:.6f}"
-        if isinstance(row.get("score"), float):
-            row["score"] = f"{row['score']:.6f}"
+        previous_target_position = digest.target_position - digest.position_change
+        row = {
+            "index": digest.index,
+            "timestamp": digest.timestamp,
+            "previous_target_position": f"{previous_target_position:.6f}",
+            "target_position": f"{digest.target_position:.6f}",
+            "position_change": f"{digest.position_change:.6f}",
+            "reason": digest.reason,
+            "score": f"{digest.score:.6f}",
+            "is_long_entry": digest.is_long_entry,
+            "is_flatten": digest.is_flatten,
+        }
         writer.writerow(row)
     return buffer.getvalue()
 

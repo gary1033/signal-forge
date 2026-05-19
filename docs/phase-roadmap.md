@@ -55,6 +55,7 @@
 33. Phase adapter：限制正規化後的 `reason` 最大長度，避免 artifact 膨脹。
 34. Phase CLI：改由 `PhaseConfig` 推導 `dry_run`，移除重複 wiring。
 35. 回測 trace visibility：`*_trace_summary.json` 加入 deterministic `hold_count`。
+36. 回測 digest 可稽核性：`*_signals.csv` 加入 deterministic `previous_target_position`。
 
 ## 下一步候選
 

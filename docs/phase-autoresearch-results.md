@@ -53,6 +53,7 @@ git diff --check
 | 2026-05-19 23:28 | 正規化 `reason` 加入最大長度 | 110 -> 110 | pass | keep | pushed to `origin/main` | artifact 更穩定且精簡 |
 | 2026-05-19 23:41 | Phase CLI 改依賴 `PhaseConfig` 推導 `dry_run` | 110 -> 110 | pass | keep | `77ca204` pushed | 移除重複 CLI wiring |
 | 2026-05-20 01:04 | Trace summary 加入 `hold_count` | 110 -> 110 | pass | keep | `8411af0` pushed | 由 signal digest 派生 deterministic 持倉 bar count |
+| 2026-05-20 01:20 | Signals CSV 加入 `previous_target_position` | 110 -> 110 | pass | keep | pushed to `origin/main` | 由 digest 欄位穩定推導前一根 bar 的 target position |
 
 ## 總結
 
