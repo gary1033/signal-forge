@@ -23,3 +23,4 @@ git diff --check
 | Wakeup (Asia/Taipei) | Milestone | Metric | Guard | Decision | Commit / Push | Notes |
 |---|---|---|---|---|---|---|
 | 2026-05-19 16:27 | Docs encoding + readiness needle | 110 -> 110 | pass | keep | see `git log -1 --oneline` | includes `50ade1b` |
+| 2026-05-19 16:42 | Stable live dry-run marker (`LIVE_DRY_RUN_ONLY`) | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | ASCII marker for safety/audit invariants |

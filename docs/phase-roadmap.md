@@ -14,6 +14,7 @@ This roadmap drives bounded autoresearch. The goal is to keep Phase readiness hi
 - `PhaseRunner`: routes execution by mode
   - `BacktestExecutionAdapter`: backtest execution path
   - `LiveExecutionAdapter`: live dry-run path (order intent only)
+- `OrderIntent`: includes `LIVE_DRY_RUN_ONLY` marker in `safety_note` for stable auditing across OS/encodings
 
 ## Milestones
 

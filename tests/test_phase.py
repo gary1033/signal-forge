@@ -77,6 +77,7 @@ class PhaseConfigTests(unittest.TestCase):
         intent = (result.order_intents or [])[0]
         self.assertTrue(intent.dry_run)
         self.assertFalse(intent.submitted)
+        self.assertIn("LIVE_DRY_RUN_ONLY", intent.safety_note)
         self.assertIn("不送單", intent.safety_note)
 
     def test_phase_runner_rejects_missing_data_before_live_adapter(self) -> None:

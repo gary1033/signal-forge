@@ -49,7 +49,7 @@ class OrderIntent:
     reason: str
     dry_run: bool = True
     submitted: bool = False
-    safety_note: str = "dry_run order intent only; 不送單"
+    safety_note: str = "LIVE_DRY_RUN_ONLY: dry_run order intent only; 不送單"
 
 
 @dataclass(frozen=True)

@@ -27,3 +27,23 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`; includes `50ade1b`)
 - Next step: with readiness at max, focus on backtest stability and output-contract regression tests (live remains dry-run only).
+
+## 2026-05-19 16:42 +08:00
+
+- Goal: keep Phase readiness at max while making live dry-run safety auditing stable (avoid locale/encoding-sensitive markers).
+- Change set:
+  - Added `LIVE_DRY_RUN_ONLY` marker into `OrderIntent.safety_note` (still dry-run only; still `submitted=False`).
+  - Updated unit tests to assert the stable marker and keep the human-readable safety note.
+  - Updated readiness metric to check `LIVE_DRY_RUN_ONLY` instead of locale-sensitive text.
+- Method:
+  - Introduce an ASCII marker for safety/audit invariants.
+  - Keep backtest/live mode split unchanged; no broker, no API keys, no real orders.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (27 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: start backtest determinism work (golden regression tests) without touching live broker integration.

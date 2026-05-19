@@ -43,7 +43,7 @@ CHECKS: tuple[tuple[str, int, tuple[str, ...], tuple[str, ...]], ...] = (
         "live dry run safety",
         15,
         ("src/signal_forge", "tests"),
-        ("dry_run", "order intent", "不送單"),
+        ("dry_run", "order intent", "LIVE_DRY_RUN_ONLY"),
     ),
     (
         "phase cli",
