@@ -2,8 +2,10 @@
 
 import csv
 import json
+import re
 from collections import Counter
 from dataclasses import asdict, dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 from signal_forge.entry_edge import EntryEdgeResult
@@ -13,6 +15,26 @@ from signal_forge.phase import PhaseExecutionResult, SignalDigest
 
 def _round_float(value: float, decimals: int) -> float:
     return float(f"{value:.{decimals}f}")
+
+
+_ISO_DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def _is_iso8601_timestamp(timestamp: str) -> bool:
+    if not timestamp:
+        return False
+    if _ISO_DATE_PATTERN.match(timestamp):
+        try:
+            date.fromisoformat(timestamp)
+        except ValueError:
+            return False
+        return True
+    candidate = timestamp.replace("Z", "+00:00")
+    try:
+        datetime.fromisoformat(candidate)
+    except ValueError:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -452,6 +474,11 @@ def validate_signal_digests(digests: list[SignalDigest]) -> None:
             raise ValueError(
                 f"signal digest timestamp must be non-empty (position={position})"
             )
+        if not _is_iso8601_timestamp(digest.timestamp):
+            raise ValueError(
+                "signal digest timestamp must be ISO-8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS[.ffffff][Z|+HH:MM]) "
+                f"(position={position})"
+            )
 
         reason = digest.reason
         reason_stripped = reason.strip()
@@ -526,6 +553,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "reason_counts": list,
         "reasons": list,
         "short_entry_count": int,
+        "timestamps_iso8601": bool,
         "unique_reason_count": int,
     }
 
@@ -619,6 +647,14 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         if not isinstance(last_timestamp, str) or not last_timestamp:
             raise ValueError(
                 "trace summary trace_summary.last_timestamp must be a non-empty str when bar_count>0"
+            )
+        if not _is_iso8601_timestamp(first_timestamp):
+            raise ValueError(
+                "trace summary trace_summary.first_timestamp must be ISO-8601 when bar_count>0"
+            )
+        if not _is_iso8601_timestamp(last_timestamp):
+            raise ValueError(
+                "trace summary trace_summary.last_timestamp must be ISO-8601 when bar_count>0"
             )
         if last_timestamp < first_timestamp:
             raise ValueError("trace summary trace_summary timestamps must be non-decreasing")
@@ -845,6 +881,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
         for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))
     ]
     unique_reasons = sorted(reason_counts.keys())
+    timestamps_iso8601 = all(_is_iso8601_timestamp(digest.timestamp) for digest in digests)
     return {
         "trace_summary": {
             "bar_count": len(digests),
@@ -866,6 +903,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "max_target_position": _round_float(max_target_position, 6),
             "min_target_position": _round_float(min_target_position, 6),
             "short_entry_count": short_entry_count,
+            "timestamps_iso8601": timestamps_iso8601,
             "unique_reason_count": len(unique_reasons),
             "reasons": unique_reasons,
             "reason_counts": reason_count_items,
@@ -877,6 +915,7 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
     index_increasing = True
     timestamp_non_decreasing = True
     timestamps_non_empty = True
+    timestamps_iso8601 = True
     reasons_non_empty = True
     reasons_ascii_single_line = True
     reasons_trimmed = True
@@ -885,6 +924,9 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
     for digest in digests:
         if not digest.timestamp:
             timestamps_non_empty = False
+            timestamps_iso8601 = False
+        elif not _is_iso8601_timestamp(digest.timestamp):
+            timestamps_iso8601 = False
         if not digest.reason.strip():
             reasons_non_empty = False
         if digest.reason.strip() != digest.reason:
@@ -915,6 +957,7 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
     return {
         "bar_count": len(digests),
         "timestamps_non_empty": timestamps_non_empty,
+        "timestamps_iso8601": timestamps_iso8601,
         "index_increasing": index_increasing,
         "timestamp_non_decreasing": timestamp_non_decreasing,
         "reasons_non_empty": reasons_non_empty,
@@ -968,6 +1011,7 @@ def _phase_markdown_report(
                 "",
                 f"- Signal digests: {invariants['bar_count']}",
                 f"- Timestamps non-empty: {invariants['timestamps_non_empty']}",
+                f"- Timestamps ISO-8601: {invariants['timestamps_iso8601']}",
                 f"- Index strictly increasing: {invariants['index_increasing']}",
                 f"- Timestamp non-decreasing: {invariants['timestamp_non_decreasing']}",
                 f"- Reasons non-empty: {invariants['reasons_non_empty']}",

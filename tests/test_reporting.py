@@ -144,6 +144,22 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sorted by non-decreasing timestamp"):
             validate_signal_digests(digests)
 
+    def test_signal_digest_validator_rejects_non_iso8601_timestamp(self) -> None:
+        digests = [
+            SignalDigest(
+                index=0,
+                timestamp="2026/01/01",
+                target_position=1.0,
+                position_change=1.0,
+                reason="entry",
+                score=1.0,
+                is_long_entry=True,
+                is_flatten=False,
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "timestamp must be ISO-8601"):
+            validate_signal_digests(digests)
+
     def test_signal_digest_validator_rejects_empty_reason(self) -> None:
         digests = [
             SignalDigest(
@@ -488,6 +504,7 @@ class ReportingTests(unittest.TestCase):
                             '      "entry"',
                             "    ],",
                             '    "short_entry_count": 0,',
+                            '    "timestamps_iso8601": true,',
                             '    "unique_reason_count": 1',
                             "  }",
                             "}",
@@ -534,6 +551,7 @@ class ReportingTests(unittest.TestCase):
                     "",
                     "- Signal digests: 2",
                     "- Timestamps non-empty: True",
+                    "- Timestamps ISO-8601: True",
                     "- Index strictly increasing: True",
                     "- Timestamp non-decreasing: True",
                     "- Reasons non-empty: True",
