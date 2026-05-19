@@ -50,3 +50,4 @@ git diff --check
 | 2026-05-19 22:42 | Backtest visibility: Phase markdown top reasons frequency | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Add deterministic top reason counts for audit readability (test-covered) |
 | 2026-05-19 22:58 | Backtest digest determinism: enforce ASCII reason invariants | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Validate `SignalDigest.reason` (trimmed, ASCII-only, single-line, non-empty) and surface in markdown contract |
 | 2026-05-19 23:13 | Phase adapter: normalize `reason` to deterministic ASCII | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Prevent strategy reasons (whitespace/non-ASCII) from breaking backtest digest artifacts; live remains dry-run only |
+| 2026-05-19 23:28 | Phase adapter: truncate normalized `reason` max length | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Cap reason length (120) for stable, compact backtest artifacts; live unchanged dry-run only |

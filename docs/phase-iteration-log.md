@@ -547,3 +547,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: optionally add a backtest-only allowlist for normalized reasons (only if deterministic and test-covered); keep live dry-run only.
+
+## 2026-05-19 23:28 +08:00
+
+- Goal: keep Phase readiness at max while making reason text contracts more robust (prevent extremely long reasons from bloating backtest artifacts); live safety unchanged.
+- Change set:
+  - Added a deterministic max length (120 chars) to `normalize_signal_reason(...)` so both backtest digests and live dry-run intents remain stable and compact.
+  - Updated unit tests to cover the truncation behavior (uses explicit unicode escapes to avoid encoding-dependent garbling).
+- Method:
+  - Normalize whitespace + non-ASCII to `uXXXX`, then truncate to a fixed max length for portability and deterministic diffs.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110 (expected)
+- Guard: pass (42 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: (this wakeup) `experiment:` commit to be pushed after docs update
+- Next step: consider backtest-only reason allowlist only if deterministic + test-covered; keep live dry-run only.

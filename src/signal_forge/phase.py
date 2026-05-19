@@ -14,6 +14,7 @@ OrderSide = Literal["buy"]
 
 
 def normalize_signal_reason(value: str) -> str:
+    max_len = 120
     normalized = value.replace("\r", " ").replace("\n", " ").replace("\t", " ")
     normalized = " ".join(normalized.split())
     if not normalized:
@@ -27,6 +28,8 @@ def normalize_signal_reason(value: str) -> str:
         out.append(f"u{ord(ch):04x}")
 
     normalized = "".join(out).strip()
+    if len(normalized) > max_len:
+        normalized = normalized[:max_len].rstrip()
     return normalized or "unknown"
 
 

@@ -27,7 +27,7 @@ class MessyReasonStrategy(Strategy):
     name = "messy_reason"
 
     def generate_signals(self, bars: list[Bar]) -> list[Signal]:
-        messy = "  進場\t\n  alpha  "
+        messy = "  \u9032\u5834\t\n  alpha  "
         return [
             Signal(index, bar.timestamp, 1.0 if index == 0 else 0.0, messy)
             for index, bar in enumerate(bars)
@@ -46,8 +46,11 @@ class PhaseConfigTests(unittest.TestCase):
         self.assertEqual(normalize_signal_reason(""), "unknown")
         self.assertEqual(normalize_signal_reason("\r\n\t"), "unknown")
         self.assertEqual(
-            normalize_signal_reason("  進場\t\n  alpha  "), "u9032u5834 alpha"
+            normalize_signal_reason("  \u9032\u5834\t\n  alpha  "), "u9032u5834 alpha"
         )
+
+    def test_normalize_signal_reason_truncates_long_input(self) -> None:
+        self.assertEqual(normalize_signal_reason("a" * 200), "a" * 120)
 
     def test_backtest_mode_is_default(self) -> None:
         config = PhaseConfig()
@@ -99,7 +102,9 @@ class PhaseConfigTests(unittest.TestCase):
             sample_bars(),
         )
         self.assertEqual(backtest.mode, "backtest")
-        self.assertEqual(backtest.signal_digests[0].reason, "u9032u5834 alpha")  # type: ignore[index]
+        self.assertEqual(
+            backtest.signal_digests[0].reason, "u9032u5834 alpha"  # type: ignore[index]
+        )
 
         live = PhaseRunner().run(
             PhaseConfig(mode="live"),
@@ -107,7 +112,9 @@ class PhaseConfigTests(unittest.TestCase):
             sample_bars(),
         )
         self.assertEqual(live.mode, "live")
-        self.assertEqual(live.order_intents[0].reason, "u9032u5834 alpha")  # type: ignore[index]
+        self.assertEqual(
+            live.order_intents[0].reason, "u9032u5834 alpha"  # type: ignore[index]
+        )
 
     def test_phase_runner_routes_live_to_dry_run_order_intent_only(self) -> None:
         result = PhaseRunner().run(
