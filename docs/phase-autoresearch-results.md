@@ -44,3 +44,4 @@ git diff --check
 | 2026-05-19 21:12 | Live output determinism: stable Phase report markdown contract | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Assert exact live markdown + order-intent safety invariants |
 | 2026-05-19 21:27 | Backtest digest: add `position_change` derived column | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Stable delta (target_position change) in `*_signals.csv` (test-covered) |
 | 2026-05-19 21:42 | Backtest trace visibility: deterministic `*_trace_summary.json` | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Signals-derived counts + reasons summary JSON (test-covered) |
+| 2026-05-19 21:57 | Backtest trace summary: add timestamp range | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Deterministic first/last timestamps in trace summary JSON (test-covered) |

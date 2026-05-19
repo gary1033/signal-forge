@@ -352,6 +352,8 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     nonzero_position_change_count = sum(
         1 for digest in digests if abs(digest.position_change) > 0
     )
+    first_timestamp = digests[0].timestamp if digests else None
+    last_timestamp = digests[-1].timestamp if digests else None
     last_target_position = digests[-1].target_position if digests else 0.0
     reasons = sorted({digest.reason for digest in digests if digest.reason})
     return {
@@ -360,6 +362,8 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
             "nonzero_position_change_count": nonzero_position_change_count,
+            "first_timestamp": first_timestamp,
+            "last_timestamp": last_timestamp,
             "last_target_position": _round_float(last_target_position, 6),
             "reasons": reasons,
         }

@@ -427,3 +427,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider adding backtest-only trace summary JSON (still deterministic; still no broker/API keys) to improve debugging without affecting live safety.
+
+## 2026-05-19 21:57 +08:00
+
+- Goal: keep Phase readiness at max while improving backtest trace verifiability with a deterministic timestamp range in `*_trace_summary.json` (no live trading changes).
+- Change set:
+  - Extended backtest `_signal_trace_summary_dict(...)` output to include `first_timestamp` and `last_timestamp` derived from `SignalDigest` ordering.
+  - Updated unit tests to freeze the new trace summary JSON exact-text contract.
+- Method:
+  - Only enrich trace summary with deterministic, input-derived fields (timestamps already stable in digests).
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110 (expected)
+- Guard: pass (35 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: consider adding backtest-only digest invariants (e.g., timestamp monotonicity) as a validator, still with deterministic tests and no broker/API keys.

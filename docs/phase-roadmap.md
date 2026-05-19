@@ -45,6 +45,7 @@ Done (2026-05-19):
  24. Live output determinism: Phase report markdown has a stable exact-text contract (dry-run intent only)
  25. Backtest digest: `*_signals.csv` includes deterministic `position_change` (target_position delta) derived field
  26. Backtest trace visibility: deterministic `*_trace_summary.json` (signals-derived counts)
+ 27. Backtest trace visibility: `*_trace_summary.json` includes deterministic timestamp range (first/last)
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration
