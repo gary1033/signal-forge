@@ -426,7 +426,13 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None
     last_target_position = digests[-1].target_position if digests else 0.0
-    reasons = sorted({digest.reason for digest in digests if digest.reason})
+    reasons = [digest.reason for digest in digests if digest.reason]
+    reason_counts = Counter(reasons)
+    reason_count_items = [
+        {"reason": reason, "count": count}
+        for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    unique_reasons = sorted(reason_counts.keys())
     return {
         "trace_summary": {
             "bar_count": len(digests),
@@ -437,7 +443,9 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "first_timestamp": first_timestamp,
             "last_timestamp": last_timestamp,
             "last_target_position": _round_float(last_target_position, 6),
-            "reasons": reasons,
+            "unique_reason_count": len(unique_reasons),
+            "reasons": unique_reasons,
+            "reason_counts": reason_count_items,
         }
     }
 

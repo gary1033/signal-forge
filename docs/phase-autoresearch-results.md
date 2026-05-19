@@ -56,6 +56,7 @@ git diff --check
 | 2026-05-20 01:20 | Signals CSV 加入 `previous_target_position` | 110 -> 110 | pass | keep | pushed to `origin/main` | 由 digest 欄位穩定推導前一根 bar 的 target position |
 | 2026-05-20 01:35 | Signals CSV 加入 `is_hold` | 110 -> 110 | pass | keep | pushed to `origin/main` | 由 `target_position` 與 `position_change` 穩定推導持倉 bar |
 | 2026-05-20 01:50 | Backtest digest validator 強化 position delta 連續性 | 110 -> 110 | pass | keep | pushed to `origin/main` | 讓 `position_change` 的稽核欄位可被一致性驗證 |
+| 2026-05-20 02:05 | Trace summary 加入 deterministic `reason_counts` | 110 -> 110 | pass | keep | pushed to `origin/main` | 用 frequency list 強化回測 artifacts 稽核可讀性 |
 
 ## 總結
 
