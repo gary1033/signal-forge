@@ -26,7 +26,7 @@ SignalForge 的 Phase 架構要同時支援兩種模式：
 
 12 個 15 分鐘 heartbeat，每次做一個聚焦 iteration：
 
-1. 建立 phase mode 型別與設定資料結構。
+1. 建立 phase mode 型別與設定資料結構。`2026-05-19 11:53` 完成：新增 `PhaseMode`、`PhaseConfig` 與 live dry-run guard。
 2. 建立 backtest adapter，接上現有 entry-edge evaluator。
 3. 建立 live adapter stub，只輸出 intent，不接交易 API。
 4. CLI 增加 phase/backtest 入口，保留 live dry-run 入口。
@@ -60,3 +60,7 @@ live mode 只能在以下條件都滿足後才考慮接入外部交易 API：
 - report 可同時記錄 backtest result 與 live dry-run intent。
 - 所有 live tests 都證明不會送出真實訂單。
 - README 明確標示本專案不是投資建議，也不是自動交易系統。
+
+## 迭代紀錄
+
+詳細方法、程式碼、驗證命令、結果與下一步記錄在 `docs/phase-iteration-log.md`。

@@ -9,6 +9,7 @@ from signal_forge.market_data import (
     load_bars_from_csv,
     validate_bars,
 )
+from signal_forge.phase import PhaseConfig, PhaseMode, parse_phase_mode
 from signal_forge.strategy import Signal, Strategy
 
 __all__ = [
@@ -21,8 +22,11 @@ __all__ = [
     "EntryEdgeEvaluator",
     "EntryEdgeResult",
     "MarketDataValidationError",
+    "PhaseConfig",
+    "PhaseMode",
     "Signal",
     "Strategy",
     "load_bars_from_csv",
+    "parse_phase_mode",
     "validate_bars",
 ]
