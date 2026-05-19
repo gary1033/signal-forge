@@ -311,9 +311,11 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     required_fields: dict[str, object] = {
         "bar_count": int,
         "close_count": int,
+        "first_target_position": (int, float),
         "first_timestamp": (type(None), str),
         "flatten_count": int,
         "hold_count": int,
+        "last_previous_target_position": (int, float),
         "last_target_position": (int, float),
         "last_timestamp": (type(None), str),
         "long_entry_count": int,
@@ -369,6 +371,14 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         if first_timestamp is not None or last_timestamp is not None:
             raise ValueError(
                 "trace summary trace_summary timestamps must be None when bar_count=0"
+            )
+        if (
+            float(trace_summary["first_target_position"]) != 0.0
+            or float(trace_summary["last_previous_target_position"]) != 0.0
+            or float(trace_summary["last_target_position"]) != 0.0
+        ):
+            raise ValueError(
+                "trace summary trace_summary target positions must be 0.0 when bar_count=0"
             )
     else:
         if not isinstance(first_timestamp, str) or not first_timestamp:
@@ -568,6 +578,10 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     )
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None
+    first_target_position = digests[0].target_position if digests else 0.0
+    last_previous_target_position = (
+        digests[-1].target_position - digests[-1].position_change if digests else 0.0
+    )
     last_target_position = digests[-1].target_position if digests else 0.0
     reasons = [digest.reason for digest in digests if digest.reason]
     reason_counts = Counter(reasons)
@@ -580,9 +594,11 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
         "trace_summary": {
             "bar_count": len(digests),
             "close_count": close_count,
+            "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
             "hold_count": hold_count,
+            "last_previous_target_position": _round_float(last_previous_target_position, 6),
             "nonzero_target_position_count": nonzero_target_position_count,
             "nonzero_position_change_count": nonzero_position_change_count,
             "open_count": open_count,

@@ -62,6 +62,7 @@
 40. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `open_count` / `close_count`。
 41. 回測 trace validation：加入 `*_trace_summary.json` schema + invariants validator（test-covered）。
 42. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `nonzero_target_position_count`，並驗證 `hold_count` 不超出非零持倉 bar。
+43. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `first_target_position` / `last_previous_target_position`，讓 trace 入口/尾端部位更好稽核。
 
 ## 下一步候選
 
