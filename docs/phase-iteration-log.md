@@ -74,5 +74,5 @@
 
 - 最新已知 metric：`110`
 - 最新已知 guard：42 tests OK，`git diff --check` clean
-- 最後一輪 commit：`c714b6f` pushed to `origin/main`
+- 最後一輪 commit：已推送到 `origin/main`（以 `git log -5` 為準）
 - 下一步：只擴充 backtest verifiability 與 deterministic artifacts；live 在回測穩定前維持 dry-run only。
