@@ -273,7 +273,7 @@ This log is the audit trail for bounded autoresearch.
 - Metric: 110 -> 110
 - Guard: pass (33 tests OK; `git diff --check` clean)
 - Decision: keep
-- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Commit: `bf32c6e` (pushed to `origin/main`)
 - Next step: consider adding lightweight coverage/trace visibility for backtest runs without introducing any broker/API key integration.
 
 ## 2026-05-19 19:58 +08:00
