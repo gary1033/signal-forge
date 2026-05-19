@@ -102,6 +102,33 @@ class ReportingTests(unittest.TestCase):
             summary_text,
             json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         )
+        self.assertEqual(
+            markdown,
+            "\n".join(
+                [
+                    "# Phase Report - backtest",
+                    "",
+                    "## Adapter Metadata",
+                    "",
+                    "- Phase mode: backtest",
+                    "- Adapter: backtest",
+                    "- Dry run: False",
+                    "",
+                    "## Backtest Result",
+                    "",
+                    "- Strategy: one_trade",
+                    "- Decision: pass",
+                    "- Profit Factor: Infinity",
+                    "- Trades: 1",
+                    "- End equity: 10995.80",
+                    "",
+                    "## Live Dry-Run Intents",
+                    "",
+                    "- No dry-run order intents were emitted.",
+                    "",
+                ]
+            ),
+        )
         self.assertIn("Backtest Result", markdown)
         self.assertIn("Profit Factor: Infinity", markdown)
         self.assertIn("End equity: 10995.80", markdown)

@@ -159,3 +159,21 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: `c69428c` (pushed to `origin/main`)
 - Next step: if stable, consider adding a similar exact-text contract for Phase markdown output (still no live trading integration).
+
+## 2026-05-19 18:35 +08:00
+
+- Goal: keep Phase readiness at max while tightening backtest verifiability with an exact Phase markdown text contract.
+- Change set:
+  - Added a unit test assertion that the backtest Phase markdown report matches the exact expected text, including the trailing newline.
+- Method:
+  - Treat Phase markdown output as a deterministic contract for regression testing and stable diffs.
+  - Live safety unchanged: live mode remains dry-run only; no broker; no API keys; no submissions.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (29 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: expand golden tests incrementally (keep live dry-run only).

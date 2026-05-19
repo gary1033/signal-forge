@@ -31,6 +31,7 @@ Done (2026-05-19):
 10. Reporting: stable JSON key ordering for deterministic diffs
 11. Backtest portability: Entry Edge report + CLI strategy spec ASCII-only (Windows-friendly)
 12. Backtest determinism: Phase summary JSON text contract (sorted keys + newline)
+13. Backtest determinism: Phase markdown text contract (exact text + trailing newline)
 
 Next candidates (keep live safety unchanged):
 - Backtest stability: determinism and golden regression tests

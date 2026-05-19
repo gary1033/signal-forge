@@ -30,3 +30,4 @@ git diff --check
 | 2026-05-19 17:42 | Reporting: stable JSON key ordering (`sort_keys=True`) | 110 -> 110 | pass | keep | `3d99839` (pushed) | Deterministic diffs for report JSON |
 | 2026-05-19 18:02 | Entry Edge report ASCII-only labels | 110 -> 110 | pass | keep | `d54d9e7` (pushed) | Windows-friendly backtest report output |
 | 2026-05-19 18:12 | Backtest determinism: Phase summary JSON text contract | 110 -> 110 | pass | keep | `c69428c` (pushed) | Assert exact JSON formatting (sorted keys + newline) |
+| 2026-05-19 18:35 | Backtest determinism: Phase markdown text contract | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed) | Assert exact markdown output (stable lines + trailing newline) |
