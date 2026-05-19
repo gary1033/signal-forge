@@ -582,5 +582,5 @@ This log is the audit trail for bounded autoresearch.
 - Metric: 110 -> 110 (expected)
 - Guard: pass (42 tests OK; `git diff --check` clean)
 - Decision: keep
-- Commit: (this wakeup) `experiment:` commit to be pushed after docs update
+- Commit: `77ca204` (pushed to `origin/main`)
 - Next step: keep expanding backtest verifiability only (deterministic artifacts + regression tests); live stays dry-run only until backtests are stable.
