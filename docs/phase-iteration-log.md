@@ -64,6 +64,7 @@
 | 2026-05-20 05:34 | 強化 signals CSV timestamp 稽核 | `validate_signal_digest_csv(...)` 強制每列 `timestamp` 必須為 ISO-8601，避免 CSV timestamp drift | 110 -> 110；48 tests OK | keep |
 | 2026-05-20 05:50 | 強化 signals CSV 數值格式稽核 | `validate_signal_digest_csv(...)` 強制數值欄位採用 fixed 6-decimal formatting，避免浮點格式 drift（並拒絕非 finite score） | 110 -> 110；49 tests OK | keep |
 | 2026-05-20 06:06 | Trace summary schema version | `*_trace_summary.json` 追加 deterministic `schema_version`（validator + exact-text regression contract 更新） | 110 -> 110；49 tests OK | keep |
+| 2026-05-20 06:23 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `flip_count`（反手次數），並驗證 `flip_count <= nonzero_position_change_count` | 110 -> 110；49 tests OK | keep |
 
 ## 方法紀錄
 

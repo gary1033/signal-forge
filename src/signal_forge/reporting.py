@@ -571,6 +571,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "flatten_count": int,
         "flatten_to_short_count": int,
         "flatten_to_zero_count": int,
+        "flip_count": int,
         "hold_count": int,
         "last_previous_target_position": (int, float),
         "last_target_position": (int, float),
@@ -618,6 +619,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "flatten_count": int(trace_summary["flatten_count"]),
         "flatten_to_short_count": int(trace_summary["flatten_to_short_count"]),
         "flatten_to_zero_count": int(trace_summary["flatten_to_zero_count"]),
+        "flip_count": int(trace_summary["flip_count"]),
         "hold_count": int(trace_summary["hold_count"]),
         "long_entry_count": int(trace_summary["long_entry_count"]),
         "nonzero_target_position_count": int(trace_summary["nonzero_target_position_count"]),
@@ -645,6 +647,11 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     ):
         raise ValueError(
             "trace summary trace_summary.flatten_to_short_count + flatten_to_zero_count must equal flatten_count"
+        )
+
+    if counts["flip_count"] > counts["nonzero_position_change_count"]:
+        raise ValueError(
+            "trace summary trace_summary.flip_count must be <= nonzero_position_change_count"
         )
 
     if counts["hold_count"] > counts["nonzero_target_position_count"]:
@@ -887,6 +894,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     open_count = 0
     close_count = 0
     short_entry_count = 0
+    flip_count = 0
     for digest in digests:
         previous_target_position = digest.target_position - digest.position_change
         is_open = abs(previous_target_position) < 1e-12 and abs(digest.target_position) > 1e-12
@@ -896,6 +904,12 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
                 short_entry_count += 1
         if abs(previous_target_position) > 1e-12 and abs(digest.target_position) < 1e-12:
             close_count += 1
+        if (
+            abs(previous_target_position) > 1e-12
+            and abs(digest.target_position) > 1e-12
+            and ((previous_target_position > 0) != (digest.target_position > 0))
+        ):
+            flip_count += 1
     nonzero_position_change_count = sum(
         1 for digest in digests if abs(digest.position_change) > 0
     )
@@ -926,6 +940,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
+            "flip_count": flip_count,
             "flatten_to_short_count": flatten_to_short_count,
             "flatten_to_zero_count": flatten_to_zero_count,
             "hold_count": hold_count,

@@ -534,6 +534,7 @@ class ReportingTests(unittest.TestCase):
                             '    "flatten_count": 1,',
                             '    "flatten_to_short_count": 0,',
                             '    "flatten_to_zero_count": 1,',
+                            '    "flip_count": 0,',
                             '    "hold_count": 0,',
                             '    "last_previous_target_position": 1.0,',
                             '    "last_target_position": 0.0,',
