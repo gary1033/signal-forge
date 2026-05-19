@@ -22,4 +22,4 @@ git diff --check
 
 | Wakeup (Asia/Taipei) | Milestone | Metric | Guard | Decision | Commit / Push | Notes |
 |---|---|---|---|---|---|---|
-| 2026-05-19 16:27 | Docs encoding + readiness needle | 110 -> 110 | pass | keep | `50ade1b`, pushed | `docs/phase-iteration-log.md` |
+| 2026-05-19 16:27 | Docs encoding + readiness needle | 110 -> 110 | pass | keep | `35417e3`, pushed | includes `50ade1b` |
