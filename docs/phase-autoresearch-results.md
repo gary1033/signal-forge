@@ -63,6 +63,7 @@ git diff --check
 | 2026-05-20 03:07 | Trace summary 增加首尾部位稽核欄位 | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 加入 `first_target_position` / `last_previous_target_position` |
 | 2026-05-20 03:22 | Trace summary 加入 `entry_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | `entry_count` = `open_count`（alias），讓開倉次數欄位更直覺可讀 |
 | 2026-05-20 03:36 | Cross-check backtest artifacts | 110 -> 110 | pass | keep | `beb803e` pushed | `write_phase_outputs` 交叉驗證 `*_signals.csv` 與 `*_trace_summary.json`（counts + 首尾欄位一致） |
+| 2026-05-20 03:51 | 強化 signals CSV validator（per-row semantics） | 110 -> 110 | pass | keep | (pending) | `validate_signal_digest_csv(...)` 加入 position delta 與 flags per-row 一致性檢查，避免局部篡改仍通過 counts 檢查 |
 
 ## 總結
 

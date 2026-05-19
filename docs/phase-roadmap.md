@@ -65,6 +65,7 @@
 43. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `first_target_position` / `last_previous_target_position`，讓 trace 入口/尾端部位更好稽核。
 44. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `entry_count`（alias `open_count`），讓「開倉次數」欄位更直覺可讀。
 45. 回測 artifact validation：交叉驗證 `*_signals.csv` 與 `*_trace_summary.json` 的 counts 與首尾欄位一致，避免 writer drift。
+46. 回測 artifact validation：強化 `validate_signal_digest_csv(...)`，加入 per-row semantic checks（position delta 與 flags 一致性），避免 CSV 被局部篡改仍通過 counts 檢查。
 
 ## 下一步候選
 

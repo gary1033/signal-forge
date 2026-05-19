@@ -51,11 +51,45 @@ class ReportingTests(unittest.TestCase):
         lines = csv_text.splitlines()
         header = lines[0].split(",")
         target_index = header.index("target_position")
+        change_index = header.index("position_change")
         row = lines[1].split(",")
         row[target_index] = "2.000000"
+        row[change_index] = "2.000000"
         lines[1] = ",".join(row)
         bad_csv = "\n".join(lines) + "\n"
         with self.assertRaisesRegex(ValueError, "first_target_position must match"):
+            validate_signal_digest_csv(trace_summary, bad_csv)
+
+    def test_signal_digest_csv_validator_rejects_semantic_flag_mismatch(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-flags")
+            csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, csv_text)
+
+        lines = csv_text.splitlines()
+        header = lines[0].split(",")
+        long_entry_index = header.index("is_long_entry")
+        row1 = lines[1].split(",")
+        row2 = lines[2].split(",")
+
+        # Swap the boolean values to keep counts identical but violate per-row semantics.
+        row1_val = row1[long_entry_index]
+        row1[long_entry_index] = row2[long_entry_index]
+        row2[long_entry_index] = row1_val
+        lines[1] = ",".join(row1)
+        lines[2] = ",".join(row2)
+        bad_csv = "\n".join(lines) + "\n"
+
+        with self.assertRaisesRegex(ValueError, "is_long_entry mismatch"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_validator_rejects_non_monotonic_index(self) -> None:

@@ -54,6 +54,7 @@
 | 2026-05-20 03:07 | 擴充 trace summary 首尾部位稽核欄位 | `*_trace_summary.json` 加入 `first_target_position` / `last_previous_target_position` | 110 -> 110；44 tests OK | keep |
 | 2026-05-20 03:22 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `entry_count`（alias `open_count`） | 110 -> 110；44 tests OK | keep |
 | 2026-05-20 03:36 | 強化 backtest artifacts 一致性驗證 | `write_phase_outputs` 寫出 artifact 後交叉驗證 `*_signals.csv` 與 `*_trace_summary.json`（counts + 首尾欄位一致） | 110 -> 110；45 tests OK | keep |
+| 2026-05-20 03:51 | 強化 signals CSV validator（per-row semantics） | `validate_signal_digest_csv(...)` 加入 position delta 與 flags per-row 一致性檢查，避免局部篡改仍通過 counts 檢查 | 110 -> 110；46 tests OK | keep |
 
 ## 方法紀錄
 

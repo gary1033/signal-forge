@@ -214,6 +214,23 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         if previous_timestamp is not None and timestamp < previous_timestamp:
             raise ValueError("signal digest csv rows must be sorted by non-decreasing timestamp")
 
+        if abs((target_position - previous_target_position) - position_change) > tolerance:
+            raise ValueError(
+                "signal digest csv position_change must match target_position delta: "
+                f"index={index}"
+            )
+
+        epsilon = 1e-12
+        computed_is_long_entry = target_position > epsilon and previous_target_position <= epsilon
+        computed_is_flatten = target_position <= epsilon and previous_target_position > epsilon
+        computed_is_hold = abs(target_position) > epsilon and abs(position_change) <= epsilon
+        if is_long_entry != computed_is_long_entry:
+            raise ValueError(f"signal digest csv is_long_entry mismatch: index={index}")
+        if is_flatten != computed_is_flatten:
+            raise ValueError(f"signal digest csv is_flatten mismatch: index={index}")
+        if is_hold != computed_is_hold:
+            raise ValueError(f"signal digest csv is_hold mismatch: index={index}")
+
         if first_timestamp is None:
             first_timestamp = timestamp
             first_target_position = target_position
