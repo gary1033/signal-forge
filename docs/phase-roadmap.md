@@ -75,6 +75,7 @@
 52. 回測 trace schema 演進：`*_trace_summary.json` 加入 deterministic `schema_version`（validator + exact-text regression）。
 53. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `flip_count`（同一 bar 由 long 反手到 short 或 short 反手到 long），並用 validator 驗證 `flip_count <= nonzero_position_change_count`（test-covered）。
 54. 回測 artifact validation：`validate_signal_digest_csv(...)` 交叉驗證 `entry_count` / `short_entry_count` / flatten buckets / `flip_count` / `timestamps_iso8601` 與 `*_trace_summary.json` 一致（test-covered）。
+55. 回測 trace timestamp 可稽核性：`*_trace_summary.json` 加入 deterministic `start_date` / `end_date`（由 ISO-8601 timestamp 萃取），方便人工核對 backtest 期間（test-covered）。
 
 ## 下一步候選
 

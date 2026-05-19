@@ -37,6 +37,23 @@ def _is_iso8601_timestamp(timestamp: str) -> bool:
     return True
 
 
+def _extract_iso8601_date(timestamp: str | None) -> str | None:
+    if not timestamp:
+        return None
+    if _ISO_DATE_PATTERN.match(timestamp):
+        try:
+            date.fromisoformat(timestamp)
+        except ValueError:
+            return None
+        return timestamp
+    candidate = timestamp.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+    return parsed.date().isoformat()
+
+
 @dataclass(frozen=True)
 class EntryEdgeReportPaths:
     markdown: Path
@@ -589,6 +606,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "schema_version": int,
         "bar_count": int,
         "close_count": int,
+        "end_date": (type(None), str),
         "entry_count": int,
         "first_target_position": (int, float),
         "first_timestamp": (type(None), str),
@@ -609,6 +627,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "reason_counts": list,
         "reasons": list,
         "short_entry_count": int,
+        "start_date": (type(None), str),
         "timestamps_iso8601": bool,
         "unique_reason_count": int,
     }
@@ -629,6 +648,18 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     bar_count = int(trace_summary["bar_count"])
     if bar_count < 0:
         raise ValueError("trace summary trace_summary.bar_count must be non-negative")
+
+    start_date = trace_summary.get("start_date")
+    end_date = trace_summary.get("end_date")
+    for label, value in (("start_date", start_date), ("end_date", end_date)):
+        if value is None:
+            continue
+        if not isinstance(value, str) or not _ISO_DATE_PATTERN.match(value):
+            raise ValueError(f"trace summary trace_summary.{label} must be ISO date")
+        try:
+            date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError(f"trace summary trace_summary.{label} must be ISO date") from exc
 
     min_target_position = float(trace_summary["min_target_position"])
     max_target_position = float(trace_summary["max_target_position"])
@@ -957,11 +988,14 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     ]
     unique_reasons = sorted(reason_counts.keys())
     timestamps_iso8601 = all(_is_iso8601_timestamp(digest.timestamp) for digest in digests)
+    start_date = _extract_iso8601_date(first_timestamp)
+    end_date = _extract_iso8601_date(last_timestamp)
     return {
         "trace_summary": {
-            "schema_version": 1,
+            "schema_version": 2,
             "bar_count": len(digests),
             "close_count": close_count,
+            "end_date": end_date,
             "entry_count": open_count,
             "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
@@ -980,6 +1014,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "max_target_position": _round_float(max_target_position, 6),
             "min_target_position": _round_float(min_target_position, 6),
             "short_entry_count": short_entry_count,
+            "start_date": start_date,
             "timestamps_iso8601": timestamps_iso8601,
             "unique_reason_count": len(unique_reasons),
             "reasons": unique_reasons,
