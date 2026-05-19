@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# NOTE:
+# - This is a lightweight "readiness" metric used by the bounded autoresearch loop.
+# - It is intentionally simple and deterministic (keyword presence checks).
 CHECKS: tuple[tuple[str, int, tuple[str, ...], tuple[str, ...]], ...] = (
     (
         "phase roadmap",
@@ -65,7 +67,7 @@ CHECKS: tuple[tuple[str, int, tuple[str, ...], tuple[str, ...]], ...] = (
         "research notes",
         5,
         ("docs",),
-        ("方法", "驗證命令", "下一步"),
+        ("Method", "Verify", "Next step"),
     ),
 )
 
