@@ -55,6 +55,7 @@
 | 2026-05-20 03:22 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `entry_count`（alias `open_count`） | 110 -> 110；44 tests OK | keep |
 | 2026-05-20 03:36 | 強化 backtest artifacts 一致性驗證 | `write_phase_outputs` 寫出 artifact 後交叉驗證 `*_signals.csv` 與 `*_trace_summary.json`（counts + 首尾欄位一致） | 110 -> 110；45 tests OK | keep |
 | 2026-05-20 03:51 | 強化 signals CSV validator（per-row semantics） | `validate_signal_digest_csv(...)` 加入 position delta 與 flags per-row 一致性檢查，避免局部篡改仍通過 counts 檢查 | 110 -> 110；46 tests OK | keep |
+| 2026-05-20 04:05 | Phase markdown 顯示 trace summary 摘要 | Backtest mode 時在 Phase markdown 追加 `Backtest Trace Summary` 區段（counts/首尾部位/原因數）並用 exact-text test 鎖住 | 110 -> 110；46 tests OK | keep |
 
 ## 方法紀錄
 
@@ -84,6 +85,6 @@
 ## 最後狀態
 
 - 最新已知 metric：`110`
-- 最新已知 guard：43 tests OK，`git diff --check` clean
+- 最新已知 guard：46 tests OK，`git diff --check` clean
 - 最後一輪 commit：已推送到 `origin/main`（以 `git log -5` 為準）
 - 下一步：只擴充 backtest verifiability 與 deterministic artifacts；live 在回測穩定前維持 dry-run only。

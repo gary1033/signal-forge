@@ -88,21 +88,31 @@ def write_phase_outputs(
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    markdown_path.write_text(_phase_markdown_report(result), encoding="utf-8")
 
     signal_digest_csv: Path | None = None
     trace_summary_json: Path | None = None
+    trace_summary: dict[str, object] | None = None
+    signal_digest_text: str | None = None
     if result.mode == "backtest" and result.signal_digests is not None:
         signal_digest_text = _signal_digest_csv(result.signal_digests)
+        trace_summary = _signal_trace_summary_dict(result.signal_digests)
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, signal_digest_text)
+
+    markdown_path.write_text(
+        _phase_markdown_report(result, trace_summary=trace_summary),
+        encoding="utf-8",
+    )
+
+    if result.mode == "backtest" and result.signal_digests is not None:
+        assert signal_digest_text is not None
         signal_digest_path.write_text(
             signal_digest_text,
             encoding="utf-8",
             newline="",
         )
         signal_digest_csv = signal_digest_path
-        trace_summary = _signal_trace_summary_dict(result.signal_digests)
-        validate_trace_summary(trace_summary)
-        validate_signal_digest_csv(trace_summary, signal_digest_text)
+        assert trace_summary is not None
         trace_summary_path.write_text(
             json.dumps(
                 trace_summary,
@@ -859,7 +869,11 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
     }
 
 
-def _phase_markdown_report(result: PhaseExecutionResult) -> str:
+def _phase_markdown_report(
+    result: PhaseExecutionResult,
+    *,
+    trace_summary: dict[str, object] | None = None,
+) -> str:
     lines = [
         f"# Phase Report - {result.mode}",
         "",
@@ -907,6 +921,25 @@ def _phase_markdown_report(result: PhaseExecutionResult) -> str:
                 f"- Top reasons: {top_reasons}",
             ]
         )
+
+        if trace_summary is not None:
+            trace = trace_summary.get("trace_summary")
+            if isinstance(trace, dict):
+                lines.extend(
+                    [
+                        "",
+                        "## Backtest Trace Summary",
+                        "",
+                        f"- Bar count: {trace.get('bar_count')}",
+                        f"- Entry/Flatten/Hold: {trace.get('entry_count')}/{trace.get('flatten_count')}/{trace.get('hold_count')}",
+                        f"- Open/Close: {trace.get('open_count')}/{trace.get('close_count')}",
+                        f"- First target position: {trace.get('first_target_position')}",
+                        f"- Last previous target position: {trace.get('last_previous_target_position')}",
+                        f"- Nonzero target positions: {trace.get('nonzero_target_position_count')}",
+                        f"- Nonzero position changes: {trace.get('nonzero_position_change_count')}",
+                        f"- Unique reasons: {trace.get('unique_reason_count')}",
+                    ]
+                )
 
     if result.order_intents is not None:
         lines.extend(["", "## Live Dry-Run Intents", ""])
