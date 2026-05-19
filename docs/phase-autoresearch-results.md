@@ -74,7 +74,7 @@ git diff --check
 | 2026-05-20 05:50 | Signals CSV 數值格式稽核 | 110 -> 110 | pass | keep | pushed to `origin/main` | `validate_signal_digest_csv(...)` 強制 signals CSV 數值欄位採 fixed 6-decimal formatting（並拒絕非 finite score），避免浮點格式 drift（test-covered） |
 | 2026-05-20 06:06 | Trace summary schema version | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic `schema_version`，用於 schema 演進稽核（test-covered）。 |
 | 2026-05-20 06:23 | Trace summary `flip_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic `flip_count`（反手次數），並驗證 `flip_count <= nonzero_position_change_count`（test-covered）。 |
-| 2026-05-20 06:35 | Signals CSV `is_hold` epsilon 一致性 | 110 -> 110 | pass | keep | (TBD) | `write_signal_digest_csv(...)` 與 trace summary 的 `hold_count` 統一 epsilon 定義，並補上 tiny position regression test，避免 flags drift。 |
+| 2026-05-20 06:35 | Signals CSV `is_hold` epsilon 一致性 | 110 -> 110 | pass | keep | `8d321e9` pushed | `write_signal_digest_csv(...)` 與 trace summary 的 `hold_count` / `nonzero_position_change_count` 統一 epsilon 定義，並補上 tiny position regression test，避免 flags drift。 |
 
 ## 總結
 
