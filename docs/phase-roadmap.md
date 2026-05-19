@@ -26,6 +26,7 @@ Done (2026-05-19):
 5. Phase report: includes mode/adapter/dry-run metadata
 6. Failure modes: unknown mode / hold period / bar validation + tests
 7. Docs: Phase workflow documented for PowerShell
+8. Backtest regression: Phase report contract test (fixed bars -> stable summary/markdown)
 
 Next candidates (keep live safety unchanged):
 - Backtest stability: determinism and golden regression tests

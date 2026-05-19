@@ -66,3 +66,21 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (pushed to `origin/main`)
 - Next step: add a small deterministic backtest golden test (fixed input bars -> fixed report/summary contract) without changing live safety.
+
+## 2026-05-19 17:13 +08:00
+
+- Goal: keep Phase readiness at max while adding a deterministic backtest "golden" regression test for the Phase report contract.
+- Change set:
+  - Added a unit test that asserts stable Phase backtest summary JSON + markdown fields (mode/adapter metadata, entry-edge invariants).
+- Method:
+  - Add a contract-level regression test (fixed input bars -> fixed Phase report outputs).
+  - Keep live mode dry-run only; no broker, no credentials, no submissions.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (28 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: expand backtest determinism to cover report schema validation and/or stable JSON ordering (still no live broker integration).

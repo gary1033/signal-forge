@@ -67,6 +67,31 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("Adapter Metadata", markdown)
         self.assertIn("submitted=False", markdown)
 
+    def test_writes_phase_output_backtest_has_stable_summary_contract(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-backtest")
+            summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
+            markdown = paths.markdown.read_text(encoding="utf-8")
+
+        self.assertEqual(summary["phase"]["mode"], "backtest")
+        self.assertEqual(summary["phase"]["adapter_name"], "backtest")
+        self.assertEqual(summary["phase"]["dry_run"], False)
+        self.assertEqual(summary["entry_edge"]["strategy_name"], "one_trade")
+        self.assertEqual(summary["entry_edge"]["decision"], "pass")
+        self.assertEqual(summary["entry_edge"]["profit_factor_status"], "infinite")
+        self.assertIsNone(summary["entry_edge"]["profit_factor"])
+        self.assertEqual(summary["entry_edge"]["trade_count"], 1)
+        self.assertAlmostEqual(summary["entry_edge"]["end_equity"], 10995.8, places=6)
+        self.assertIn("Backtest Result", markdown)
+        self.assertIn("Profit Factor: Infinity", markdown)
+        self.assertIn("End equity: 10995.80", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()
