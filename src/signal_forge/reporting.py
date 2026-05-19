@@ -99,9 +99,11 @@ def write_phase_outputs(
             newline="",
         )
         signal_digest_csv = signal_digest_path
+        trace_summary = _signal_trace_summary_dict(result.signal_digests)
+        validate_trace_summary(trace_summary)
         trace_summary_path.write_text(
             json.dumps(
-                _signal_trace_summary_dict(result.signal_digests),
+                trace_summary,
                 ensure_ascii=False,
                 indent=2,
                 sort_keys=True,
@@ -294,6 +296,129 @@ def validate_signal_digests(digests: list[SignalDigest]) -> None:
         previous_index = digest.index
         previous_timestamp = digest.timestamp
         previous_target_position = digest.target_position
+
+
+def validate_trace_summary(summary: dict[str, object]) -> None:
+    allowed_keys = {"trace_summary"}
+    extra_keys = sorted(set(summary.keys()) - allowed_keys)
+    if extra_keys:
+        raise ValueError(f"trace summary has unexpected keys: {extra_keys}")
+
+    trace_summary = summary.get("trace_summary")
+    if not isinstance(trace_summary, dict):
+        raise ValueError("trace summary missing required dict key: trace_summary")
+
+    required_fields: dict[str, object] = {
+        "bar_count": int,
+        "close_count": int,
+        "first_timestamp": (type(None), str),
+        "flatten_count": int,
+        "hold_count": int,
+        "last_target_position": (int, float),
+        "last_timestamp": (type(None), str),
+        "long_entry_count": int,
+        "nonzero_position_change_count": int,
+        "open_count": int,
+        "reason_counts": list,
+        "reasons": list,
+        "unique_reason_count": int,
+    }
+
+    missing = sorted(field for field in required_fields if field not in trace_summary)
+    if missing:
+        raise ValueError(f"trace summary trace_summary missing keys: {missing}")
+
+    for field, expected in required_fields.items():
+        value = trace_summary.get(field)
+        if not isinstance(value, expected):
+            raise ValueError(f"trace summary trace_summary.{field} has invalid type")
+
+    bar_count = int(trace_summary["bar_count"])
+    if bar_count < 0:
+        raise ValueError("trace summary trace_summary.bar_count must be non-negative")
+
+    counts = {
+        "close_count": int(trace_summary["close_count"]),
+        "flatten_count": int(trace_summary["flatten_count"]),
+        "hold_count": int(trace_summary["hold_count"]),
+        "long_entry_count": int(trace_summary["long_entry_count"]),
+        "nonzero_position_change_count": int(trace_summary["nonzero_position_change_count"]),
+        "open_count": int(trace_summary["open_count"]),
+    }
+    for name, value in counts.items():
+        if value < 0:
+            raise ValueError(f"trace summary trace_summary.{name} must be non-negative")
+        if value > bar_count:
+            raise ValueError(f"trace summary trace_summary.{name} must be <= bar_count")
+
+    if counts["open_count"] + counts["close_count"] > counts["nonzero_position_change_count"]:
+        raise ValueError(
+            "trace summary trace_summary.open_count + close_count must be <= nonzero_position_change_count"
+        )
+
+    first_timestamp = trace_summary.get("first_timestamp")
+    last_timestamp = trace_summary.get("last_timestamp")
+    if bar_count == 0:
+        if first_timestamp is not None or last_timestamp is not None:
+            raise ValueError(
+                "trace summary trace_summary timestamps must be None when bar_count=0"
+            )
+    else:
+        if not isinstance(first_timestamp, str) or not first_timestamp:
+            raise ValueError(
+                "trace summary trace_summary.first_timestamp must be a non-empty str when bar_count>0"
+            )
+        if not isinstance(last_timestamp, str) or not last_timestamp:
+            raise ValueError(
+                "trace summary trace_summary.last_timestamp must be a non-empty str when bar_count>0"
+            )
+        if last_timestamp < first_timestamp:
+            raise ValueError("trace summary trace_summary timestamps must be non-decreasing")
+
+    reasons = trace_summary.get("reasons") or []
+    if not isinstance(reasons, list):
+        raise ValueError("trace summary trace_summary.reasons must be a list")
+    if any((not isinstance(reason, str)) or (not reason) for reason in reasons):
+        raise ValueError("trace summary trace_summary.reasons must contain non-empty strings")
+    if reasons != sorted(reasons):
+        raise ValueError("trace summary trace_summary.reasons must be sorted")
+    if len(set(reasons)) != len(reasons):
+        raise ValueError("trace summary trace_summary.reasons must be unique")
+
+    unique_reason_count = int(trace_summary["unique_reason_count"])
+    if unique_reason_count != len(reasons):
+        raise ValueError("trace summary trace_summary.unique_reason_count must match reasons length")
+
+    reason_counts = trace_summary.get("reason_counts") or []
+    if not isinstance(reason_counts, list):
+        raise ValueError("trace summary trace_summary.reason_counts must be a list")
+
+    parsed_reason_counts: list[tuple[str, int]] = []
+    for index, item in enumerate(reason_counts):
+        if not isinstance(item, dict):
+            raise ValueError(f"trace summary trace_summary.reason_counts[{index}] must be a dict")
+        if set(item.keys()) != {"reason", "count"}:
+            raise ValueError(f"trace summary trace_summary.reason_counts[{index}] must have keys ['reason', 'count']")
+        reason = item.get("reason")
+        count = item.get("count")
+        if not isinstance(reason, str) or not reason:
+            raise ValueError(f"trace summary trace_summary.reason_counts[{index}].reason must be a non-empty str")
+        if not isinstance(count, int) or count <= 0:
+            raise ValueError(f"trace summary trace_summary.reason_counts[{index}].count must be a positive int")
+        parsed_reason_counts.append((reason, count))
+
+    reason_count_reasons = [reason for reason, _count in parsed_reason_counts]
+    if set(reason_count_reasons) != set(reasons):
+        raise ValueError("trace summary trace_summary.reason_counts reasons must match reasons list")
+    if len(set(reason_count_reasons)) != len(reason_count_reasons):
+        raise ValueError("trace summary trace_summary.reason_counts reasons must be unique")
+
+    expected_reason_counts = sorted(parsed_reason_counts, key=lambda item: (-item[1], item[0]))
+    if parsed_reason_counts != expected_reason_counts:
+        raise ValueError("trace summary trace_summary.reason_counts must be sorted by (-count, reason)")
+
+    if sum(count for _reason, count in parsed_reason_counts) != bar_count:
+        raise ValueError("trace summary trace_summary.reason_counts total must equal bar_count")
 
 
 def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:

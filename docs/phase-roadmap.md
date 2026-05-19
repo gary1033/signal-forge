@@ -60,6 +60,7 @@
 38. 回測 digest validation：驗證 `position_change` 與 `target_position` delta 一致（連續性稽核）。
 39. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `reason_counts`（frequency list）。
 40. 回測 trace 可稽核性：`*_trace_summary.json` 加入 deterministic `open_count` / `close_count`。
+41. 回測 trace validation：加入 `*_trace_summary.json` schema + invariants validator（test-covered）。
 
 ## 下一步候選
 

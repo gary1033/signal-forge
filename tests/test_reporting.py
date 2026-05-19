@@ -15,6 +15,7 @@ from signal_forge import (
     validate_bars,
 )
 from signal_forge.reporting import (
+    validate_trace_summary,
     validate_phase_summary,
     validate_signal_digests,
     write_entry_edge_outputs,
@@ -140,6 +141,22 @@ class ReportingTests(unittest.TestCase):
         ]
         with self.assertRaisesRegex(ValueError, "position_change must match"):
             validate_signal_digests(digests)
+
+    def test_trace_summary_validator_rejects_reason_count_total_mismatch(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-backtest-trace-summary-validate")
+            self.assertIsNotNone(paths.trace_summary_json)
+            trace_summary = json.loads((paths.trace_summary_json or paths.summary_json).read_text(encoding="utf-8"))
+
+        (trace_summary["trace_summary"]["reason_counts"] or [])[0]["count"] = 1
+        with self.assertRaisesRegex(ValueError, "total must equal bar_count"):
+            validate_trace_summary(trace_summary)
 
     def test_writes_markdown_json_and_trade_log(self) -> None:
         bars = [
