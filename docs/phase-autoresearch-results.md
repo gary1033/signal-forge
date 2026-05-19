@@ -68,6 +68,7 @@ git diff --check
 | 2026-05-20 04:19 | Phase markdown digest/trace 對照 | 110 -> 110 | pass | keep | pushed to `origin/main` | Backtest Digest Invariants 追加 trace summary cross-check（bar_count / unique reasons / last target position）並更新 exact-text regression |
 | 2026-05-20 04:35 | Trace summary 加入 `short_entry_count` | 110 -> 110 | pass | keep | `19efe87` pushed | `*_trace_summary.json` 擴充 deterministic short entry 稽核欄位，並驗證 `long_entry_count + short_entry_count == entry_count` |
 | 2026-05-20 04:50 | Trace summary 拆解 flatten 類型 | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 `flatten_to_zero_count` / `flatten_to_short_count`，並驗證加總等於 `flatten_count` |
+| 2026-05-20 05:06 | Trace summary 加入 min/max target position | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic `min_target_position` / `max_target_position`，並用 validator 驗證首尾部位落在範圍內 |
 
 ## 總結
 

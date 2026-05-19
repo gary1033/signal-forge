@@ -518,6 +518,8 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "last_target_position": (int, float),
         "last_timestamp": (type(None), str),
         "long_entry_count": int,
+        "max_target_position": (int, float),
+        "min_target_position": (int, float),
         "nonzero_target_position_count": int,
         "nonzero_position_change_count": int,
         "open_count": int,
@@ -539,6 +541,13 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     bar_count = int(trace_summary["bar_count"])
     if bar_count < 0:
         raise ValueError("trace summary trace_summary.bar_count must be non-negative")
+
+    min_target_position = float(trace_summary["min_target_position"])
+    max_target_position = float(trace_summary["max_target_position"])
+    if min_target_position > max_target_position:
+        raise ValueError(
+            "trace summary trace_summary min_target_position must be <= max_target_position"
+        )
 
     counts = {
         "close_count": int(trace_summary["close_count"]),
@@ -596,6 +605,8 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
             float(trace_summary["first_target_position"]) != 0.0
             or float(trace_summary["last_previous_target_position"]) != 0.0
             or float(trace_summary["last_target_position"]) != 0.0
+            or min_target_position != 0.0
+            or max_target_position != 0.0
         ):
             raise ValueError(
                 "trace summary trace_summary target positions must be 0.0 when bar_count=0"
@@ -611,6 +622,17 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
             )
         if last_timestamp < first_timestamp:
             raise ValueError("trace summary trace_summary timestamps must be non-decreasing")
+
+        first_target_position = float(trace_summary["first_target_position"])
+        last_target_position = float(trace_summary["last_target_position"])
+        if not (min_target_position <= first_target_position <= max_target_position):
+            raise ValueError(
+                "trace summary trace_summary first_target_position must be within min/max target_position range"
+            )
+        if not (min_target_position <= last_target_position <= max_target_position):
+            raise ValueError(
+                "trace summary trace_summary last_target_position must be within min/max target_position range"
+            )
 
     reasons = trace_summary.get("reasons") or []
     if not isinstance(reasons, list):
@@ -809,6 +831,9 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None
     first_target_position = digests[0].target_position if digests else 0.0
+    target_positions = [digest.target_position for digest in digests]
+    min_target_position = min(target_positions) if target_positions else 0.0
+    max_target_position = max(target_positions) if target_positions else 0.0
     last_previous_target_position = (
         digests[-1].target_position - digests[-1].position_change if digests else 0.0
     )
@@ -838,6 +863,8 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "first_timestamp": first_timestamp,
             "last_timestamp": last_timestamp,
             "last_target_position": _round_float(last_target_position, 6),
+            "max_target_position": _round_float(max_target_position, 6),
+            "min_target_position": _round_float(min_target_position, 6),
             "short_entry_count": short_entry_count,
             "unique_reason_count": len(unique_reasons),
             "reasons": unique_reasons,
