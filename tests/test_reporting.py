@@ -483,6 +483,7 @@ class ReportingTests(unittest.TestCase):
                             '    "reasons": [',
                             '      "entry"',
                             "    ],",
+                            '    "short_entry_count": 0,',
                             '    "unique_reason_count": 1',
                             "  }",
                             "}",

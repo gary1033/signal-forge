@@ -521,6 +521,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "open_count": int,
         "reason_counts": list,
         "reasons": list,
+        "short_entry_count": int,
         "unique_reason_count": int,
     }
 
@@ -546,6 +547,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "nonzero_target_position_count": int(trace_summary["nonzero_target_position_count"]),
         "nonzero_position_change_count": int(trace_summary["nonzero_position_change_count"]),
         "open_count": int(trace_summary["open_count"]),
+        "short_entry_count": int(trace_summary["short_entry_count"]),
     }
     for name, value in counts.items():
         if value < 0:
@@ -555,6 +557,11 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
 
     if counts["entry_count"] != counts["open_count"]:
         raise ValueError("trace summary trace_summary.entry_count must equal open_count")
+
+    if counts["long_entry_count"] + counts["short_entry_count"] != counts["entry_count"]:
+        raise ValueError(
+            "trace summary trace_summary.long_entry_count + short_entry_count must equal entry_count"
+        )
 
     if counts["hold_count"] > counts["nonzero_target_position_count"]:
         raise ValueError(
@@ -768,10 +775,14 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     )
     open_count = 0
     close_count = 0
+    short_entry_count = 0
     for digest in digests:
         previous_target_position = digest.target_position - digest.position_change
-        if abs(previous_target_position) < 1e-12 and abs(digest.target_position) > 1e-12:
+        is_open = abs(previous_target_position) < 1e-12 and abs(digest.target_position) > 1e-12
+        if is_open:
             open_count += 1
+            if not digest.is_long_entry:
+                short_entry_count += 1
         if abs(previous_target_position) > 1e-12 and abs(digest.target_position) < 1e-12:
             close_count += 1
     nonzero_position_change_count = sum(
@@ -807,6 +818,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "first_timestamp": first_timestamp,
             "last_timestamp": last_timestamp,
             "last_target_position": _round_float(last_target_position, 6),
+            "short_entry_count": short_entry_count,
             "unique_reason_count": len(unique_reasons),
             "reasons": unique_reasons,
             "reason_counts": reason_count_items,
