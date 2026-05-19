@@ -119,5 +119,5 @@ This log is the audit trail for bounded autoresearch.
 - Metric: 110 -> 110
 - Guard: pass (29 tests OK; `git diff --check` clean)
 - Decision: keep
-- Commit: (pending)
+- Commit: `3d99839` (pushed to `origin/main`)
 - Next step: if stable, consider tightening backtest golden tests to compare exact JSON text (still no live trading integration).
