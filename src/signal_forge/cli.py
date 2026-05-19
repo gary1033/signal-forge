@@ -187,12 +187,12 @@ def _build_strategy(args: argparse.Namespace) -> Strategy:
 
 def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:
     return {
-        "來源策略": args.strategy,
-        "SignalForge 策略": strategy.name,
-        "進場方向": "純多",
-        "進場事件": "target_position 從非多方轉為 > 0 的 bar close 訊號",
-        "不納入第一期": "short、停損、停利、濾網、加碼、參數最佳化",
-        "重繪處理": "第一期只接受已收盤 bar 可確認的訊號",
+        "source_strategy": args.strategy,
+        "strategy_impl": strategy.name,
+        "entry_side": "long_only",
+        "entry_event": "bar close signal where target_position flips from <=0 to >0",
+        "excluded_in_phase1": "short/stops/take-profit/filters/scale-in/parameter-optimization",
+        "repaint_handling": "phase 1 accepts signals confirmed on closed bars only",
     }
 
 

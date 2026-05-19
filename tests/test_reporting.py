@@ -43,7 +43,7 @@ class ReportingTests(unittest.TestCase):
                 result,
                 temp_dir,
                 data_validation=validate_bars(bars),
-                strategy_spec={"進場方向": "純多"},
+                strategy_spec={"entry_side": "long_only"},
             )
             self.assertTrue(paths.markdown.exists())
             self.assertTrue(paths.summary_json.exists())
@@ -51,7 +51,10 @@ class ReportingTests(unittest.TestCase):
             summary = json.loads(paths.summary_json.read_text(encoding="utf-8"))
             self.assertEqual(summary["decision"], result.decision)
             self.assertIn("signal_timestamp", paths.trade_log_csv.read_text(encoding="utf-8"))
-            self.assertIn("蒸餾後進場規格", paths.markdown.read_text(encoding="utf-8"))
+            self.assertIn(
+                "Strategy Spec (Distilled)",
+                paths.markdown.read_text(encoding="utf-8"),
+            )
 
     def test_writes_phase_output_with_adapter_metadata(self) -> None:
         bars = [

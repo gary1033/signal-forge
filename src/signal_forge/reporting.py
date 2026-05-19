@@ -292,34 +292,34 @@ def _markdown_report(
     lines = [
         f"# Entry Edge Report - {result.strategy_name}",
         "",
-        "## 結論",
+        "## Conclusion",
         "",
-        f"- 判定：{result.decision.upper()}",
-        f"- Profit Factor：{pf}",
-        f"- 交易數：{result.trade_count}",
-        f"- 勝率：{result.win_rate:.2%}",
-        f"- 平均淨損益：{result.average_net_pnl:.2f}",
-        f"- 最大回撤：{result.max_drawdown:.2%}",
+        f"- Decision: {result.decision.upper()}",
+        f"- Profit Factor: {pf}",
+        f"- Trades: {result.trade_count}",
+        f"- Win rate: {result.win_rate:.2%}",
+        f"- Average net PnL: {result.average_net_pnl:.2f}",
+        f"- Max drawdown: {result.max_drawdown:.2%}",
     ]
     if result.failure_reason:
-        lines.append(f"- 未通過原因：{result.failure_reason}")
+        lines.append(f"- Failure reason: {result.failure_reason}")
     if result.sample_risk:
-        lines.append(f"- 樣本風險：{result.sample_risk}")
+        lines.append(f"- Sample risk: {result.sample_risk}")
 
     lines.extend(
         [
             "",
-            "## 回測設定",
+            "## Backtest Settings",
             "",
-            f"- 初始權益：{result.config.initial_equity:.2f}",
-            f"- 手續費 bps：{result.config.commission_bps:.2f}",
-            f"- 滑價 bps：{result.config.slippage_bps:.2f}",
-            f"- 固定持有 bars：{result.config.hold_bars_per_day}",
-            f"- PF 門檻：>{result.config.pass_profit_factor:.2f}",
-            "- 成交規則：訊號於 bar close 後成立，下一根 bar open 進場，固定持有後以 exit bar close 出場。",
-            "- 第一階段規則：純多優先；short 訊號忽略；不套用停損、停利、濾網或參數最佳化。",
+            f"- Initial equity: {result.config.initial_equity:.2f}",
+            f"- Commission (bps): {result.config.commission_bps:.2f}",
+            f"- Slippage (bps): {result.config.slippage_bps:.2f}",
+            f"- Fixed hold bars: {result.config.hold_bars_per_day}",
+            f"- Pass threshold PF: >{result.config.pass_profit_factor:.2f}",
+            "- Execution: signal confirmed at bar close; enter at next bar open; exit at exit bar close after fixed hold.",
+            "- Phase 1 constraints: long-only; ignore short signals; no stops/take-profit/filters/parameter optimization.",
             "",
-            "## 資料檢查",
+            "## Data Validation",
             "",
         ]
     )
@@ -327,36 +327,36 @@ def _markdown_report(
     if data_validation:
         lines.extend(
             [
-                f"- bar 數：{data_validation.bar_count}",
-                f"- 起始時間：{data_validation.start_timestamp}",
-                f"- 結束時間：{data_validation.end_timestamp}",
-                f"- 錯誤數：{len(data_validation.errors)}",
-                f"- 警告數：{len(data_validation.warnings)}",
+                f"- Bars: {data_validation.bar_count}",
+                f"- Start: {data_validation.start_timestamp}",
+                f"- End: {data_validation.end_timestamp}",
+                f"- Errors: {len(data_validation.errors)}",
+                f"- Warnings: {len(data_validation.warnings)}",
             ]
         )
         for warning in data_validation.warnings:
-            lines.append(f"- 警告：{warning}")
+            lines.append(f"- Warning: {warning}")
     else:
-        lines.append("- 未提供資料檢查結果。")
+        lines.append("- Data validation was not provided.")
 
-    lines.extend(["", "## 蒸餾後進場規格", ""])
+    lines.extend(["", "## Strategy Spec (Distilled)", ""])
     if strategy_spec:
         for key, value in strategy_spec.items():
-            lines.append(f"- {key}：{value}")
+            lines.append(f"- {key}: {value}")
     else:
-        lines.append("- 未提供策略蒸餾規格。")
+        lines.append("- No strategy spec was provided.")
 
     lines.extend(
         [
             "",
-            "## 交易統計",
+            "## Trade Statistics",
             "",
-            f"- 總獲利：{result.gross_profit:.2f}",
-            f"- 總虧損：{result.gross_loss:.2f}",
-            f"- 忽略 short 訊號數：{result.ignored_short_count}",
-            f"- 無法關閉訊號數：{result.unclosed_signal_count}",
-            f"- 重疊略過訊號數：{result.overlapping_signal_count}",
-            f"- 期末權益：{result.end_equity:.2f}",
+            f"- Gross profit: {result.gross_profit:.2f}",
+            f"- Gross loss: {result.gross_loss:.2f}",
+            f"- Ignored short signals: {result.ignored_short_count}",
+            f"- Unclosed signals: {result.unclosed_signal_count}",
+            f"- Overlapping ignored signals: {result.overlapping_signal_count}",
+            f"- End equity: {result.end_equity:.2f}",
             "",
         ]
     )

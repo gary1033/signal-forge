@@ -29,6 +29,7 @@ Done (2026-05-19):
 8. Backtest regression: Phase report contract test (fixed bars -> stable summary/markdown)
 9. Phase report: validate summary JSON schema (contract guardrail)
 10. Reporting: stable JSON key ordering for deterministic diffs
+11. Backtest portability: Entry Edge report + CLI strategy spec ASCII-only (Windows-friendly)
 
 Next candidates (keep live safety unchanged):
 - Backtest stability: determinism and golden regression tests

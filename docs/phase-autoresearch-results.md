@@ -28,3 +28,4 @@ git diff --check
 | 2026-05-19 17:13 | Backtest Phase report contract regression test | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | Fixed bars -> stable summary/markdown invariants |
 | 2026-05-19 17:27 | Phase report summary schema validation | 110 -> 110 | pass | keep | see `git log -1 --oneline` (pushed to `origin/main`) | Enforce deterministic Phase summary JSON contract |
 | 2026-05-19 17:42 | Reporting: stable JSON key ordering (`sort_keys=True`) | 110 -> 110 | pass | keep | `3d99839` (pushed) | Deterministic diffs for report JSON |
+| 2026-05-19 18:02 | Entry Edge report ASCII-only labels | 110 -> 110 | pass | keep | (this wakeup) | Windows-friendly backtest report output |

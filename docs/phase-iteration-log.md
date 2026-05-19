@@ -121,3 +121,23 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: `3d99839` (pushed to `origin/main`)
 - Next step: if stable, consider tightening backtest golden tests to compare exact JSON text (still no live trading integration).
+
+## 2026-05-19 18:02 +08:00
+
+- Goal: keep Phase readiness at max while making backtest reports readable/stable on Windows terminals (avoid non-ASCII / encoding-dependent labels).
+- Change set:
+  - Converted Entry Edge markdown report labels/headings to ASCII-only (English).
+  - Converted CLI `strategy_spec` keys/values to ASCII-only so generated reports stay portable.
+  - Updated unit tests to assert the new report section heading (`Strategy Spec (Distilled)`).
+- Method:
+  - Preserve backtest/live mode split and contracts; change only presentation text for report portability.
+  - Keep live mode dry-run only; no broker, no credentials, no submissions.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass
+- Decision: keep
+- Commit: (this wakeup)
+- Next step: continue backtest determinism/golden tests while keeping live dry-run only.
