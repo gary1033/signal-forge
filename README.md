@@ -19,6 +19,7 @@ SignalForge 是一個把 TradingView 開源 Pine Script 想法轉成可驗證量
 - `Backtester`：標準函式庫實作的簡單 close-to-close 回測器。
 - `EntryEdgeEvaluator`：第一期專用的純多進場優勢驗證器。
 - `python -m signal_forge.cli entry-edge`：從 OHLCV CSV 產出 Markdown、JSON、trade log。
+- `python -m signal_forge.cli phase`：用同一個 Phase 入口切換 `backtest` 與 `live` dry-run。
 - `examples/run_sample_backtest.py`：用合成資料跑三個策略。
 - `tests/`：指標、策略與回測器的基本測試。
 
@@ -32,6 +33,8 @@ $env:PYTHONPATH = "src"
 python -m unittest discover -s tests
 python examples\run_sample_backtest.py
 python -m signal_forge.cli entry-edge --csv data\sample\phase1_demo_ohlcv.csv --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase1-demo
+python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode backtest --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase-backtest-demo
+python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode live --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase-live-demo
 ```
 
 `reports/generated/` 會輸出：
@@ -39,6 +42,17 @@ python -m signal_forge.cli entry-edge --csv data\sample\phase1_demo_ohlcv.csv --
 - `phase1-demo.md`：研究報告與 pass/fail 結論。
 - `phase1-demo.json`：machine-readable summary。
 - `phase1-demo_trades.csv`：逐筆固定持有交易紀錄。
+- `phase-backtest-demo.md` / `.json`：Phase backtest 報告，記錄 `PhaseRunner`、`BacktestExecutionAdapter` 與 entry-edge 結果。
+- `phase-live-demo.md` / `.json`：Phase live dry-run 報告，記錄 `LiveExecutionAdapter` 產生的 order intent。
+
+## Phase 模式
+
+`phase` 指令是後續研究流程的統一入口。它目前支援兩種模式：
+
+- `backtest`：透過 `BacktestExecutionAdapter` 呼叫既有 `EntryEdgeEvaluator`，產出和 `entry-edge` 一致的研究結論，並額外寫出 phase metadata。
+- `live`：透過 `LiveExecutionAdapter` 只產生 dry-run order intent。這個模式不接 broker、不讀交易 API key、不呼叫外部交易 API，也不送出真實訂單。
+
+現階段 `live` 的用途是把未來真實交易接入前的工程邊界先固定下來。CLI 與報告都會保留 `dry_run=True`、`submitted=False` 與 safety note，等 backtest path、測試與風控設計穩定後，才評估是否新增真正的 broker adapter。
 
 ## 第一期研究流程
 

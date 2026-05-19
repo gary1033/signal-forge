@@ -41,3 +41,13 @@
 - 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`；`$env:PYTHONPATH='src'; python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode live --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase-live-demo`；`git diff --check`。
 - 結果：本輪完成 planned milestone，readiness score 預期維持 110 並保持測試全綠。
 - 下一步：更新 README 的 PowerShell phase 操作流程，並把 phase mode 欄位加進策略蒸餾模板。
+
+## 2026-05-19 12:53 Asia/Taipei
+
+- 方法：完成 roadmap 第 9、10 項，把已完成的 `phase --mode backtest|live` 行為寫進使用流程與策略蒸餾模板。
+- 文件：更新 `README.md`，加入 PowerShell phase backtest/live dry-run 範例、Phase output 檔名與 adapter 邊界說明。
+- 模板：更新 `docs/phase1-strategy-intake-template.md`，新增 Phase 執行紀錄欄位，要求記錄 mode、adapter、order intent 與 live dry-run 安全確認。
+- 安全邊界：本輪沒有修改 live execution code；文件明確保留 `LiveExecutionAdapter` 只產生 dry-run intent，且不接 broker、不讀交易 API key、不送單。
+- 驗證命令：`python tools\phase_readiness_score.py`；`$env:PYTHONPATH='src'; python -m unittest discover -s tests`；`$env:PYTHONPATH='src'; python -m signal_forge.cli phase --csv data\sample\phase1_demo_ohlcv.csv --mode live --strategy sma-crossover --fast-window 2 --slow-window 3 --output-dir reports\generated --run-name phase-live-demo`；`git diff --check`。
+- 結果：本輪完成 planned milestone，readiness score 應維持 110 並保持 guard 全綠。
+- 下一步：補一份方法筆記，說明 backtest/live 邊界、dry-run intent 與暫不接 broker 的工程理由。

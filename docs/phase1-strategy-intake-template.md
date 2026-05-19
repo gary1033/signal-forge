@@ -44,6 +44,17 @@
 - 預期資料欄位：
 - `hold_bars_per_day`：
 
+## Phase 執行紀錄
+
+- Phase mode：`backtest` / `live`
+- Backtest PowerShell 命令：
+- Live dry-run PowerShell 命令：
+- Backtest adapter：`BacktestExecutionAdapter`
+- Live adapter：`LiveExecutionAdapter`
+- Live adapter 範圍：只產生 dry-run order intent，不接 broker、不讀交易 API key、不送出真實訂單。
+- Order intent 欄位：symbol、side、quantity、reason、dry_run、submitted、safety_note。
+- `live` 安全確認：`dry_run=True`、`submitted=False`、safety note 必須明確標示不送單。
+
 ## Entry Edge 結論
 
 - 資料期間：
