@@ -157,6 +157,8 @@ def write_phase_outputs(
 
 def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) -> None:
     import io
+    import math
+    import re
 
     trace = trace_summary.get("trace_summary")
     if not isinstance(trace, dict):
@@ -193,12 +195,21 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     if not rows:
         return
 
+    fixed_decimal_re = re.compile(r"^-?\d+\.\d{6}$")
+
     def parse_bool(value: str, *, field: str) -> bool:
         if value == "True":
             return True
         if value == "False":
             return False
         raise ValueError(f"signal digest csv {field} must be 'True' or 'False'")
+
+    def assert_fixed_decimal(value: str, *, field: str, index: int) -> None:
+        if not fixed_decimal_re.match(value):
+            raise ValueError(
+                "signal digest csv numeric fields must use fixed 6-decimal formatting: "
+                f"index={index} field={field} value={value!r}"
+            )
 
     def parse_int(value: str, *, field: str) -> int:
         try:
@@ -239,11 +250,23 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
                 "signal digest csv timestamp must be ISO-8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS[.ffffff][Z|+HH:MM]): "
                 f"index={index} timestamp={timestamp!r}"
             )
+
+        for numeric_field in (
+            "previous_target_position",
+            "target_position",
+            "position_change",
+            "score",
+        ):
+            assert_fixed_decimal(row[numeric_field], field=numeric_field, index=index)
+
         previous_target_position = parse_float(
             row["previous_target_position"], field="previous_target_position"
         )
         target_position = parse_float(row["target_position"], field="target_position")
         position_change = parse_float(row["position_change"], field="position_change")
+        score = parse_float(row["score"], field="score")
+        if not math.isfinite(score):
+            raise ValueError(f"signal digest csv score must be finite: index={index}")
         is_long_entry = parse_bool(row["is_long_entry"], field="is_long_entry")
         is_flatten = parse_bool(row["is_flatten"], field="is_flatten")
         is_hold = parse_bool(row["is_hold"], field="is_hold")

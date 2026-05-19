@@ -75,6 +75,7 @@
 
 ## 下一步候選
 
+- 強化 `*_signals.csv` 的數值欄位稽核：固定小數格式 + finite 檢查之外，可再加上與 trace summary min/max range 的 cross-check（deterministic + test-covered）。
 - 繼續補強回測 trace / coverage visibility，但不引入真實交易整合。
 - 只在 deterministic 且 test-covered 的前提下擴充 backtest artifact。
 - `live` 繼續維持 dry-run only，直到回測穩定且另行審核 broker 介面。

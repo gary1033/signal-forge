@@ -71,6 +71,7 @@ git diff --check
 | 2026-05-20 05:06 | Trace summary 加入 min/max target position | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic `min_target_position` / `max_target_position`，並用 validator 驗證首尾部位落在範圍內 |
 | 2026-05-20 05:22 | Backtest timestamp ISO-8601 稽核 | 110 -> 110 | pass | keep | `b404c55` pushed | 強制 `SignalDigest.timestamp` 為 ISO-8601；`*_trace_summary.json` 追加 `timestamps_iso8601`，並在 Phase markdown 顯示 timestamps 稽核結果 |
 | 2026-05-20 05:34 | Signals CSV timestamp ISO-8601 稽核 | 110 -> 110 | pass | keep | pushed to `origin/main` | `validate_signal_digest_csv(...)` 強制每列 `timestamp` 必須為 ISO-8601（test-covered），避免 CSV timestamp drift |
+| 2026-05-20 05:50 | Signals CSV 數值格式稽核 | 110 -> 110 | pass | keep | pushed to `origin/main` | `validate_signal_digest_csv(...)` 強制 signals CSV 數值欄位採 fixed 6-decimal formatting（並拒絕非 finite score），避免浮點格式 drift（test-covered） |
 
 ## 總結
 

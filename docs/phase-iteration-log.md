@@ -62,6 +62,7 @@
 | 2026-05-20 05:06 | 擴充 trace summary min/max 部位稽核欄位 | `*_trace_summary.json` 追加 deterministic `min_target_position` / `max_target_position`，並驗證首尾部位落在 min/max 範圍內 | 110 -> 110；46 tests OK | keep |
 | 2026-05-20 05:22 | 強化 backtest timestamp 格式稽核 | 強制 `SignalDigest.timestamp` 為 ISO-8601，並在 `*_trace_summary.json` 追加 `timestamps_iso8601` 欄位 | 110 -> 110；47 tests OK | keep |
 | 2026-05-20 05:34 | 強化 signals CSV timestamp 稽核 | `validate_signal_digest_csv(...)` 強制每列 `timestamp` 必須為 ISO-8601，避免 CSV timestamp drift | 110 -> 110；48 tests OK | keep |
+| 2026-05-20 05:50 | 強化 signals CSV 數值格式稽核 | `validate_signal_digest_csv(...)` 強制數值欄位採用 fixed 6-decimal formatting，避免浮點格式 drift（並拒絕非 finite score） | 110 -> 110；49 tests OK | keep |
 
 ## 方法紀錄
 
