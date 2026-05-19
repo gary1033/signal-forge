@@ -307,7 +307,14 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
     buffer = io.StringIO()
     writer = csv.DictWriter(
         buffer,
-        fieldnames=["index", "timestamp", "target_position", "reason", "score"],
+        fieldnames=[
+            "index",
+            "timestamp",
+            "target_position",
+            "reason",
+            "score",
+            "is_long_entry",
+        ],
     )
     writer.writeheader()
     for digest in digests:

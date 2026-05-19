@@ -70,6 +70,7 @@ class SignalDigest:
     target_position: float
     reason: str
     score: float
+    is_long_entry: bool
 
 
 @dataclass(frozen=True)
@@ -95,22 +96,29 @@ class BacktestExecutionAdapter:
         result = EntryEdgeEvaluator(
             EntryEdgeConfig(hold_bars_per_day=config.hold_bars_per_day)
         ).run(strategy, bars)
-        return PhaseExecutionResult(
-            mode="backtest",
-            adapter_name=self.name,
-            dry_run=False,
-            entry_edge_result=result,
-            order_intents=[],
-            signal_digests=[
+
+        previous_target = 0.0
+        digests: list[SignalDigest] = []
+        for signal in signals:
+            is_long_entry = signal.target_position > 0 and previous_target <= 0
+            previous_target = signal.target_position
+            digests.append(
                 SignalDigest(
                     index=signal.index,
                     timestamp=signal.timestamp,
                     target_position=signal.target_position,
                     reason=signal.reason,
                     score=signal.score,
+                    is_long_entry=is_long_entry,
                 )
-                for signal in signals
-            ],
+            )
+        return PhaseExecutionResult(
+            mode="backtest",
+            adapter_name=self.name,
+            dry_run=False,
+            entry_edge_result=result,
+            order_intents=[],
+            signal_digests=digests,
         )
 
 

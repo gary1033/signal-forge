@@ -332,3 +332,22 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: keep tightening backtest trace/coverage visibility while preserving deterministic output contracts and live dry-run safety.
+
+## 2026-05-19 20:42 +08:00
+
+- Goal: keep Phase readiness at max while improving backtest verifiability by enriching the deterministic signal digest contract (no live trading changes).
+- Change set:
+  - Added a derived boolean `is_long_entry` field to backtest `SignalDigest` and exported it in `*_signals.csv`.
+  - Updated unit tests to assert the new deterministic CSV contract.
+- Method:
+  - Treat the backtest signal digest as a stable contract; add derived fields only when deterministic and test-covered.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110
+- Guard: pass (34 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (pushed to `origin/main`)
+- Next step: consider adding more deterministic derived fields to the backtest digest (e.g., exit/flatten markers) only when test-covered.

@@ -40,6 +40,7 @@ Done (2026-05-19):
 19. CLI correctness: backtest uses `dry_run=False`; live uses `dry_run=True` in `PhaseConfig`
 20. Backtest trace visibility: Phase report emits deterministic `*_signals.csv` (per-bar signal digest)
 21. Mode semantics: `PhaseConfig` derives and validates `dry_run` from `mode` by default
+22. Backtest trace visibility: `*_signals.csv` includes deterministic `is_long_entry` derived field
 
 Next candidates (keep live safety unchanged):
 - Coverage/trace visibility without any real trading integration

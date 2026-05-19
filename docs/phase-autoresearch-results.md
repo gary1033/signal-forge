@@ -39,3 +39,4 @@ git diff --check
 | 2026-05-19 19:58 | CLI wiring: `dry_run` reflects mode | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Backtest uses `dry_run=False`; live uses `dry_run=True` (still intent-only) |
 | 2026-05-19 20:14 | Backtest trace visibility: deterministic `*_signals.csv` | 110 -> 110 | pass | keep | `bf32c6e` (pushed) | Per-bar signal digest for easier regression inspection |
 | 2026-05-19 20:27 | PhaseConfig derives `dry_run` from `mode` | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Default semantics: backtest=False, live=True; reject backtest dry-run |
+| 2026-05-19 20:42 | Backtest digest: add `is_long_entry` derived column | 110 -> 110 | pass | keep | see `git log -1 --oneline` | Stable derived field in `*_signals.csv` (test-covered) |
