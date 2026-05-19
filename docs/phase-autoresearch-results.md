@@ -59,6 +59,7 @@ git diff --check
 | 2026-05-20 02:05 | Trace summary 加入 deterministic `reason_counts` | 110 -> 110 | pass | keep | pushed to `origin/main` | 用 frequency list 強化回測 artifacts 稽核可讀性 |
 | 2026-05-20 02:20 | Trace summary 加入 deterministic `open_count` / `close_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | 用 position 0/非0 transition 計數，便於稽核開倉/平倉次數 |
 | 2026-05-20 02:36 | Trace summary validator（schema + invariants） | 110 -> 110 | pass | keep | pushed to `origin/main` | 加入 `validate_trace_summary`，檢查 deterministic ordering 與 counts 內部一致性 |
+| 2026-05-20 02:51 | Trace summary 加入 `nonzero_target_position_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | 增加非零持倉 bar 的稽核欄位，並驗證 `hold_count <= nonzero_target_position_count` |
 
 ## 總結
 

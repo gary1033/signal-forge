@@ -317,6 +317,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "last_target_position": (int, float),
         "last_timestamp": (type(None), str),
         "long_entry_count": int,
+        "nonzero_target_position_count": int,
         "nonzero_position_change_count": int,
         "open_count": int,
         "reason_counts": list,
@@ -342,6 +343,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "flatten_count": int(trace_summary["flatten_count"]),
         "hold_count": int(trace_summary["hold_count"]),
         "long_entry_count": int(trace_summary["long_entry_count"]),
+        "nonzero_target_position_count": int(trace_summary["nonzero_target_position_count"]),
         "nonzero_position_change_count": int(trace_summary["nonzero_position_change_count"]),
         "open_count": int(trace_summary["open_count"]),
     }
@@ -350,6 +352,11 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
             raise ValueError(f"trace summary trace_summary.{name} must be non-negative")
         if value > bar_count:
             raise ValueError(f"trace summary trace_summary.{name} must be <= bar_count")
+
+    if counts["hold_count"] > counts["nonzero_target_position_count"]:
+        raise ValueError(
+            "trace summary trace_summary.hold_count must be <= nonzero_target_position_count"
+        )
 
     if counts["open_count"] + counts["close_count"] > counts["nonzero_position_change_count"]:
         raise ValueError(
@@ -540,6 +547,9 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
 def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]:
     long_entry_count = sum(1 for digest in digests if digest.is_long_entry)
     flatten_count = sum(1 for digest in digests if digest.is_flatten)
+    nonzero_target_position_count = sum(
+        1 for digest in digests if abs(digest.target_position) > 1e-12
+    )
     hold_count = sum(
         1
         for digest in digests
@@ -573,6 +583,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
             "hold_count": hold_count,
+            "nonzero_target_position_count": nonzero_target_position_count,
             "nonzero_position_change_count": nonzero_position_change_count,
             "open_count": open_count,
             "first_timestamp": first_timestamp,

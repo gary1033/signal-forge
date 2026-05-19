@@ -50,6 +50,7 @@
 | 2026-05-20 02:05 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `reason_counts` | 110 -> 110；43 tests OK | keep |
 | 2026-05-20 02:20 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `open_count` / `close_count` | 110 -> 110；43 tests OK | keep |
 | 2026-05-20 02:36 | 強化 trace summary validator | 新增 trace summary schema + invariants validator（deterministic ordering / counts 稽核） | 110 -> 110；44 tests OK | keep |
+| 2026-05-20 02:51 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `nonzero_target_position_count`（並驗證 `hold_count` 子集合不超出） | 110 -> 110；44 tests OK | keep |
 
 ## 方法紀錄
 

@@ -409,6 +409,7 @@ class ReportingTests(unittest.TestCase):
                             '    "last_timestamp": "2026-01-02",',
                             '    "long_entry_count": 1,',
                             '    "nonzero_position_change_count": 2,',
+                            '    "nonzero_target_position_count": 1,',
                             '    "open_count": 1,',
                             '    "reason_counts": [',
                             "      {",
