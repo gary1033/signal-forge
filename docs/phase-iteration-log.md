@@ -215,5 +215,5 @@ This log is the audit trail for bounded autoresearch.
 - Metric: 110 -> 110
 - Guard: pass (31 tests OK; `git diff --check` clean)
 - Decision: keep
-- Commit: see `git log -1 --oneline` (pending push)
+- Commit: `55d37ac` (pushed to `origin/main`)
 - Next step: extend golden regressions to Entry Edge outputs (keep live dry-run only).
