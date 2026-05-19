@@ -927,6 +927,17 @@ def _phase_markdown_report(
             if isinstance(trace, dict):
                 lines.extend(
                     [
+                        f"- Trace summary bar_count: {trace.get('bar_count')}",
+                        f"- Trace summary unique reasons: {trace.get('unique_reason_count')}",
+                        f"- Trace summary last target position: {trace.get('last_target_position')}",
+                    ]
+                )
+
+        if trace_summary is not None:
+            trace = trace_summary.get("trace_summary")
+            if isinstance(trace, dict):
+                lines.extend(
+                    [
                         "",
                         "## Backtest Trace Summary",
                         "",
