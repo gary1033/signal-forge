@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import unittest
 
-from signal_forge import Bar, PhaseConfig, PhaseRunner, Signal, Strategy, parse_phase_mode
+from signal_forge import (
+    Bar,
+    PhaseConfig,
+    PhaseRunner,
+    Signal,
+    Strategy,
+    normalize_signal_reason,
+    parse_phase_mode,
+)
 
 
 class OneEntryStrategy(Strategy):
@@ -15,6 +23,17 @@ class OneEntryStrategy(Strategy):
         ]
 
 
+class MessyReasonStrategy(Strategy):
+    name = "messy_reason"
+
+    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        messy = "  進場\t\n  alpha  "
+        return [
+            Signal(index, bar.timestamp, 1.0 if index == 0 else 0.0, messy)
+            for index, bar in enumerate(bars)
+        ]
+
+
 def sample_bars() -> list[Bar]:
     return [
         Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
@@ -23,6 +42,13 @@ def sample_bars() -> list[Bar]:
 
 
 class PhaseConfigTests(unittest.TestCase):
+    def test_normalize_signal_reason_is_ascii_trimmed_single_line(self) -> None:
+        self.assertEqual(normalize_signal_reason(""), "unknown")
+        self.assertEqual(normalize_signal_reason("\r\n\t"), "unknown")
+        self.assertEqual(
+            normalize_signal_reason("  進場\t\n  alpha  "), "u9032u5834 alpha"
+        )
+
     def test_backtest_mode_is_default(self) -> None:
         config = PhaseConfig()
         self.assertTrue(config.is_backtest)
@@ -65,6 +91,23 @@ class PhaseConfigTests(unittest.TestCase):
         self.assertFalse(result.dry_run)
         self.assertIsNotNone(result.entry_edge_result)
         self.assertEqual(result.entry_edge_result.trade_count, 1)
+
+    def test_phase_runner_normalizes_reasons_for_digest_and_intent(self) -> None:
+        backtest = PhaseRunner().run(
+            PhaseConfig(mode="backtest"),
+            MessyReasonStrategy(),
+            sample_bars(),
+        )
+        self.assertEqual(backtest.mode, "backtest")
+        self.assertEqual(backtest.signal_digests[0].reason, "u9032u5834 alpha")  # type: ignore[index]
+
+        live = PhaseRunner().run(
+            PhaseConfig(mode="live"),
+            MessyReasonStrategy(),
+            sample_bars(),
+        )
+        self.assertEqual(live.mode, "live")
+        self.assertEqual(live.order_intents[0].reason, "u9032u5834 alpha")  # type: ignore[index]
 
     def test_phase_runner_routes_live_to_dry_run_order_intent_only(self) -> None:
         result = PhaseRunner().run(

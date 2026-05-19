@@ -13,6 +13,23 @@ PhaseMode = Literal["backtest", "live"]
 OrderSide = Literal["buy"]
 
 
+def normalize_signal_reason(value: str) -> str:
+    normalized = value.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    normalized = " ".join(normalized.split())
+    if not normalized:
+        return "unknown"
+
+    out: list[str] = []
+    for ch in normalized:
+        if ch.isascii():
+            out.append(ch)
+            continue
+        out.append(f"u{ord(ch):04x}")
+
+    normalized = "".join(out).strip()
+    return normalized or "unknown"
+
+
 @dataclass(frozen=True)
 class PhaseConfig:
     """Shared phase configuration for backtest and live dry-run modes."""
@@ -112,7 +129,7 @@ class BacktestExecutionAdapter:
                     timestamp=signal.timestamp,
                     target_position=signal.target_position,
                     position_change=position_change,
-                    reason=signal.reason,
+                    reason=normalize_signal_reason(signal.reason),
                     score=signal.score,
                     is_long_entry=is_long_entry,
                     is_flatten=is_flatten,
@@ -153,7 +170,7 @@ class LiveExecutionAdapter:
                     timestamp=signal.timestamp,
                     side="buy",
                     target_position=signal.target_position,
-                    reason=signal.reason,
+                    reason=normalize_signal_reason(signal.reason),
                 )
             )
 

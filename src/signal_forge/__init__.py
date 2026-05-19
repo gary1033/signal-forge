@@ -17,6 +17,7 @@ from signal_forge.phase import (
     PhaseExecutionResult,
     PhaseMode,
     PhaseRunner,
+    normalize_signal_reason,
     parse_phase_mode,
 )
 from signal_forge.strategy import Signal, Strategy
@@ -41,6 +42,7 @@ __all__ = [
     "Signal",
     "Strategy",
     "load_bars_from_csv",
+    "normalize_signal_reason",
     "parse_phase_mode",
     "validate_bars",
 ]

@@ -525,3 +525,25 @@ This log is the audit trail for bounded autoresearch.
 - Decision: keep
 - Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
 - Next step: consider backtest-only digest reason allowlist/normalizer only if deterministic and test-covered; live remains dry-run only.
+
+## 2026-05-19 23:13 +08:00
+
+- Goal: keep Phase readiness at max while preventing strategy-provided `reason` strings (whitespace/non-ASCII) from breaking backtest digest contracts; keep live safety unchanged.
+- Change set:
+  - Added `normalize_signal_reason(...)` and applied it in both adapters:
+    - Backtest `SignalDigest.reason` is normalized before reporting validators run.
+    - Live dry-run `OrderIntent.reason` is normalized for stable markdown/JSON contracts.
+  - Added unit tests covering normalization behavior (backtest digests + live intents).
+- Method:
+  - Convert control whitespace (`\\r\\n\\t`) to spaces, collapse whitespace runs, strip.
+  - Replace non-ASCII characters with deterministic `uXXXX` hex markers; fallback to `unknown` when empty.
+  - Live safety unchanged: live remains dry-run order intent only; `submitted=False`; no broker; no API keys.
+- Verify commands:
+  - `python tools\\phase_readiness_score.py`
+  - `$env:PYTHONPATH='src'; python -m unittest discover -s tests`
+  - `git diff --check`
+- Metric: 110 -> 110 (expected)
+- Guard: pass (41 tests OK; `git diff --check` clean)
+- Decision: keep
+- Commit: see `git log -1 --oneline` (will be pushed to `origin/main`)
+- Next step: optionally add a backtest-only allowlist for normalized reasons (only if deterministic and test-covered); keep live dry-run only.
