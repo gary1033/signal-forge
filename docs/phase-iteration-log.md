@@ -43,6 +43,7 @@
 | 2026-05-19 23:13 | 正規化 strategy-provided `reason` | whitespace collapse、non-ASCII 轉 `uXXXX`、空值為 `unknown` | 110 -> 110；41 tests OK | keep |
 | 2026-05-19 23:28 | 限制正規化後 `reason` 長度 | max length 120，避免 artifact 膨脹 | 110 -> 110；42 tests OK | keep |
 | 2026-05-19 23:41 | 移除 CLI 重複 `dry_run` wiring | CLI 改依賴 `PhaseConfig.__post_init__` 推導 | 110 -> 110；42 tests OK | keep |
+| 2026-05-20 01:04 | 擴充 trace summary 稽核欄位 | `*_trace_summary.json` 加入 deterministic `hold_count` | 110 -> 110；42 tests OK | keep |
 
 ## 方法紀錄
 

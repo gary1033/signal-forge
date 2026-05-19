@@ -396,6 +396,11 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
 def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]:
     long_entry_count = sum(1 for digest in digests if digest.is_long_entry)
     flatten_count = sum(1 for digest in digests if digest.is_flatten)
+    hold_count = sum(
+        1
+        for digest in digests
+        if abs(digest.target_position) > 0 and abs(digest.position_change) < 1e-12
+    )
     nonzero_position_change_count = sum(
         1 for digest in digests if abs(digest.position_change) > 0
     )
@@ -408,6 +413,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "bar_count": len(digests),
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
+            "hold_count": hold_count,
             "nonzero_position_change_count": nonzero_position_change_count,
             "first_timestamp": first_timestamp,
             "last_timestamp": last_timestamp,

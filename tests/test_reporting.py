@@ -360,6 +360,7 @@ class ReportingTests(unittest.TestCase):
                             '    "bar_count": 2,',
                             '    "first_timestamp": "2026-01-01",',
                             '    "flatten_count": 1,',
+                            '    "hold_count": 0,',
                             '    "last_target_position": 0.0,',
                             '    "last_timestamp": "2026-01-02",',
                             '    "long_entry_count": 1,',

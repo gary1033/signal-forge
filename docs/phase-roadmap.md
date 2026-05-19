@@ -54,6 +54,7 @@
 32. Phase adapter：將 signal `reason` 正規化成 deterministic ASCII-only contract。
 33. Phase adapter：限制正規化後的 `reason` 最大長度，避免 artifact 膨脹。
 34. Phase CLI：改由 `PhaseConfig` 推導 `dry_run`，移除重複 wiring。
+35. 回測 trace visibility：`*_trace_summary.json` 加入 deterministic `hold_count`。
 
 ## 下一步候選
 
