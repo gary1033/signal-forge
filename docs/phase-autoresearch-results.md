@@ -1,12 +1,12 @@
 # Phase Autoresearch Results
 
-這份文件是 3 小時 phase autoresearch 的可見結果總表。詳細方法與每輪紀錄仍寫在 `docs/phase-iteration-log.md`，roadmap 狀態寫在 `docs/phase-roadmap.md`。
+這份文件是 SignalForge autoresearch 的可見結果總表。前半段記錄 phase-mode 建置成果；後續 automation 已擴成每 15 分鐘推進量化策略、演算法、回測品質、程式完整度與研究筆記。
 
 ## 目前狀態
 
 - Branch：`main`
 - Remote：`origin/main`
-- 最新 commit：`972685d experiment: harden phase failure modes`
+- 最新 commit：以 `git log -1 --oneline` 為準；本文件的 run log 逐輪記錄 commit/push。
 - Readiness score：`110`
 - Guard：`27 tests OK`
 - Live mode 狀態：只允許 dry-run order intent；不接 broker、不讀交易 API key、不呼叫外部交易 API、不送真實訂單。
@@ -24,6 +24,15 @@
 `reports/generated/` 是本機執行 CLI smoke 或研究命令後的輸出位置，包含 Markdown、JSON 與 trade log。這些檔案是研究產物，不是 autoresearch 的主要紀錄；autoresearch 的可追蹤紀錄以 docs 與 git commit 為主。
 
 Codex heartbeat automation 目前不會在 `C:\Users\gary1\.codex\automations\signalforge-phase-autoresearch\` 下面建立每輪結果檔；該資料夾只有 `automation.toml` 排程設定。完整 stdout、tool calls、final heartbeat XML 會被寫進 target thread 的 session JSONL。後續 wakeup 已要求同步更新本文件的 run log，讓可讀結果留在 repo 內。
+
+## 目前排程政策
+
+- Automation ID：`signalforge-phase-autoresearch`
+- Schedule：每 15 分鐘一次，持續執行，直到手動暫停或刪除。
+- 每輪目標：思考並實作一個聚焦改善，範圍包含量化交易策略演算法、backtest 正確性、報告/metric、CLI、測試、文件與整體程式品質。
+- 每輪筆記：更新本文件的 run log；行為或路線改變時同步更新 `docs/phase-iteration-log.md` 或 `docs/phase-roadmap.md`。
+- 每輪追蹤：成功保留的程式或筆記變更都要建立小型 `experiment:` commit 並 push 到 `origin`。
+- 安全邊界：仍禁止 broker connection、外部交易 API、credential lookup 與真實下單；live mode 只能 dry-run intent。
 
 ## Automation Run Log
 
