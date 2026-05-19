@@ -61,6 +61,7 @@ git diff --check
 | 2026-05-20 02:36 | Trace summary validator（schema + invariants） | 110 -> 110 | pass | keep | pushed to `origin/main` | 加入 `validate_trace_summary`，檢查 deterministic ordering 與 counts 內部一致性 |
 | 2026-05-20 02:51 | Trace summary 加入 `nonzero_target_position_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | 增加非零持倉 bar 的稽核欄位，並驗證 `hold_count <= nonzero_target_position_count` |
 | 2026-05-20 03:07 | Trace summary 增加首尾部位稽核欄位 | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 加入 `first_target_position` / `last_previous_target_position` |
+| 2026-05-20 03:22 | Trace summary 加入 `entry_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | `entry_count` = `open_count`（alias），讓開倉次數欄位更直覺可讀 |
 
 ## 總結
 

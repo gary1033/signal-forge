@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
 import json
@@ -311,6 +311,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     required_fields: dict[str, object] = {
         "bar_count": int,
         "close_count": int,
+        "entry_count": int,
         "first_target_position": (int, float),
         "first_timestamp": (type(None), str),
         "flatten_count": int,
@@ -342,6 +343,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
 
     counts = {
         "close_count": int(trace_summary["close_count"]),
+        "entry_count": int(trace_summary["entry_count"]),
         "flatten_count": int(trace_summary["flatten_count"]),
         "hold_count": int(trace_summary["hold_count"]),
         "long_entry_count": int(trace_summary["long_entry_count"]),
@@ -354,6 +356,9 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
             raise ValueError(f"trace summary trace_summary.{name} must be non-negative")
         if value > bar_count:
             raise ValueError(f"trace summary trace_summary.{name} must be <= bar_count")
+
+    if counts["entry_count"] != counts["open_count"]:
+        raise ValueError("trace summary trace_summary.entry_count must equal open_count")
 
     if counts["hold_count"] > counts["nonzero_target_position_count"]:
         raise ValueError(
@@ -594,6 +599,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
         "trace_summary": {
             "bar_count": len(digests),
             "close_count": close_count,
+            "entry_count": open_count,
             "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,

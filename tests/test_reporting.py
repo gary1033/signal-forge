@@ -402,6 +402,7 @@ class ReportingTests(unittest.TestCase):
                             '  "trace_summary": {',
                             '    "bar_count": 2,',
                             '    "close_count": 1,',
+                            '    "entry_count": 1,',
                             '    "first_target_position": 1.0,',
                             '    "first_timestamp": "2026-01-01",',
                             '    "flatten_count": 1,',
