@@ -17,6 +17,7 @@ from signal_forge import (
 from signal_forge.reporting import (
     validate_trace_summary,
     validate_phase_summary,
+    validate_signal_digest_csv,
     validate_signal_digests,
     write_entry_edge_outputs,
     write_phase_outputs,
@@ -32,6 +33,31 @@ class OneTradeStrategy(Strategy):
 
 
 class ReportingTests(unittest.TestCase):
+    def test_signal_digest_csv_validator_matches_trace_summary(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-validator")
+            csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, csv_text)
+
+        lines = csv_text.splitlines()
+        header = lines[0].split(",")
+        target_index = header.index("target_position")
+        row = lines[1].split(",")
+        row[target_index] = "2.000000"
+        lines[1] = ",".join(row)
+        bad_csv = "\n".join(lines) + "\n"
+        with self.assertRaisesRegex(ValueError, "first_target_position must match"):
+            validate_signal_digest_csv(trace_summary, bad_csv)
+
     def test_signal_digest_validator_rejects_non_monotonic_index(self) -> None:
         digests = [
             SignalDigest(

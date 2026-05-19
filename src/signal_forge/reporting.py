@@ -93,14 +93,16 @@ def write_phase_outputs(
     signal_digest_csv: Path | None = None
     trace_summary_json: Path | None = None
     if result.mode == "backtest" and result.signal_digests is not None:
+        signal_digest_text = _signal_digest_csv(result.signal_digests)
         signal_digest_path.write_text(
-            _signal_digest_csv(result.signal_digests),
+            signal_digest_text,
             encoding="utf-8",
             newline="",
         )
         signal_digest_csv = signal_digest_path
         trace_summary = _signal_trace_summary_dict(result.signal_digests)
         validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, signal_digest_text)
         trace_summary_path.write_text(
             json.dumps(
                 trace_summary,
@@ -119,6 +121,173 @@ def write_phase_outputs(
         signal_digest_csv=signal_digest_csv,
         trace_summary_json=trace_summary_json,
     )
+
+
+def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) -> None:
+    import io
+
+    trace = trace_summary.get("trace_summary")
+    if not isinstance(trace, dict):
+        raise ValueError("trace summary missing required dict key: trace_summary")
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    expected = {
+        "index",
+        "timestamp",
+        "previous_target_position",
+        "target_position",
+        "position_change",
+        "reason",
+        "score",
+        "is_long_entry",
+        "is_flatten",
+        "is_hold",
+    }
+    fieldnames = set(reader.fieldnames or [])
+    if fieldnames != expected:
+        raise ValueError(
+            "signal digest csv must have deterministic columns: "
+            f"expected={sorted(expected)} got={sorted(fieldnames)}"
+        )
+
+    rows = list(reader)
+    bar_count = int(trace["bar_count"])
+    if len(rows) != bar_count:
+        raise ValueError(
+            "signal digest csv row count must match trace summary bar_count: "
+            f"rows={len(rows)} bar_count={bar_count}"
+        )
+
+    if not rows:
+        return
+
+    def parse_bool(value: str, *, field: str) -> bool:
+        if value == "True":
+            return True
+        if value == "False":
+            return False
+        raise ValueError(f"signal digest csv {field} must be 'True' or 'False'")
+
+    def parse_int(value: str, *, field: str) -> int:
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValueError(f"signal digest csv {field} must be an int") from exc
+
+    def parse_float(value: str, *, field: str) -> float:
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"signal digest csv {field} must be a float") from exc
+
+    tolerance = 1e-9
+    long_entry_count = 0
+    flatten_count = 0
+    hold_count = 0
+    nonzero_target_position_count = 0
+    nonzero_position_change_count = 0
+    open_count = 0
+    close_count = 0
+
+    previous_index: int | None = None
+    previous_timestamp: str | None = None
+    first_timestamp: str | None = None
+    last_timestamp: str | None = None
+    first_target_position = 0.0
+    last_previous_target_position = 0.0
+    last_target_position = 0.0
+
+    for row in rows:
+        index = parse_int(row["index"], field="index")
+        timestamp = row["timestamp"]
+        previous_target_position = parse_float(
+            row["previous_target_position"], field="previous_target_position"
+        )
+        target_position = parse_float(row["target_position"], field="target_position")
+        position_change = parse_float(row["position_change"], field="position_change")
+        is_long_entry = parse_bool(row["is_long_entry"], field="is_long_entry")
+        is_flatten = parse_bool(row["is_flatten"], field="is_flatten")
+        is_hold = parse_bool(row["is_hold"], field="is_hold")
+
+        if previous_index is not None and index <= previous_index:
+            raise ValueError("signal digest csv rows must be sorted by increasing index")
+        if previous_timestamp is not None and timestamp < previous_timestamp:
+            raise ValueError("signal digest csv rows must be sorted by non-decreasing timestamp")
+
+        if first_timestamp is None:
+            first_timestamp = timestamp
+            first_target_position = target_position
+        last_timestamp = timestamp
+        last_previous_target_position = previous_target_position
+        last_target_position = target_position
+
+        if is_long_entry:
+            long_entry_count += 1
+        if is_flatten:
+            flatten_count += 1
+        if is_hold:
+            hold_count += 1
+        if abs(target_position) > 1e-12:
+            nonzero_target_position_count += 1
+        if abs(position_change) > 1e-12:
+            nonzero_position_change_count += 1
+        if abs(previous_target_position) < 1e-12 and abs(target_position) > 1e-12:
+            open_count += 1
+        if abs(previous_target_position) > 1e-12 and abs(target_position) < 1e-12:
+            close_count += 1
+
+        previous_index = index
+        previous_timestamp = timestamp
+
+    expected_counts = {
+        "close_count": close_count,
+        "flatten_count": flatten_count,
+        "hold_count": hold_count,
+        "long_entry_count": long_entry_count,
+        "nonzero_target_position_count": nonzero_target_position_count,
+        "nonzero_position_change_count": nonzero_position_change_count,
+        "open_count": open_count,
+    }
+    for name, expected_value in expected_counts.items():
+        actual_value = int(trace[name])
+        if actual_value != expected_value:
+            raise ValueError(
+                f"signal digest csv {name} must match trace summary: "
+                f"csv={expected_value} trace_summary={actual_value}"
+            )
+
+    def assert_close(name: str, expected_value: float, actual_value: float) -> None:
+        if abs(expected_value - actual_value) > tolerance:
+            raise ValueError(
+                f"signal digest csv {name} must match trace summary: "
+                f"csv={expected_value} trace_summary={actual_value}"
+            )
+
+    assert_close(
+        "first_target_position",
+        first_target_position,
+        float(trace["first_target_position"]),
+    )
+    assert_close(
+        "last_previous_target_position",
+        last_previous_target_position,
+        float(trace["last_previous_target_position"]),
+    )
+    assert_close(
+        "last_target_position",
+        last_target_position,
+        float(trace["last_target_position"]),
+    )
+    if first_timestamp != trace["first_timestamp"]:
+        raise ValueError(
+            "signal digest csv first_timestamp must match trace summary: "
+            f"csv={first_timestamp} trace_summary={trace['first_timestamp']}"
+        )
+    if last_timestamp != trace["last_timestamp"]:
+        raise ValueError(
+            "signal digest csv last_timestamp must match trace summary: "
+            f"csv={last_timestamp} trace_summary={trace['last_timestamp']}"
+        )
 
 
 def _summary_dict(

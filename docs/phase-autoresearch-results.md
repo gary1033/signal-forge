@@ -62,6 +62,7 @@ git diff --check
 | 2026-05-20 02:51 | Trace summary 加入 `nonzero_target_position_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | 增加非零持倉 bar 的稽核欄位，並驗證 `hold_count <= nonzero_target_position_count` |
 | 2026-05-20 03:07 | Trace summary 增加首尾部位稽核欄位 | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 加入 `first_target_position` / `last_previous_target_position` |
 | 2026-05-20 03:22 | Trace summary 加入 `entry_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | `entry_count` = `open_count`（alias），讓開倉次數欄位更直覺可讀 |
+| 2026-05-20 03:36 | Cross-check backtest artifacts | 110 -> 110 | pass | keep | pending | `write_phase_outputs` 交叉驗證 `*_signals.csv` 與 `*_trace_summary.json`（counts + 首尾欄位一致） |
 
 ## 總結
 
