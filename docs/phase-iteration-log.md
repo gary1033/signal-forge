@@ -25,5 +25,5 @@ This log is the audit trail for bounded autoresearch.
 - Metric: 110 -> 110
 - Guard: pass (27 tests OK; `git diff --check` clean)
 - Decision: keep
-- Commit: `35417e3` (pushed to `origin/main`; includes `50ade1b`)
+- Commit: `17219cc` (pushed to `origin/main`; includes `50ade1b`)
 - Next step: with readiness at max, focus on backtest stability and output-contract regression tests (live remains dry-run only).
