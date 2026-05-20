@@ -99,6 +99,25 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "short_entry_count must match trace summary"):
             validate_signal_digest_csv(trace_summary, csv_text)
 
+    def test_signal_digest_csv_validator_rejects_min_target_position_mismatch(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-min-target-position")
+            csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, csv_text)
+
+        trace_summary["trace_summary"]["min_target_position"] = -123.0  # type: ignore[index]
+        with self.assertRaisesRegex(ValueError, "min_target_position must match trace summary"):
+            validate_signal_digest_csv(trace_summary, csv_text)
+
     def test_signal_digest_csv_validator_rejects_flatten_bucket_mismatch(self) -> None:
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),

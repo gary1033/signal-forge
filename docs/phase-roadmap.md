@@ -86,10 +86,11 @@
 62. 回測報表可稽核性：Phase markdown 的 `Backtest Trace Summary` 顯示 trace summary `schema_version` 與 `position_bucket_counts`（flat/long/short），並以 exact-text regression test 鎖住（test-covered）。
 63. 回測 trace 可稽核性：`*_trace_summary.json` 追加 deterministic `first_previous_target_position`（schema_version=7），並在 `validate_signal_digest_csv(...)` 交叉驗證與 signals CSV 一致；Phase markdown 同步顯示該欄位（test-covered）。
 64. 回測 trace 可稽核性：`*_trace_summary.json` 追加 deterministic `first_index` / `last_index`（schema_version=8），並用 validator + exact-text regression test 鎖住（test-covered）。
+65. 回測 artifact validation：`validate_signal_digest_csv(...)` 交叉驗證 CSV 的 `min_target_position` / `max_target_position` 與 `*_trace_summary.json` 一致（deterministic + test-covered）。
 
 ## 下一步候選
 
-- 強化 `*_signals.csv` 的數值欄位稽核：固定小數格式 + finite 檢查之外，可再加上與 trace summary min/max range 的 cross-check（deterministic + test-covered）。
+- 強化 trace summary 的位置範圍稽核：可考慮新增 `min_previous_target_position` / `max_previous_target_position`，並與 `*_signals.csv` cross-check（deterministic + test-covered）。
 - 繼續補強回測 trace / coverage visibility，但不引入真實交易整合。
 - 只在 deterministic 且 test-covered 的前提下擴充 backtest artifact。
 - `live` 繼續維持 dry-run only，直到回測穩定且另行審核 broker 介面。

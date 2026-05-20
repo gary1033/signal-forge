@@ -277,6 +277,9 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     first_target_position = 0.0
     last_previous_target_position = 0.0
     last_target_position = 0.0
+    min_target_position = 0.0
+    max_target_position = 0.0
+    has_target_position = False
 
     for row in rows:
         index = parse_int(row["index"], field="index")
@@ -381,9 +384,17 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
             first_timestamp = timestamp
             first_previous_target_position = previous_target_position
             first_target_position = target_position
+            min_target_position = target_position
+            max_target_position = target_position
+            has_target_position = True
         last_timestamp = timestamp
         last_previous_target_position = previous_target_position
         last_target_position = target_position
+        if has_target_position:
+            if target_position < min_target_position:
+                min_target_position = target_position
+            if target_position > max_target_position:
+                max_target_position = target_position
 
         if is_long_entry:
             long_entry_count += 1
@@ -520,6 +531,16 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         "last_target_position",
         last_target_position,
         float(trace["last_target_position"]),
+    )
+    assert_close(
+        "min_target_position",
+        min_target_position if has_target_position else 0.0,
+        float(trace["min_target_position"]),
+    )
+    assert_close(
+        "max_target_position",
+        max_target_position if has_target_position else 0.0,
+        float(trace["max_target_position"]),
     )
     if first_timestamp != trace["first_timestamp"]:
         raise ValueError(
