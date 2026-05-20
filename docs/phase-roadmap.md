@@ -87,6 +87,7 @@
 63. 回測 trace 可稽核性：`*_trace_summary.json` 追加 deterministic `first_previous_target_position`（schema_version=7），並在 `validate_signal_digest_csv(...)` 交叉驗證與 signals CSV 一致；Phase markdown 同步顯示該欄位（test-covered）。
 64. 回測 trace 可稽核性：`*_trace_summary.json` 追加 deterministic `first_index` / `last_index`（schema_version=8），並用 validator + exact-text regression test 鎖住（test-covered）。
 65. 回測 artifact validation：`validate_signal_digest_csv(...)` 交叉驗證 CSV 的 `min_target_position` / `max_target_position` 與 `*_trace_summary.json` 一致（deterministic + test-covered）。
+66. 回測 trace 可稽核性：`*_trace_summary.json` 追加 deterministic `first_reason` / `last_reason`（schema_version=9），並在 `validate_signal_digest_csv(...)` 交叉驗證與 `*_signals.csv` 首尾 reason 一致（deterministic + test-covered）。
 
 ## 下一步候選
 
