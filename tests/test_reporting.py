@@ -278,6 +278,35 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "hold_side mismatch"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
+    def test_signal_digest_csv_validator_rejects_position_bucket_mismatch(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-position-bucket")
+            csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, csv_text)
+
+        lines = csv_text.splitlines()
+        header = lines[0].split(",")
+        bucket_index = header.index("position_bucket")
+        row = lines[1].split(",")
+        row[bucket_index] = "flat"
+        lines[1] = ",".join(row)
+        bad_csv = "\n".join(lines) + "\n"
+
+        trace_summary["trace_summary"]["signal_digest_sha256"] = hashlib.sha256(  # type: ignore[index]
+            bad_csv.encode("utf-8")
+        ).hexdigest()
+        with self.assertRaisesRegex(ValueError, "position_bucket mismatch"):
+            validate_signal_digest_csv(trace_summary, bad_csv)
+
     def test_signal_digest_validator_rejects_non_monotonic_index(self) -> None:
         digests = [
             SignalDigest(
@@ -648,9 +677,9 @@ class ReportingTests(unittest.TestCase):
                     paths.signal_digest_csv.read_text(encoding="utf-8"),
                     "\n".join(
                         [
-                            "index,timestamp,previous_target_position,target_position,position_change,reason,score,is_long_entry,is_flatten,is_hold,hold_side",
-                            "0,2026-01-01,0.000000,1.000000,1.000000,entry,0.000000,True,False,False,none",
-                            "1,2026-01-02,1.000000,0.000000,-1.000000,entry,0.000000,False,True,False,none",
+                            "index,timestamp,previous_target_position,target_position,position_bucket,position_change,reason,score,is_long_entry,is_flatten,is_hold,hold_side",
+                            "0,2026-01-01,0.000000,1.000000,long,1.000000,entry,0.000000,True,False,False,none",
+                            "1,2026-01-02,1.000000,0.000000,flat,-1.000000,entry,0.000000,False,True,False,none",
                             "",
                         ]
                     ),
@@ -696,7 +725,7 @@ class ReportingTests(unittest.TestCase):
                             "    ],",
                             '    "schema_version": 5,',
                             '    "short_entry_count": 0,',
-                            '    "signal_digest_sha256": "0f609595a6fa312748bb9729fbf34cc07d87a11f666ea5bfd4fbfcfec88f7092",',
+                            '    "signal_digest_sha256": "ec219433008c9685086950c5b27d4ea50aef0c3562be0f2d0adf0826e43ef388",',
                             '    "start_date": "2026-01-01",',
                             '    "timestamps_iso8601": true,',
                             '    "unique_reason_count": 1',

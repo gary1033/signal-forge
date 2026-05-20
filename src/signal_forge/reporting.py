@@ -196,6 +196,7 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         "timestamp",
         "previous_target_position",
         "target_position",
+        "position_bucket",
         "position_change",
         "reason",
         "score",
@@ -263,6 +264,9 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     nonzero_position_change_count = 0
     open_count = 0
     close_count = 0
+    position_bucket_long_count = 0
+    position_bucket_short_count = 0
+    position_bucket_flat_count = 0
 
     previous_index: int | None = None
     previous_timestamp: str | None = None
@@ -295,6 +299,7 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
             row["previous_target_position"], field="previous_target_position"
         )
         target_position = parse_float(row["target_position"], field="target_position")
+        position_bucket = row["position_bucket"]
         position_change = parse_float(row["position_change"], field="position_change")
         score = parse_float(row["score"], field="score")
         if not math.isfinite(score):
@@ -321,6 +326,24 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
             )
 
         epsilon = 1e-12
+        if abs(target_position) <= epsilon:
+            expected_position_bucket = "flat"
+        elif target_position > 0:
+            expected_position_bucket = "long"
+        else:
+            expected_position_bucket = "short"
+        if position_bucket != expected_position_bucket:
+            raise ValueError(
+                "signal digest csv position_bucket mismatch: "
+                f"index={index} expected={expected_position_bucket} got={position_bucket}"
+            )
+        if position_bucket == "flat":
+            position_bucket_flat_count += 1
+        elif position_bucket == "long":
+            position_bucket_long_count += 1
+        else:
+            position_bucket_short_count += 1
+
         computed_is_long_entry = target_position > epsilon and previous_target_position <= epsilon
         computed_is_flatten = target_position <= epsilon and previous_target_position > epsilon
         computed_is_hold = abs(target_position) > epsilon and abs(position_change) <= epsilon
@@ -375,6 +398,17 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
 
         previous_index = index
         previous_timestamp = timestamp
+
+    if position_bucket_long_count + position_bucket_short_count != nonzero_target_position_count:
+        raise ValueError(
+            "signal digest csv position_bucket non-flat count must equal nonzero_target_position_count: "
+            f"bucket_non_flat={position_bucket_long_count + position_bucket_short_count} nonzero_target_position_count={nonzero_target_position_count}"
+        )
+    if position_bucket_flat_count != bar_count - nonzero_target_position_count:
+        raise ValueError(
+            "signal digest csv position_bucket flat count must match bar_count - nonzero_target_position_count: "
+            f"bucket_flat={position_bucket_flat_count} expected={bar_count - nonzero_target_position_count}"
+        )
 
     short_entry_count = open_count - long_entry_count
     expected_counts = {
@@ -952,6 +986,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "timestamp",
             "previous_target_position",
             "target_position",
+            "position_bucket",
             "position_change",
             "reason",
             "score",
@@ -965,6 +1000,12 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
     for digest in digests:
         previous_target_position = digest.target_position - digest.position_change
         epsilon = 1e-12
+        if abs(digest.target_position) <= epsilon:
+            position_bucket = "flat"
+        elif digest.target_position > 0:
+            position_bucket = "long"
+        else:
+            position_bucket = "short"
         is_hold = abs(digest.target_position) > epsilon and abs(digest.position_change) <= epsilon
         if is_hold:
             hold_side = "long" if digest.target_position > 0 else "short"
@@ -975,6 +1016,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
             "timestamp": digest.timestamp,
             "previous_target_position": f"{previous_target_position:.6f}",
             "target_position": f"{digest.target_position:.6f}",
+            "position_bucket": position_bucket,
             "position_change": f"{digest.position_change:.6f}",
             "reason": digest.reason,
             "score": f"{digest.score:.6f}",
