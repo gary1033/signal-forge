@@ -76,7 +76,8 @@ timestamp,open,high,low,close,volume
 - `low` 不得高於 `open` 或 `close`。
 - `volume` 不得為負數。
 - 原始資料放 `data/raw/`，清洗後資料放 `data/processed/`。
-- 只有小型、可公開、可重現的 sample 才放 `data/sample/` 並納入 Git。
+- 公開、可重現、可作為回測證據的歷史資料可以納入 Git；`data/raw/` 與 `data/processed/` 不應預設放進 `.gitignore`。
+- `data/sample/` 保留小型 deterministic smoke-test 資料。
 
 內建下載工具：
 

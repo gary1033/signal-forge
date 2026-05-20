@@ -11,4 +11,5 @@
 
 1. 原始資料放在 `data/raw/`。
 2. 清洗後資料放在 `data/processed/`。
-3. 小型、可公開、可重現的測試資料才放在 `data/sample/` 並納入 Git。
+3. 公開、可重現、可作為回測證據的歷史資料可以納入 Git；`data/raw/` 與 `data/processed/` 不應預設放進 `.gitignore`。
+4. `data/sample/` 保留小型 deterministic smoke-test 資料。

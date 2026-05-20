@@ -1,0 +1,16 @@
+{
+  "adjclose_available": true,
+  "adjusted": false,
+  "csv_path": "data/processed/TWSE_2330_1D.csv",
+  "data_source": "Yahoo Finance chart API fallback; TWSE STOCK_DAY returned HTTP 307 during download attempt",
+  "end": "2026-05-20",
+  "market": "twse",
+  "notes": "Daily OHLCV for 2330.TW. Processed OHLC uses Yahoo quote fields; adjclose is preserved only in raw CSV.",
+  "raw_csv_path": "data/raw/TWSE_2330_1D_raw.csv",
+  "row_count": 4001,
+  "session": "regular",
+  "start": "2010-01-04",
+  "symbol": "2330",
+  "timeframe": "1D",
+  "timezone": "Asia/Taipei"
+}

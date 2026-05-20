@@ -12,6 +12,3 @@ build/
 .env
 .env.*
 reports/generated/
-data/raw/
-data/processed/
-
