@@ -26,6 +26,22 @@ $env:PYTHONPATH='src'
 python -m unittest discover -s tests
 git diff --check
 
+# Download TWSE daily OHLCV into data/raw and data/processed
+python -m signal_forge.cli fetch-data `
+  --market twse `
+  --symbol 2330 `
+  --start 2024-01-01 `
+  --end 2024-01-31
+
+# Download US daily OHLCV from Stooq.
+# Stooq currently requires a free API key for the CSV endpoint.
+$env:STOOQ_API_KEY='<your-free-stooq-key>'
+python -m signal_forge.cli fetch-data `
+  --market us `
+  --symbol AAPL `
+  --start 2024-01-01 `
+  --end 2024-01-31
+
 # Phase backtest 範例
 python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
@@ -60,3 +76,9 @@ python -m signal_forge.cli phase `
 - `docs/phase-roadmap.md`
 - `docs/phase-iteration-log.md`
 - `docs/phase-autoresearch-results.md`
+
+## 免費資料來源
+
+- 台股：`fetch-data --market twse` 使用 TWSE 官方個股日成交資訊，輸出未調整日線 OHLCV。
+- 美股：`fetch-data --market us` 使用 Stooq daily CSV。Stooq 單檔 CSV 端點目前要求免費 API key；沒有 key 時工具會中止並提示，不會產生空檔。
+- 替代來源：Yahoo Finance / yfinance 與 Alpha Vantage 可作為後續 provider，但第一版不新增 Python dependency，也不要求交易 credential。

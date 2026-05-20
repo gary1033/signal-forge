@@ -33,6 +33,35 @@ timestamp,open,high,low,close,volume
 - 原始資料放 `data/raw/`，清洗後資料放 `data/processed/`。
 - 只有小型、可公開、可重現的 sample 才放 `data/sample/` 並納入 Git。
 
+內建下載工具：
+
+```powershell
+python -m signal_forge.cli fetch-data `
+  --market twse `
+  --symbol 2330 `
+  --start 2024-01-01 `
+  --end 2024-01-31
+```
+
+這會寫出：
+
+- `data/raw/TWSE_2330_1D_raw.csv`
+- `data/processed/TWSE_2330_1D.csv`
+- `data/processed/TWSE_2330_1D_manifest.json`
+
+台股資料來源為 TWSE 官方個股日成交資訊；日期會由民國年轉成 ISO `YYYY-MM-DD`。美股第一版支援 Stooq daily CSV：
+
+```powershell
+$env:STOOQ_API_KEY='<your-free-stooq-key>'
+python -m signal_forge.cli fetch-data `
+  --market us `
+  --symbol AAPL `
+  --start 2024-01-01 `
+  --end 2024-01-31
+```
+
+Stooq 單檔 CSV 端點目前要求免費 API key。若未提供 key，工具會回報清楚錯誤，不會產生空資料。Yahoo Finance / yfinance 與 Alpha Vantage 先保留為後續替代 provider，不在第一版加入外部 dependency 或 API key 設定。
+
 建議 manifest 欄位：
 
 ```json

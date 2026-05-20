@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
+from signal_forge.data_fetch import fetch_market_data
 from signal_forge.entry_edge import EntryEdgeConfig, EntryEdgeEvaluator
-from signal_forge.market_data import load_bars_from_csv, validate_bars
+from signal_forge.market_data import (
+    MarketDataValidationError,
+    load_bars_from_csv,
+    validate_bars,
+)
 from signal_forge.phase import PhaseConfig, PhaseRunner, parse_phase_mode
 from signal_forge.reporting import write_entry_edge_outputs, write_phase_outputs
 from signal_forge.strategies import (
@@ -71,11 +77,32 @@ def main(argv: list[str] | None = None) -> int:
     phase.add_argument("--output-dir", default="reports/generated")
     phase.add_argument("--run-name")
 
+    fetch_data = subparsers.add_parser(
+        "fetch-data",
+        help="download free daily OHLCV data into SignalForge CSV format",
+    )
+    fetch_data.add_argument("--market", choices=("twse", "us"), required=True)
+    fetch_data.add_argument("--symbol", required=True)
+    fetch_data.add_argument("--start", required=True, help="YYYY-MM-DD")
+    fetch_data.add_argument("--end", required=True, help="YYYY-MM-DD")
+    fetch_data.add_argument(
+        "--output-root",
+        default=".",
+        help="repository root that contains data/raw and data/processed",
+    )
+    fetch_data.add_argument(
+        "--stooq-api-key",
+        default=None,
+        help="optional free Stooq API key; also read from STOOQ_API_KEY",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "entry-edge":
         return _run_entry_edge(args)
     if args.command == "phase":
         return _run_phase(args)
+    if args.command == "fetch-data":
+        return _run_fetch_data(args)
     raise ValueError(f"unsupported command {args.command}")
 
 
@@ -155,6 +182,30 @@ def _run_phase(args: argparse.Namespace) -> int:
             )
     print(f"phase_markdown={paths.markdown}")
     print(f"phase_summary_json={paths.summary_json}")
+    return 0
+
+
+def _run_fetch_data(args: argparse.Namespace) -> int:
+    try:
+        result = fetch_market_data(
+            market=args.market,
+            symbol=args.symbol,
+            start=args.start,
+            end=args.end,
+            output_root=args.output_root,
+            stooq_api_key=args.stooq_api_key or os.environ.get("STOOQ_API_KEY"),
+        )
+    except (MarketDataValidationError, ValueError) as exc:
+        print(f"error={exc}")
+        return 2
+    print(f"market={result.market}")
+    print(f"symbol={result.symbol}")
+    print(f"start={result.start}")
+    print(f"end={result.end}")
+    print(f"rows={result.row_count}")
+    print(f"raw_csv={result.raw_csv}")
+    print(f"processed_csv={result.processed_csv}")
+    print(f"manifest_json={result.manifest_json}")
     return 0
 
 
