@@ -14,10 +14,8 @@ from signal_forge.market_data import (
 from signal_forge.phase import PhaseConfig, PhaseRunner, parse_phase_mode
 from signal_forge.reporting import write_entry_edge_outputs, write_phase_outputs
 from signal_forge.strategies import (
-    ConfluenceScoreStrategy,
-    SmaCrossoverStrategy,
-    VolumeFilteredStrategy,
-    VwapReversionStrategy,
+    SUPPORTED_STRATEGY_NAMES,
+    build_phase1_strategy,
 )
 from signal_forge.strategy import Strategy
 
@@ -33,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     entry_edge.add_argument("--csv", required=True, help="OHLCV CSV path")
     entry_edge.add_argument(
         "--strategy",
-        choices=("sma-crossover", "vwap-reversion", "confluence-score"),
+        choices=SUPPORTED_STRATEGY_NAMES,
         default="sma-crossover",
     )
     entry_edge.add_argument("--output-dir", default="reports/generated")
@@ -71,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     phase.add_argument(
         "--strategy",
-        choices=("sma-crossover", "vwap-reversion", "confluence-score"),
+        choices=SUPPORTED_STRATEGY_NAMES,
         default="sma-crossover",
     )
     phase.add_argument("--hold-bars-per-day", type=int, default=1)
@@ -225,39 +223,19 @@ def _run_fetch_data(args: argparse.Namespace) -> int:
 
 
 def _build_strategy(args: argparse.Namespace) -> Strategy:
-    strategy: Strategy
-    if args.strategy == "sma-crossover":
-        strategy = SmaCrossoverStrategy(
-            fast_window=args.fast_window,
-            slow_window=args.slow_window,
-            allow_short=False,
-        )
-    elif args.strategy == "vwap-reversion":
-        strategy = VwapReversionStrategy(
-            window=args.vwap_window,
-            entry_z=args.entry_z,
-            exit_z=args.exit_z,
-            allow_short=False,
-        )
-    elif args.strategy == "confluence-score":
-        strategy = ConfluenceScoreStrategy(
-            fast_window=args.fast_window,
-            slow_window=args.slow_window,
-            rsi_window=args.rsi_window,
-            vwap_window=args.vwap_window,
-            threshold=args.threshold,
-            allow_short=False,
-        )
-    else:
-        raise ValueError(f"unsupported strategy {args.strategy}")
-
-    if getattr(args, "volume_filter", False):
-        return VolumeFilteredStrategy(
-            strategy,
-            volume_window=args.volume_window,
-            volume_multiplier=args.volume_multiplier,
-        )
-    return strategy
+    return build_phase1_strategy(
+        args.strategy,
+        fast_window=args.fast_window,
+        slow_window=args.slow_window,
+        vwap_window=args.vwap_window,
+        rsi_window=args.rsi_window,
+        entry_z=args.entry_z,
+        exit_z=args.exit_z,
+        threshold=args.threshold,
+        volume_filter=getattr(args, "volume_filter", False),
+        volume_window=getattr(args, "volume_window", 20),
+        volume_multiplier=getattr(args, "volume_multiplier", 1.2),
+    )
 
 
 def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:

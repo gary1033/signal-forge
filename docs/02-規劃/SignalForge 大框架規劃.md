@@ -115,6 +115,8 @@ python -m signal_forge.cli fetch-data `
 - `LiveExecutionAdapter` 只產生 dry-run `OrderIntent`。
 - CLI 支援 `phase --mode backtest|live`。
 - CLI 支援 `entry-edge` / `phase` 的可選成交量過濾器 `--volume-filter`。
+- 策略開發模板已整理為 hook-based `BarByBarStrategy`，三個既有策略透過 `prepare_context(...)` / `decide_bar(...)` 實作，外部 `Signal` contract 不變。
+- Strategy registry / factory 已接上 CLI，Phase 1 factory 固定建構 long-only 策略，並保留 `VolumeFilteredStrategy` wrapper。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
@@ -130,4 +132,5 @@ python -m signal_forge.cli fetch-data `
 - 針對 SMA Crossover 建立多日持倉或完整趨勢持有評估，避免只用一日 entry-edge 誤判策略用途。
 - 針對 VWAP Reversion 加入 regime filter，避免強趨勢下反向接刀。
 - 針對成交量過濾器，比較 entry-only filter 與 target-state filter，避免濾網語意本身造成交易數失真。
+- 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

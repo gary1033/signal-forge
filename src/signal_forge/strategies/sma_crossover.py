@@ -4,11 +4,17 @@ from dataclasses import dataclass
 
 from signal_forge.indicators import sma
 from signal_forge.market_data import Bar, closes
-from signal_forge.strategy import Signal, Strategy
+from signal_forge.strategy import BarByBarStrategy, StrategyDecision
 
 
 @dataclass(frozen=True)
-class SmaCrossoverStrategy(Strategy):
+class SmaCrossoverContext:
+    fast: list[float | None]
+    slow: list[float | None]
+
+
+@dataclass(frozen=True)
+class SmaCrossoverStrategy(BarByBarStrategy[SmaCrossoverContext]):
     fast_window: int = 20
     slow_window: int = 200
     allow_short: bool = False
@@ -18,27 +24,28 @@ class SmaCrossoverStrategy(Strategy):
         side = "long_short" if self.allow_short else "long_only"
         return f"sma_{self.fast_window}_{self.slow_window}_{side}"
 
-    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+    def prepare_context(self, bars: list[Bar]) -> SmaCrossoverContext:
         close_values = closes(bars)
-        fast = sma(close_values, self.fast_window)
-        slow = sma(close_values, self.slow_window)
-        signals: list[Signal] = []
+        return SmaCrossoverContext(
+            fast=sma(close_values, self.fast_window),
+            slow=sma(close_values, self.slow_window),
+        )
 
-        for index, bar in enumerate(bars):
-            if fast[index] is None or slow[index] is None:
-                target = 0.0
-                reason = "warmup"
-            elif fast[index] > slow[index]:
-                target = 1.0
-                reason = "fast_sma_above_slow_sma"
-            elif self.allow_short:
-                target = -1.0
-                reason = "fast_sma_below_slow_sma"
-            else:
-                target = 0.0
-                reason = "fast_sma_below_slow_sma_flat"
-
-            signals.append(Signal(index, bar.timestamp, target, reason))
-
-        return signals
-
+    def decide_bar(
+        self,
+        *,
+        index: int,
+        bar: Bar,
+        bars: list[Bar],
+        context: SmaCrossoverContext,
+        previous_target_position: float,
+    ) -> StrategyDecision:
+        fast = context.fast[index]
+        slow = context.slow[index]
+        if fast is None or slow is None:
+            return StrategyDecision(0.0, "warmup")
+        if fast > slow:
+            return StrategyDecision(1.0, "fast_sma_above_slow_sma")
+        if self.allow_short:
+            return StrategyDecision(-1.0, "fast_sma_below_slow_sma")
+        return StrategyDecision(0.0, "fast_sma_below_slow_sma_flat")

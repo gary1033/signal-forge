@@ -50,6 +50,7 @@ git diff --check
 - Signal digest CSV：entry、flatten、hold、position change、hold side。
 - Trace summary JSON：schema version、counts、timestamp、reason、position buckets、CSV hash。
 - Cross-check validator：signals CSV 與 trace summary 完全對齊。
+- Strategy OOP template：`BarByBarStrategy`、`StrategyDecision`、strategy registry / factory、三策略 regression tests。
 
 ## 近期實驗表
 
@@ -65,6 +66,7 @@ git diff --check
 | 2026-05-20 08:20 | Trace summary 加入 `signal_digest_sha256` | 110；tests OK | keep |
 | 2026-05-20 09:22 | Phase markdown 顯示 trace schema 與 position buckets | 110；tests OK | keep |
 | 2026-05-20 10:26 | Trace summary first/last reason 稽核 | 110；tests OK | keep |
+| 2026-05-20 22:50 | OOP strategy template 與 registry | 83 tests OK | keep |
 
 ## 最新已知狀態
 
@@ -72,10 +74,11 @@ git diff --check
 - Remote：`origin/main`
 - Readiness score：`110`
 - Live mode：dry-run order intent only。
-- 最新已知測試基線：`56 tests OK` 以上，以當輪實際測試輸出為準。
+- 最新已知測試基線：`83 tests OK`，以當輪實際測試輸出為準。
 
 ## 實驗下一步
 
 - 增加 `min_previous_target_position` / `max_previous_target_position` 類型欄位，讓 trace summary 的前一根部位範圍更好稽核。
 - 繼續補強 Phase markdown 的人工可讀性，但必須有 exact-text regression test。
+- OOP template 已鎖住後，三種策略的下一步修改應分開討論與測試，避免混入模板重構。
 - 若要做策略研究實驗，結果放入 `04-實驗記錄/`，策略語意同步到 `策略筆記/`。

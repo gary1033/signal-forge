@@ -21,14 +21,20 @@ from signal_forge.phase import (
     normalize_signal_reason,
     parse_phase_mode,
 )
-from signal_forge.strategy import Signal, Strategy
-from signal_forge.strategies import VolumeFilteredStrategy
+from signal_forge.strategy import BarByBarStrategy, Signal, Strategy, StrategyDecision
+from signal_forge.strategies import (
+    SUPPORTED_STRATEGY_NAMES,
+    VolumeFilteredStrategy,
+    build_phase1_strategy,
+    build_strategy,
+)
 
 __all__ = [
     "Backtester",
     "BacktestConfig",
     "BacktestExecutionAdapter",
     "BacktestResult",
+    "BarByBarStrategy",
     "Bar",
     "BarValidationResult",
     "EntryEdgeConfig",
@@ -42,9 +48,13 @@ __all__ = [
     "PhaseExecutionResult",
     "PhaseMode",
     "PhaseRunner",
+    "SUPPORTED_STRATEGY_NAMES",
     "Signal",
     "Strategy",
+    "StrategyDecision",
     "VolumeFilteredStrategy",
+    "build_phase1_strategy",
+    "build_strategy",
     "fetch_market_data",
     "load_bars_from_csv",
     "normalize_signal_reason",

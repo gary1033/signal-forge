@@ -102,6 +102,14 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 
 任何碰到 `live` 的改動都必須先確認這些 invariant 沒被破壞。
 
+### 6. Strategy OOP template
+
+- 新增 `StrategyDecision` 與 hook-based `BarByBarStrategy`，由 template 統一 `generate_signals()` 的逐 bar 流程。
+- 三個既有策略改為只實作 `prepare_context(...)` 與 `decide_bar(...)`，避免每個策略重複處理 signal 對齊與上一根 target 狀態。
+- 新增 `strategies.registry`，CLI 透過 Phase 1 factory 建構 long-only 策略。
+- `VolumeFilteredStrategy` 維持外層 wrapper，不併入策略本體。
+- 新增 template、factory、三策略 regression tests，確保重構不改 target / reason / score contract。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |
@@ -116,5 +124,6 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 
 - 只擴充 deterministic、test-covered 的 backtest artifacts。
 - 優先補強 trace summary 或 validation，不做績效最佳化。
+- OOP template 已完成後，下一步可以分開討論 SMA Crossover、VWAP Reversion、Confluence Score 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

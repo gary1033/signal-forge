@@ -27,11 +27,25 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 | CLI | `src\signal_forge\cli.py` | 提供 `fetch-data`、`entry-edge`、`phase` 指令，組合資料、策略與輸出。 |
 | Market data | `src\signal_forge\market_data.py` | 讀取 OHLCV CSV，驗證 timestamp、OHLC、volume 與資料筆數。 |
 | Data fetch | `src\signal_forge\data_fetch.py` | 下載免費日線資料，輸出 SignalForge 固定 CSV 與 manifest。 |
-| Strategy | `src\signal_forge\strategy.py`、`src\signal_forge\strategies\` | 每根 bar 產生一筆 `Signal`，包含 target position、reason、score。 |
+| Strategy | `src\signal_forge\strategy.py`、`src\signal_forge\strategies\` | 提供 `Strategy` contract、hook-based `BarByBarStrategy` 模板、strategy registry，並讓每根 bar 產生一筆 `Signal`。 |
 | Entry Edge | `src\signal_forge\entry_edge.py` | 第一階段 long-only 固定持有期進場優勢評估。 |
 | Phase | `src\signal_forge\phase.py` | 定義 `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。 |
 | Reporting | `src\signal_forge\reporting.py` | 寫出 JSON、Markdown、trade log、signals CSV、trace summary，並做 contract validation。 |
 | Readiness | `tools\phase_readiness_score.py` | bounded autoresearch 使用的輕量 deterministic readiness metric。 |
+
+## Strategy OOP 模板
+
+策略開發目前採用 hook-based OOP 模板。外部 contract 仍是 `Strategy.generate_signals(bars) -> list[Signal]`，因此 `PhaseRunner`、`EntryEdgeEvaluator`、reporting schema 與 CLI 輸出都不需要知道策略內部如何拆分。
+
+模板分工如下：
+
+- `Signal`：每根 bar 的輸出格式，保留 `index`、`timestamp`、`target_position`、`reason`、`score`。
+- `StrategyDecision`：策略在單根 bar 的內部決策結果，由 template 轉成 `Signal`。
+- `BarByBarStrategy`：負責 `generate_signals()` 的固定流程，包含準備 context、逐根 bar 呼叫 hook、傳入 `previous_target_position`、維持 signal 與 bar 對齊。
+- 具體策略只實作 `prepare_context(...)` 與 `decide_bar(...)`，例如 SMA context 放 fast / slow SMA，VWAP context 放 rolling VWAP / rolling std，Confluence context 放 SMA / VWAP / RSI / volume。
+- `strategies.registry` 提供 Phase 1 strategy factory；CLI 仍以 `sma-crossover`、`vwap-reversion`、`confluence-score` 建構 long-only 策略。
+
+這個模板是工程結構重構，不改變三個既有策略的交易語意。`VolumeFilteredStrategy` 仍是外層 wrapper，只在 CLI 啟用 `--volume-filter` 時套用。
 
 ## PhaseMode 分流
 
