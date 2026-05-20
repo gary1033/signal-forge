@@ -23,6 +23,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\vwap_reversion.p
 - **`exit_z` / 出場門檻**：價格回到 VWAP 附近到什麼程度就離場。預設 `0.25` 表示 `abs(z_score) <= 0.25` 時視為已經回到平均附近。
 - **`target_position` / 目標部位**：策略想要的持倉狀態。`1.0` 代表應該持有多單，`0.0` 代表空手，`-1.0` 代表做空；目前 CLI 固定 long-only，所以只看 `1.0` 和 `0.0`。
 - **Warmup / 暖機期**：資料還不夠算 rolling VWAP 或 rolling standard deviation 的期間。
+- **相對成交量 / Relative volume**：把今天成交量和近期平均量比較。可選成交量過濾器用 `volume >= sma(volume, 20) * 1.2` 進一步要求跌深訊號出現時也有足夠量能。
 
 ## 策略假設
 
@@ -38,12 +39,15 @@ VWAP Reversion 是均值回歸策略。它把 rolling VWAP 視為一段期間內
 - 出場：`abs(z_score) <= exit_z` 時，`target_position=0.0`，reason 為 `price_reverted_to_vwap`。
 - 其他狀態：維持上一個 target，reason 為 `hold`。
 
+可選的成交量過濾器是外層 wrapper，不改 VWAP Reversion 的 z-score 判斷。啟用 `--volume-filter` 時，原策略若輸出 positive target，但當日成交量未達 `20` 日均量的 `1.2` 倍，wrapper 會把 target 改成 `0.0`。
+
 ## 主要參數
 
 - `window` / CLI `--vwap-window`：預設 `20`。
 - `entry_z` / CLI `--entry-z`：預設 `1.5`。
 - `exit_z` / CLI `--exit-z`：預設 `0.25`。
 - `allow_short`：實作預設支援，但 CLI 目前固定 `False`。
+- 可選成交量過濾器：CLI 使用 `--volume-filter --volume-window 20 --volume-multiplier 1.2`，實作位置是 `C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py`。
 - entry-edge 評估：訊號於 bar close 後確認，下一根 open 進場，固定持有 `hold_bars_per_day=1` 後以 exit bar close 出場。
 
 ## 股價走勢解說圖
@@ -56,6 +60,7 @@ VWAP Reversion 是均值回歸策略。它把 rolling VWAP 視為一段期間內
 
 - 強趨勢下跌時可能反向接刀。
 - volume 品質會直接影響 VWAP 解讀。
+- 放量跌深不一定是反彈訊號，也可能代表賣壓正在放大；成交量過濾器可能讓均值回歸策略更常接到趨勢延續。
 - rolling VWAP 只是近似成本線，與 anchored VWAP 不同。
 - 一日持有期可能太短，無法觀察完整回歸路徑。
 - 目前不含 regime filter、停損、停利或波動度自適應參數。
@@ -63,5 +68,6 @@ VWAP Reversion 是均值回歸策略。它把 rolling VWAP 視為一段期間內
 ## 下一步
 
 - 加入 regime filter，避免在強趨勢下跌中做均值回歸。
+- 比較成交量過濾器與趨勢 regime filter 的交互效果，避免把放量下跌誤當成反彈確認。
 - 測試不同 `entry_z` / `exit_z` 與 `hold_bars_per_day`。
 - 比較 rolling VWAP 與 anchored VWAP 的研究價值。

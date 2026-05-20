@@ -52,6 +52,18 @@ python -m signal_forge.cli phase `
   --output-dir reports\generated `
   --run-name phase-backtest-demo
 
+# Entry-edge with optional relative-volume filter
+python -m signal_forge.cli entry-edge `
+  --csv data\sample\phase1_demo_ohlcv.csv `
+  --strategy sma-crossover `
+  --fast-window 2 `
+  --slow-window 3 `
+  --volume-filter `
+  --volume-window 20 `
+  --volume-multiplier 1.2 `
+  --output-dir reports\generated `
+  --run-name sma-volume-filter-demo
+
 # Phase live dry-run 範例
 python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
@@ -70,6 +82,7 @@ python -m signal_forge.cli phase `
   - `BacktestExecutionAdapter`：透過 `EntryEdgeEvaluator` 產生可驗證的回測結果。
   - `LiveExecutionAdapter`：只產生 dry-run `OrderIntent`，不送出訂單。
 - `OrderIntent`：live dry-run 的意圖紀錄；`safety_note` 會帶有 `LIVE_DRY_RUN_ONLY` 方便稽核。
+- `VolumeFilteredStrategy`：可選策略 wrapper；啟用 `--volume-filter` 時，只有 `volume >= sma(volume, volume_window) * volume_multiplier` 的 positive target 會保留。預設不啟用，避免改變既有 regression contract。
 
 ## Autoresearch 筆記
 

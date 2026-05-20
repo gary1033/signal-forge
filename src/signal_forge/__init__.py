@@ -22,6 +22,7 @@ from signal_forge.phase import (
     parse_phase_mode,
 )
 from signal_forge.strategy import Signal, Strategy
+from signal_forge.strategies import VolumeFilteredStrategy
 
 __all__ = [
     "Backtester",
@@ -43,6 +44,7 @@ __all__ = [
     "PhaseRunner",
     "Signal",
     "Strategy",
+    "VolumeFilteredStrategy",
     "fetch_market_data",
     "load_bars_from_csv",
     "normalize_signal_reason",

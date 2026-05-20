@@ -16,6 +16,7 @@ from signal_forge.reporting import write_entry_edge_outputs, write_phase_outputs
 from signal_forge.strategies import (
     ConfluenceScoreStrategy,
     SmaCrossoverStrategy,
+    VolumeFilteredStrategy,
     VwapReversionStrategy,
 )
 from signal_forge.strategy import Strategy
@@ -49,6 +50,13 @@ def main(argv: list[str] | None = None) -> int:
     entry_edge.add_argument("--entry-z", type=float, default=1.5)
     entry_edge.add_argument("--exit-z", type=float, default=0.25)
     entry_edge.add_argument("--threshold", type=float, default=3.0)
+    entry_edge.add_argument(
+        "--volume-filter",
+        action="store_true",
+        help="enable relative volume filter for long signals",
+    )
+    entry_edge.add_argument("--volume-window", type=int, default=20)
+    entry_edge.add_argument("--volume-multiplier", type=float, default=1.2)
 
     phase = subparsers.add_parser(
         "phase",
@@ -74,6 +82,13 @@ def main(argv: list[str] | None = None) -> int:
     phase.add_argument("--entry-z", type=float, default=1.5)
     phase.add_argument("--exit-z", type=float, default=0.25)
     phase.add_argument("--threshold", type=float, default=3.0)
+    phase.add_argument(
+        "--volume-filter",
+        action="store_true",
+        help="enable relative volume filter for long signals",
+    )
+    phase.add_argument("--volume-window", type=int, default=20)
+    phase.add_argument("--volume-multiplier", type=float, default=1.2)
     phase.add_argument("--output-dir", default="reports/generated")
     phase.add_argument("--run-name")
 
@@ -210,21 +225,22 @@ def _run_fetch_data(args: argparse.Namespace) -> int:
 
 
 def _build_strategy(args: argparse.Namespace) -> Strategy:
+    strategy: Strategy
     if args.strategy == "sma-crossover":
-        return SmaCrossoverStrategy(
+        strategy = SmaCrossoverStrategy(
             fast_window=args.fast_window,
             slow_window=args.slow_window,
             allow_short=False,
         )
-    if args.strategy == "vwap-reversion":
-        return VwapReversionStrategy(
+    elif args.strategy == "vwap-reversion":
+        strategy = VwapReversionStrategy(
             window=args.vwap_window,
             entry_z=args.entry_z,
             exit_z=args.exit_z,
             allow_short=False,
         )
-    if args.strategy == "confluence-score":
-        return ConfluenceScoreStrategy(
+    elif args.strategy == "confluence-score":
+        strategy = ConfluenceScoreStrategy(
             fast_window=args.fast_window,
             slow_window=args.slow_window,
             rsi_window=args.rsi_window,
@@ -232,7 +248,16 @@ def _build_strategy(args: argparse.Namespace) -> Strategy:
             threshold=args.threshold,
             allow_short=False,
         )
-    raise ValueError(f"unsupported strategy {args.strategy}")
+    else:
+        raise ValueError(f"unsupported strategy {args.strategy}")
+
+    if getattr(args, "volume_filter", False):
+        return VolumeFilteredStrategy(
+            strategy,
+            volume_window=args.volume_window,
+            volume_multiplier=args.volume_multiplier,
+        )
+    return strategy
 
 
 def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:
@@ -243,6 +268,10 @@ def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, st
         "entry_event": "bar close signal where target_position flips from <=0 to >0",
         "excluded_in_phase1": "short/stops/take-profit/filters/scale-in/parameter-optimization",
         "repaint_handling": "phase 1 accepts signals confirmed on closed bars only",
+        "volume_filter": "enabled" if getattr(args, "volume_filter", False) else "disabled",
+        "volume_window": str(getattr(args, "volume_window", 20)),
+        "volume_multiplier": f"{getattr(args, 'volume_multiplier', 1.2):.2f}",
+        "volume_rule": "volume >= sma(volume, volume_window) * volume_multiplier",
     }
 
 

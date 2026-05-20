@@ -36,6 +36,7 @@ SignalForge 的大方向是把交易想法整理成可驗證研究流程，而�
 - exit bar close 離場。
 - 只測純多進場；short、停損、停利、加碼、完整出場先記錄但不納入第一階段。
 - 第一階段篩選門檻：`Profit Factor > 1.2`。
+- 可選濾網：`--volume-filter` 先以外層 wrapper 實驗成交量確認，預設規則是 `volume >= sma(volume, 20) * 1.2`，預設不啟用。
 
 ### Phase 2：多日持倉與出場規則
 
@@ -113,6 +114,7 @@ python -m signal_forge.cli fetch-data `
 - `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。
 - `LiveExecutionAdapter` 只產生 dry-run `OrderIntent`。
 - CLI 支援 `phase --mode backtest|live`。
+- CLI 支援 `entry-edge` / `phase` 的可選成交量過濾器 `--volume-filter`。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
@@ -127,4 +129,5 @@ python -m signal_forge.cli fetch-data `
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
 - 針對 SMA Crossover 建立多日持倉或完整趨勢持有評估，避免只用一日 entry-edge 誤判策略用途。
 - 針對 VWAP Reversion 加入 regime filter，避免強趨勢下反向接刀。
+- 針對成交量過濾器，比較 entry-only filter 與 target-state filter，避免濾網語意本身造成交易數失真。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

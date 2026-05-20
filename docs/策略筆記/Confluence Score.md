@@ -21,6 +21,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\confluence_score
 - **Rolling VWAP / 滾動 VWAP**：每一天只看最近 N 天重新計算 VWAP。這裡用來判斷價格是在近期成交成本上方還是下方。
 - **RSI（Relative Strength Index，相對強弱指標）**：衡量近期上漲與下跌力量的動能指標。這份策略用 `RSI >= 55` 當偏多動能，`RSI <= 45` 當偏空動能。
 - **Volume confirms / 量能確認**：如果今天成交量高於近期平均，且價格上漲，就視為上漲有量能支持；如果放量下跌，就視為偏空確認。
+- **相對成交量 / Relative volume**：把今天成交量和近期平均量比較。Confluence Score 本身已使用量能確認；可選成交量過濾器則是在策略外層再要求 `volume >= sma(volume, 20) * 1.2` 才允許 positive target。
 - **`target_position` / 目標部位**：策略想要的持倉狀態。`1.0` 代表應該持有多單，`0.0` 代表空手，`-1.0` 代表做空；目前 CLI 固定 long-only，所以只看 `1.0` 和 `0.0`。
 - **Warmup / 暖機期**：資料還不夠算 SMA、RSI、VWAP 或平均成交量的期間。
 
@@ -46,6 +47,8 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 
 當 `score >= threshold` 時，`target_position=1.0`。實作在 `allow_short=True` 且 `score <= -threshold` 時可做空；目前 CLI 固定 long-only，所以不啟用 short。
 
+可選的成交量過濾器是外層 wrapper。它不改 score 計算；若 score 已達做多門檻，但當日成交量未達 `20` 日均量的 `1.2` 倍，wrapper 會把 positive target 改成 `0.0`。
+
 ## 主要參數
 
 - `fast_window` / CLI `--fast-window`：預設 `20`。
@@ -54,6 +57,7 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 - `vwap_window` / CLI `--vwap-window`：預設 `20`。
 - `threshold` / CLI `--threshold`：預設 `3.0`。
 - `allow_short`：實作預設支援，但 CLI 目前固定 `False`。
+- 可選成交量過濾器：CLI 使用 `--volume-filter --volume-window 20 --volume-multiplier 1.2`，實作位置是 `C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py`。
 - entry-edge 評估：訊號於 bar close 後確認，下一根 open 進場，固定持有 `hold_bars_per_day=1` 後以 exit bar close 出場。
 
 ## 股價走勢解說圖
@@ -67,11 +71,13 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 - 因子越多，越容易 overfit。
 - 權重目前都是固定 `+1/-1`，沒有經過嚴格因子貢獻驗證。
 - threshold 若靠單一標的調整，容易變成資料配適。
+- 成交量已經是 score 的一部分；若再套外層成交量過濾器，可能提高確認強度，也可能重複計算量能條件。
 - 交易頻率較高，對成本與滑價更敏感。
 - 目前不含停損、停利、部位管理或 regime filter。
 
 ## 下一步
 
 - 檢查 score 組成，拆解哪些 reason 對勝率或 PF 有實際貢獻。
+- 比較「score 內部量能確認」與「外層 volume filter」各自的貢獻，避免重複濾網造成過度配適。
 - 測試不同 threshold 與交易頻率、最大回撤之間的關係。
 - 將 score 分布寫入 backtest artifact，讓多因子訊號更容易稽核。

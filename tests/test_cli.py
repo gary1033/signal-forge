@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -39,6 +40,35 @@ class CliTests(unittest.TestCase):
         self.assertIn("entry_edge_trades=1", output)
         self.assertIn("phase_summary_json=", output)
 
+    def test_phase_backtest_command_accepts_volume_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_sample_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "phase",
+                    "--csv",
+                    str(csv_path),
+                    "--mode",
+                    "backtest",
+                    "--strategy",
+                    "sma-crossover",
+                    "--fast-window",
+                    "1",
+                    "--slow-window",
+                    "2",
+                    "--volume-filter",
+                    "--volume-window",
+                    "1",
+                    "--volume-multiplier",
+                    "1.0",
+                    "--output-dir",
+                    temp_dir,
+                ]
+            )
+
+        self.assertIn("phase=backtest", output)
+        self.assertIn("entry_edge_trades=1", output)
+
     def test_phase_live_command_reports_dry_run_intent_without_submission(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = _write_sample_csv(Path(temp_dir))
@@ -66,6 +96,44 @@ class CliTests(unittest.TestCase):
         self.assertIn("order_intents=1", output)
         self.assertIn("submitted=False", output)
         self.assertIn("phase_markdown=", output)
+
+    def test_entry_edge_command_writes_volume_filter_strategy_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_sample_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "sma-crossover",
+                    "--fast-window",
+                    "1",
+                    "--slow-window",
+                    "2",
+                    "--volume-filter",
+                    "--volume-window",
+                    "1",
+                    "--volume-multiplier",
+                    "1.0",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "volume-filter-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "volume-filter-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn("strategy=volume_filter_w1_m1.00__sma_1_2_long_only", output)
+        self.assertEqual(summary["strategy_spec"]["volume_filter"], "enabled")
+        self.assertEqual(summary["strategy_spec"]["volume_window"], "1")
+        self.assertEqual(summary["strategy_spec"]["volume_multiplier"], "1.00")
+        self.assertEqual(
+            summary["strategy_spec"]["volume_rule"],
+            "volume >= sma(volume, volume_window) * volume_multiplier",
+        )
 
     def test_fetch_data_command_reports_written_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

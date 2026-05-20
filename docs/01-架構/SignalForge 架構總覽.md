@@ -66,6 +66,8 @@ flowchart TD
 
 `BacktestExecutionAdapter` 會先呼叫 strategy 產生 signals，再用 `EntryEdgeEvaluator` 評估 long entry edge。這個階段不是完整投資組合回測，而是在回答：訊號於 bar close 後成立，下一根 bar open 進場，固定持有 `hold_bars_per_day` 後離場，是否有短期進場優勢。
 
+策略可以在 CLI 層套用可選 wrapper。第一個 wrapper 是 `VolumeFilteredStrategy`，啟用 `--volume-filter` 時才生效；它不改原策略本體，而是在原策略輸出 positive target 後，要求 `volume >= sma(volume, volume_window) * volume_multiplier` 才保留 long 狀態。預設不啟用，避免破壞既有回測 contract。
+
 輸出包含：
 
 - Phase summary JSON：固定 schema、排序與 trailing newline。

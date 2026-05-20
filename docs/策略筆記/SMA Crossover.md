@@ -21,6 +21,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\sma_crossover.py
 - **Long-only / 只做多**：策略只允許買進持有或空手，不做放空。SignalForge CLI 目前就是這個設定。
 - **`target_position` / 目標部位**：策略想要的持倉狀態。`1.0` 代表應該持有多單，`0.0` 代表空手，`-1.0` 代表做空；這份筆記只看 `1.0` 和 `0.0`。
 - **Warmup / 暖機期**：資料還不夠算均線的期間。例如 200 日 SMA 至少要等到有 200 筆收盤價才算得出來。
+- **相對成交量 / Relative volume**：把今天成交量和近期平均量比較。SignalForge 可選成交量過濾器使用 `volume >= sma(volume, 20) * 1.2` 判斷量能是否足夠。
 
 ## 策略假設
 
@@ -85,11 +86,14 @@ SMA Crossover 是趨勢追蹤 baseline。它假設短期平均價格高於長期
 
 程式本身支援 `allow_short=True` 時轉成 `target_position=-1.0`，但目前 CLI 建構策略時固定使用 `allow_short=False`，所以這份筆記只討論做多與空手。
 
+可選的成交量過濾器不是 SMA Crossover 本體，而是外層 wrapper。啟用 `--volume-filter` 時，原策略仍先判斷 `fast_sma > slow_sma`；若原策略輸出 positive target，但當日成交量未達 `20` 日均量的 `1.2` 倍，wrapper 會把 target 改成 `0.0`。
+
 ## 主要參數
 
 - `fast_window`：預設 `20`。
 - `slow_window`：預設 `200`。
 - `allow_short`：實作預設支援，但 CLI 目前固定 `False`。
+- 可選成交量過濾器：CLI 使用 `--volume-filter --volume-window 20 --volume-multiplier 1.2`，實作位置是 `C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py`。
 - entry-edge 評估：訊號於 bar close 後確認，下一根 open 進場，固定持有 `hold_bars_per_day=1` 後以 exit bar close 出場。
 
 ## 股價走勢解說圖
@@ -103,11 +107,13 @@ SMA Crossover 是趨勢追蹤 baseline。它假設短期平均價格高於長期
 - 盤整市場容易來回洗訊號。
 - 進場通常較慢，會犧牲初段行情。
 - 固定 `20/200` 不一定適合所有標的。
+- 若把成交量過濾器套成 target-state filter，低量日會讓 target 回到空手，可能把原本的趨勢持有狀態切成許多短期進出。
 - 用一日 entry-edge 評估可能低估中長期趨勢策略的用途。
 - 目前不含停損、停利、部位管理、regime filter 或成本敏感度分析。
 
 ## 下一步
 
 - 用 `hold_bars_per_day=3/5/10` 測試趨勢持有期是否改善。
+- 比較 entry-only volume filter 與 target-state volume filter，確認哪一種比較符合趨勢策略語意。
 - 若進入 Phase 2，應建立多日持倉與出場規則，而不是只用一日 entry-edge。
 - 檢查不同標的與不同 market regime 下的表現差異。
