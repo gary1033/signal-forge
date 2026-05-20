@@ -18,13 +18,13 @@ CHECKS: tuple[tuple[str, int, tuple[str, ...], tuple[str, ...]], ...] = (
     (
         "entry edge evaluator",
         10,
-        ("src/signal_forge/entry_edge.py",),
+        ("src/signal_forge/backtesting/entry_edge.py",),
         ("EntryEdgeEvaluator", "EntryEdgeConfig", "profit_factor"),
     ),
     (
         "cli entry edge",
         10,
-        ("src/signal_forge/cli.py",),
+        ("src/signal_forge/cli",),
         ("entry-edge", "write_entry_edge_outputs"),
     ),
     (
@@ -48,7 +48,7 @@ CHECKS: tuple[tuple[str, int, tuple[str, ...], tuple[str, ...]], ...] = (
     (
         "phase cli",
         10,
-        ("src/signal_forge/cli.py",),
+        ("src/signal_forge/cli",),
         ("phase", "--mode", "live"),
     ),
     (

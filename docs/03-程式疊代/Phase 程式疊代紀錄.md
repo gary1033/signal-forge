@@ -5,7 +5,7 @@ tags:
   - iteration
   - phase
 status: active
-updated: 2026-05-20
+updated: 2026-05-21
 ---
 
 # Phase 程式疊代紀錄
@@ -126,6 +126,15 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - Regime filter 規則是新的 long entry 必須滿足 `close >= sma(close, regime_window)`；若不滿足，reason 為 `regime_downtrend_blocked`。
 - 濾網只阻擋 entry，不強制平掉既有持倉；出場仍由原本 `exit_z` / `hold` 語意控制。
 
+### 9. 深度 package 重構與 single-signal Phase contract
+
+- 將 `core`、`backtesting`、`phase`、`reporting`、`data`、`cli` 拆成明確子套件，讓資料型別、策略 contract、entry-edge、Phase adapters、reporting 與 CLI handler 不再擠在頂層單檔。
+- 保留舊 public import path：`signal_forge.market_data`、`signal_forge.strategy`、`signal_forge.entry_edge`、`signal_forge.backtester`、`signal_forge.data_fetch` 仍可用；`signal_forge.phase`、`signal_forge.reporting`、`signal_forge.cli` 也維持原 import 名稱。
+- 新增 `generate_validated_signals(...)` 與 `build_signal_digests(...)`，集中處理 strategy output 長度驗證、reason normalization 與 SignalDigest 建構。
+- `BacktestExecutionAdapter` 現在只呼叫一次 strategy，並把同一份 signals 傳給 `EntryEdgeEvaluator.run_from_signals(...)` 與 digest builder，避免 entry-edge artifact 與 trace artifact 來自不同訊號序列。
+- 新增 stateful strategy regression，鎖住 Phase backtest `generate_signals()` 只被呼叫一次；新增 compatibility import regression，鎖住拆包後的 public API。
+- 測試 helper 開始集中到 `tests\helpers.py`，避免測試替身與 bar fixture 一直散在不同 test module。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |
@@ -135,6 +144,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 | `cc6e50b` | experiment | trace summary adds first/last reason |
 | `e02e79f` | experiment | csv validator cross-checks min/max target_position |
 | `d3f59e5` | docs | add strategy notes sync rule |
+| `current` | experiment | reorganize package boundaries and single-signal Phase backtest |
 
 ## 目前下一步
 

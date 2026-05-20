@@ -5,7 +5,7 @@ tags:
   - architecture
   - trading/backtest
 status: active
-updated: 2026-05-20
+updated: 2026-05-21
 aliases:
   - SignalForge 架構
   - SignalForge Architecture
@@ -24,14 +24,20 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 
 | 模組 | 位置 | 責任 |
 |---|---|---|
-| CLI | `src\signal_forge\cli.py` | 提供 `fetch-data`、`entry-edge`、`phase` 指令，組合資料、策略與輸出。 |
-| Market data | `src\signal_forge\market_data.py` | 讀取 OHLCV CSV，驗證 timestamp、OHLC、volume 與資料筆數。 |
-| Data fetch | `src\signal_forge\data_fetch.py` | 下載免費日線資料，輸出 SignalForge 固定 CSV 與 manifest。 |
-| Strategy | `src\signal_forge\strategy.py`、`src\signal_forge\strategies\` | 提供 `Strategy` contract、hook-based `BarByBarStrategy` 模板、strategy registry，並讓每根 bar 產生一筆 `Signal`。 |
-| Entry Edge | `src\signal_forge\entry_edge.py` | 第一階段 long-only 固定持有期進場優勢評估。 |
-| Phase | `src\signal_forge\phase.py` | 定義 `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。 |
-| Reporting | `src\signal_forge\reporting.py` | 寫出 JSON、Markdown、trade log、signals CSV、trace summary，並做 contract validation。 |
+| CLI | `src\signal_forge\cli\` | 提供 `fetch-data`、`entry-edge`、`phase` 指令，將 parser、command handler 與 strategy option glue 分開。 |
+| Core | `src\signal_forge\core\` | 放 `Bar`、market data validation、indicators、`Strategy` contract、`SignalDigest` 與 signal normalization。 |
+| Data fetch | `src\signal_forge\data\` | 下載免費日線資料，輸出 SignalForge 固定 CSV 與 manifest；`data_fetch.py` 保留相容入口。 |
+| Strategy | `src\signal_forge\core\strategy.py`、`src\signal_forge\strategies\` | 提供 hook-based `BarByBarStrategy` 模板、strategy registry，並讓每根 bar 產生一筆 `Signal`。 |
+| Entry Edge | `src\signal_forge\backtesting\entry_edge.py` | 第一階段 long-only 固定持有期進場優勢評估；支援 precomputed signals，避免 Phase 重複產生訊號。 |
+| Phase | `src\signal_forge\phase\` | 定義 `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。 |
+| Reporting | `src\signal_forge\reporting\` | 依 entry-edge、phase、signal digest、validator、markdown、paths 拆出 reporting API；`_legacy.py` 暫保留原 artifact contract 實作。 |
 | Readiness | `tools\phase_readiness_score.py` | bounded autoresearch 使用的輕量 deterministic readiness metric。 |
+
+## Package 邊界與相容層
+
+2026-05-21 的重構把原本散在 `src\signal_forge\*.py` 的核心流程收斂成子套件，但保留既有 public import path。舊的 `signal_forge.market_data`、`signal_forge.strategy`、`signal_forge.entry_edge`、`signal_forge.backtester`、`signal_forge.data_fetch` 仍可匯入，內部改成薄 wrapper re-export 新位置；`signal_forge.phase`、`signal_forge.reporting`、`signal_forge.cli` 則由單檔改成 package。
+
+最重要的行為修正是 Phase backtest 現在只呼叫一次 `Strategy.generate_signals(...)`。同一份 signals 會同時傳給 `EntryEdgeEvaluator.run_from_signals(...)` 與 `build_signal_digests(...)`，因此 entry-edge trade log、Phase summary、`*_signals.csv` 與 `*_trace_summary.json` 不會因 stateful strategy 或非 deterministic strategy 而彼此不同步。
 
 ## Strategy OOP 模板
 
@@ -64,13 +70,13 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 flowchart TD
     A["CSV OHLCV data"] --> B["load_bars_from_csv"]
     B --> C["validate_bars"]
-    C --> D["Strategy.generate_signals"]
+    C --> D["generate_validated_signals"]
     D --> E{"PhaseConfig.mode"}
     E -->|backtest| F["BacktestExecutionAdapter"]
     E -->|live| G["LiveExecutionAdapter"]
-    F --> H["EntryEdgeEvaluator"]
+    F --> H["EntryEdgeEvaluator.run_from_signals"]
     H --> I["EntryEdgeResult"]
-    F --> J["SignalDigest per bar"]
+    F --> J["build_signal_digests"]
     J --> K["*_signals.csv"]
     J --> L["*_trace_summary.json"]
     G --> M["OrderIntent only"]

@@ -3,57 +3,12 @@ from __future__ import annotations
 import unittest
 
 from signal_forge import (
-    Bar,
     PhaseConfig,
     PhaseRunner,
-    Signal,
-    Strategy,
     normalize_signal_reason,
     parse_phase_mode,
 )
-
-
-class OneEntryStrategy(Strategy):
-    name = "one_entry"
-
-    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
-        """
-        用途與流程：在測試替身策略中產生固定 Signal 序列，讓測試可聚焦於被測流程而非策略細節。
-        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
-        回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
-        """
-        return [
-            Signal(index, bar.timestamp, 1.0 if index == 0 else 0.0, "entry")
-            for index, bar in enumerate(bars)
-        ]
-
-
-class MessyReasonStrategy(Strategy):
-    name = "messy_reason"
-
-    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
-        """
-        用途與流程：在測試替身策略中產生固定 Signal 序列，讓測試可聚焦於被測流程而非策略細節。
-        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
-        回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
-        """
-        messy = "  \u9032\u5834\t\n  alpha  "
-        return [
-            Signal(index, bar.timestamp, 1.0 if index == 0 else 0.0, messy)
-            for index, bar in enumerate(bars)
-        ]
-
-
-def sample_bars() -> list[Bar]:
-    """
-    用途與流程：建立測試用 deterministic Bar 清單，讓不同測試共用穩定 OHLCV fixture。
-    參數：無參數。
-    回傳與錯誤：回傳 list[Bar]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
-    """
-    return [
-        Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
-        Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
-    ]
+from helpers import MessyReasonStrategy, OneEntryStrategy, StatefulOneEntryStrategy, sample_bars
 
 
 class PhaseConfigTests(unittest.TestCase):
@@ -159,6 +114,28 @@ class PhaseConfigTests(unittest.TestCase):
         self.assertFalse(result.dry_run)
         self.assertIsNotNone(result.entry_edge_result)
         self.assertEqual(result.entry_edge_result.trade_count, 1)
+
+    def test_phase_backtest_uses_single_signal_sequence_for_digest_and_entry_edge(self) -> None:
+        """
+        用途與流程：驗證 Phase backtest 只呼叫 strategy 一次，並讓 EntryEdgeResult 與 SignalDigest 共用同一份 signals。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        strategy = StatefulOneEntryStrategy()
+
+        result = PhaseRunner().run(
+            PhaseConfig(mode="backtest"),
+            strategy,
+            sample_bars(),
+        )
+
+        self.assertEqual(strategy.call_count, 1)
+        self.assertIsNotNone(result.entry_edge_result)
+        self.assertIsNotNone(result.signal_digests)
+        assert result.entry_edge_result is not None
+        assert result.signal_digests is not None
+        self.assertEqual(result.entry_edge_result.trades[0].signal_reason, "entry_call_1")
+        self.assertEqual(result.signal_digests[0].reason, "entry_call_1")
 
     def test_phase_runner_normalizes_reasons_for_digest_and_intent(self) -> None:
         """

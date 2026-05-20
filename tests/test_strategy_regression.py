@@ -2,33 +2,13 @@ from __future__ import annotations
 
 import unittest
 
-from signal_forge import Bar, BarByBarStrategy
+from helpers import bars_from_closes
+from signal_forge import BarByBarStrategy
 from signal_forge.strategies import (
     ConfluenceScoreStrategy,
     SmaCrossoverStrategy,
     VwapReversionStrategy,
 )
-
-
-def bars_from_closes(closes: list[float], volumes: list[float] | None = None) -> list[Bar]:
-    """
-    用途與流程：依 close 價格序列建立一致的 Bar fixture，讓策略 regression 聚焦在訊號語意。
-    參數：closes（list[float]）由呼叫端傳入，需符合函式 contract；volumes（list[float] | None）由呼叫端傳入，需符合函式 contract
-    回傳與錯誤：回傳 list[Bar]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
-    """
-    if volumes is None:
-        volumes = [100.0 for _ in closes]
-    return [
-        Bar(
-            f"2026-01-{index + 1:02d}",
-            close,
-            close + 1.0,
-            close - 1.0,
-            close,
-            volumes[index],
-        )
-        for index, close in enumerate(closes)
-    ]
 
 
 class StrategyRegressionTests(unittest.TestCase):

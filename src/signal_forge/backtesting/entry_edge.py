@@ -1,0 +1,310 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from typing import Literal, Sequence
+
+from signal_forge.core.market_data import Bar, validate_bars
+from signal_forge.core.signals import generate_validated_signals
+from signal_forge.core.strategy import Signal, Strategy
+
+
+Decision = Literal["pass", "fail"]
+ProfitFactorStatus = Literal["finite", "infinite", "undefined"]
+
+
+@dataclass(frozen=True)
+class EntryEdgeConfig:
+    initial_equity: float = 10_000.0
+    commission_bps: float = 1.0
+    slippage_bps: float = 1.0
+    hold_bars_per_day: int = 1
+    pass_profit_factor: float = 1.2
+
+
+@dataclass(frozen=True)
+class EntryEdgeTrade:
+    signal_index: int
+    signal_timestamp: str
+    entry_index: int
+    entry_timestamp: str
+    exit_index: int
+    exit_timestamp: str
+    entry_price: float
+    exit_price: float
+    gross_pnl: float
+    cost: float
+    net_pnl: float
+    return_pct: float
+    signal_reason: str
+    signal_score: float
+
+
+@dataclass(frozen=True)
+class EntryEdgeEquityPoint:
+    timestamp: str
+    equity: float
+
+
+@dataclass(frozen=True)
+class EntryEdgeResult:
+    strategy_name: str
+    config: EntryEdgeConfig
+    decision: Decision
+    failure_reason: str | None
+    profit_factor: float | None
+    profit_factor_status: ProfitFactorStatus
+    sample_risk: str | None
+    gross_profit: float
+    gross_loss: float
+    trade_count: int
+    ignored_short_count: int
+    unclosed_signal_count: int
+    overlapping_signal_count: int
+    win_rate: float
+    average_net_pnl: float
+    max_drawdown: float
+    start_equity: float
+    end_equity: float
+    trades: list[EntryEdgeTrade]
+    equity_curve: list[EntryEdgeEquityPoint]
+
+
+@dataclass(frozen=True)
+class EntryEdgeComparisonResult:
+    strategy_name: str
+    hold_bars_per_day: tuple[int, ...]
+    results: list[EntryEdgeResult]
+
+
+class EntryEdgeEvaluator:
+    """Evaluate pure long entry edge with a fixed one-day holding contract."""
+
+    def __init__(self, config: EntryEdgeConfig | None = None) -> None:
+        """
+        用途與流程：初始化物件狀態，保存後續執行所需的設定或 adapter 相依物件。
+        參數：self 表示目前物件實例；config（EntryEdgeConfig | None）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        self.config = config or EntryEdgeConfig()
+        if self.config.hold_bars_per_day <= 0:
+            raise ValueError("hold_bars_per_day must be positive")
+
+    def run(self, strategy: Strategy, bars: list[Bar]) -> EntryEdgeResult:
+        """
+        用途與流程：執行主要工作流程，先驗證輸入 contract，再產生結果物件供 reporting 或測試使用。
+        參數：self 表示目前物件實例；strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 EntryEdgeResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
+        signals = generate_validated_signals(strategy, bars)
+        return self.run_from_signals(strategy.name, bars, signals)
+
+    def run_from_signals(
+        self,
+        strategy_name: str,
+        bars: list[Bar],
+        signals: list[Signal],
+    ) -> EntryEdgeResult:
+        """
+        用途與流程：以呼叫端已產生且已固定的 Signal 序列評估 entry-edge，避免 Phase 同一輪回測重複呼叫 strategy。
+        參數：strategy_name 是報表使用的策略名稱；bars 是同一批 OHLCV Bar；signals 必須與 bars 一對一對齊。
+        回傳與錯誤：回傳 EntryEdgeResult；若 bars 驗證失敗或 signals 筆數不一致，拋出 ValueError。
+        """
+        validation = validate_bars(bars, min_bars=self.config.hold_bars_per_day + 1)
+        if not validation.is_valid:
+            raise ValueError("; ".join(validation.errors))
+        if len(signals) != len(bars):
+            raise ValueError("strategy must return exactly one signal per bar")
+
+        equity = self.config.initial_equity
+        trades: list[EntryEdgeTrade] = []
+        equity_curve = [EntryEdgeEquityPoint(bars[0].timestamp, equity)]
+        total_cost_rate = (self.config.commission_bps + self.config.slippage_bps) / 10_000.0
+        previous_target = 0.0
+        last_exit_index = -1
+        ignored_short_count = 0
+        unclosed_signal_count = 0
+        overlapping_signal_count = 0
+
+        for signal in signals:
+            target = signal.target_position
+            if target < 0:
+                ignored_short_count += 1
+
+            is_long_entry = target > 0 and previous_target <= 0
+            previous_target = target
+            if not is_long_entry:
+                continue
+
+            entry_index = signal.index + 1
+            exit_index = entry_index + self.config.hold_bars_per_day - 1
+            if exit_index >= len(bars):
+                unclosed_signal_count += 1
+                continue
+            if entry_index <= last_exit_index:
+                overlapping_signal_count += 1
+                continue
+
+            entry_bar = bars[entry_index]
+            exit_bar = bars[exit_index]
+            entry_notional = equity
+            gross_pnl = entry_notional * ((exit_bar.close / entry_bar.open) - 1.0)
+            exit_notional = entry_notional + gross_pnl
+            cost = (entry_notional * total_cost_rate) + (max(exit_notional, 0.0) * total_cost_rate)
+            net_pnl = gross_pnl - cost
+            equity += net_pnl
+            last_exit_index = exit_index
+
+            trades.append(
+                EntryEdgeTrade(
+                    signal_index=signal.index,
+                    signal_timestamp=signal.timestamp,
+                    entry_index=entry_index,
+                    entry_timestamp=entry_bar.timestamp,
+                    exit_index=exit_index,
+                    exit_timestamp=exit_bar.timestamp,
+                    entry_price=entry_bar.open,
+                    exit_price=exit_bar.close,
+                    gross_pnl=gross_pnl,
+                    cost=cost,
+                    net_pnl=net_pnl,
+                    return_pct=net_pnl / entry_notional,
+                    signal_reason=signal.reason,
+                    signal_score=signal.score,
+                )
+            )
+            equity_curve.append(EntryEdgeEquityPoint(exit_bar.timestamp, equity))
+
+        return _build_result(
+            strategy_name=strategy_name,
+            config=self.config,
+            trades=trades,
+            equity_curve=equity_curve,
+            ignored_short_count=ignored_short_count,
+            unclosed_signal_count=unclosed_signal_count,
+            overlapping_signal_count=overlapping_signal_count,
+        )
+
+
+def run_entry_edge_hold_comparison(
+    strategy: Strategy,
+    bars: list[Bar],
+    base_config: EntryEdgeConfig,
+    hold_bars_per_day: Sequence[int],
+) -> EntryEdgeComparisonResult:
+    """
+    用途與流程：用同一策略與資料依序跑多個固定持有期，產生可比較的 Entry Edge 結果。
+    參數：strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract；base_config（EntryEdgeConfig）由呼叫端傳入，需符合函式 contract；hold_bars_per_day（Sequence[int]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 EntryEdgeComparisonResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    hold_values = tuple(hold_bars_per_day)
+    if not hold_values:
+        raise ValueError("hold_bars_per_day comparison list must not be empty")
+    invalid_values = [value for value in hold_values if value <= 0]
+    if invalid_values:
+        raise ValueError("hold_bars_per_day comparison values must be positive")
+
+    results = [
+        EntryEdgeEvaluator(replace(base_config, hold_bars_per_day=value)).run(
+            strategy,
+            bars,
+        )
+        for value in hold_values
+    ]
+    return EntryEdgeComparisonResult(
+        strategy_name=strategy.name,
+        hold_bars_per_day=hold_values,
+        results=results,
+    )
+
+
+def _build_result(
+    *,
+    strategy_name: str,
+    config: EntryEdgeConfig,
+    trades: list[EntryEdgeTrade],
+    equity_curve: list[EntryEdgeEquityPoint],
+    ignored_short_count: int,
+    unclosed_signal_count: int,
+    overlapping_signal_count: int,
+) -> EntryEdgeResult:
+    """
+    用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
+    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract；config（EntryEdgeConfig）由呼叫端傳入，需符合函式 contract；trades（list[EntryEdgeTrade]）由呼叫端傳入，需符合函式 contract；equity_curve（list[EntryEdgeEquityPoint]）由呼叫端傳入，需符合函式 contract；ignored_short_count（int）由呼叫端傳入，需符合函式 contract；unclosed_signal_count（int）由呼叫端傳入，需符合函式 contract；overlapping_signal_count（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 EntryEdgeResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    gross_profit = sum(trade.net_pnl for trade in trades if trade.net_pnl > 0)
+    gross_loss = sum(trade.net_pnl for trade in trades if trade.net_pnl < 0)
+    trade_count = len(trades)
+    winning_trades = sum(1 for trade in trades if trade.net_pnl > 0)
+    win_rate = winning_trades / trade_count if trade_count else 0.0
+    average_net_pnl = sum(trade.net_pnl for trade in trades) / trade_count if trade_count else 0.0
+    sample_risk: str | None = None
+    failure_reason: str | None = None
+
+    if not trades:
+        profit_factor = None
+        profit_factor_status: ProfitFactorStatus = "undefined"
+        decision: Decision = "fail"
+        failure_reason = "No closed long-entry trades to evaluate."
+    elif gross_loss == 0 and gross_profit > 0:
+        profit_factor = None
+        profit_factor_status = "infinite"
+        decision = "pass"
+        sample_risk = (
+            "No losing trades; PF is infinite. Manually inspect sample size and representativeness."
+        )
+    elif gross_loss == 0:
+        profit_factor = None
+        profit_factor_status = "undefined"
+        decision = "fail"
+        failure_reason = "No profitable closed trades."
+    else:
+        profit_factor = gross_profit / abs(gross_loss)
+        profit_factor_status = "finite"
+        if profit_factor > config.pass_profit_factor:
+            decision = "pass"
+        else:
+            decision = "fail"
+            failure_reason = (
+                f"Profit Factor {profit_factor:.3f} did not exceed "
+                f"{config.pass_profit_factor:.3f}"
+            )
+
+    equity_values = [point.equity for point in equity_curve]
+    return EntryEdgeResult(
+        strategy_name=strategy_name,
+        config=config,
+        decision=decision,
+        failure_reason=failure_reason,
+        profit_factor=profit_factor,
+        profit_factor_status=profit_factor_status,
+        sample_risk=sample_risk,
+        gross_profit=gross_profit,
+        gross_loss=gross_loss,
+        trade_count=trade_count,
+        ignored_short_count=ignored_short_count,
+        unclosed_signal_count=unclosed_signal_count,
+        overlapping_signal_count=overlapping_signal_count,
+        win_rate=win_rate,
+        average_net_pnl=average_net_pnl,
+        max_drawdown=_max_drawdown(equity_values),
+        start_equity=config.initial_equity,
+        end_equity=equity_curve[-1].equity,
+        trades=trades,
+        equity_curve=equity_curve,
+    )
+
+
+def _max_drawdown(equity_values: list[float]) -> float:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：equity_values（list[float]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 float；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    peak = equity_values[0]
+    max_drawdown = 0.0
+    for equity in equity_values:
+        peak = max(peak, equity)
+        if peak > 0:
+            max_drawdown = min(max_drawdown, (equity / peak) - 1.0)
+    return max_drawdown
