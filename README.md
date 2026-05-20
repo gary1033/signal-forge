@@ -112,26 +112,24 @@ python -m signal_forge.cli fetch-data `
   --end 2024-12-31
 
 # 2. 用策略 default parameters 跑三個 entry-edge
-python -m signal_forge.cli entry-edge `
-  --csv data\processed\TWSE_2330_1D.csv `
-  --strategy sma-crossover `
-  --output-dir reports\generated `
-  --run-name tsmc-sma-default
 
+# SMA Crossover
 python -m signal_forge.cli entry-edge `
   --csv data\processed\TWSE_2330_1D.csv `
-  --strategy vwap-reversion `
-  --output-dir reports\generated `
-  --run-name tsmc-vwap-default
+  --strategy sma-crossover
 
+# VWAP Reversion
 python -m signal_forge.cli entry-edge `
   --csv data\processed\TWSE_2330_1D.csv `
-  --strategy confluence-score `
-  --output-dir reports\generated `
-  --run-name tsmc-confluence-default
+  --strategy vwap-reversion
+
+# Confluence Score
+python -m signal_forge.cli entry-edge `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --strategy confluence-score
 ```
 
-輸出會放在 `reports\generated\`，每個 run 會產生 markdown、summary JSON 與 trade log CSV。這些報表只是研究與回測稽核，不構成投資建議。
+輸出預設會放在 `reports\generated\`，檔名前綴預設使用策略名稱。每個 run 會產生 markdown、summary JSON 與 trade log CSV。這些報表只是研究與回測稽核，不構成投資建議。
 
 若要測同一策略不同參數，再覆寫參數即可：
 
