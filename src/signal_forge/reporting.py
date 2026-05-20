@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 from collections import Counter
@@ -180,6 +181,14 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     trace = trace_summary.get("trace_summary")
     if not isinstance(trace, dict):
         raise ValueError("trace summary missing required dict key: trace_summary")
+
+    expected_hash = trace.get("signal_digest_sha256")
+    if expected_hash is not None:
+        if not isinstance(expected_hash, str):
+            raise ValueError("trace summary signal_digest_sha256 must be a string")
+        computed_hash = hashlib.sha256(csv_text.encode("utf-8")).hexdigest()
+        if computed_hash != expected_hash:
+            raise ValueError("signal digest csv sha256 must match trace summary")
 
     reader = csv.DictReader(io.StringIO(csv_text))
     expected = {
@@ -650,6 +659,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "open_count": int,
         "reason_counts": list,
         "reasons": list,
+        "signal_digest_sha256": str,
         "short_entry_count": int,
         "start_date": (type(None), str),
         "timestamps_iso8601": bool,
@@ -672,6 +682,12 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     bar_count = int(trace_summary["bar_count"])
     if bar_count < 0:
         raise ValueError("trace summary trace_summary.bar_count must be non-negative")
+
+    digest_hash = trace_summary.get("signal_digest_sha256")
+    if not isinstance(digest_hash, str) or len(digest_hash) != 64 or not all(
+        char in "0123456789abcdef" for char in digest_hash
+    ):
+        raise ValueError("trace summary trace_summary.signal_digest_sha256 must be lowercase hex sha256")
 
     start_date = trace_summary.get("start_date")
     end_date = trace_summary.get("end_date")
@@ -930,6 +946,7 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
     buffer = io.StringIO()
     writer = csv.DictWriter(
         buffer,
+        lineterminator="\n",
         fieldnames=[
             "index",
             "timestamp",
@@ -1045,7 +1062,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     end_date = _extract_iso8601_date(last_timestamp)
     return {
         "trace_summary": {
-            "schema_version": 4,
+            "schema_version": 5,
             "bar_count": len(digests),
             "close_count": close_count,
             "end_date": end_date,
@@ -1075,6 +1092,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "unique_reason_count": len(unique_reasons),
             "reasons": unique_reasons,
             "reason_counts": reason_count_items,
+            "signal_digest_sha256": hashlib.sha256(_signal_digest_csv(digests).encode("utf-8")).hexdigest(),
         }
     }
 

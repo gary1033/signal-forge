@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -54,9 +55,15 @@ class ReportingTests(unittest.TestCase):
             paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-validator")
             csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
             trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+            expected_hash = trace_summary["trace_summary"]["signal_digest_sha256"]
 
         validate_trace_summary(trace_summary)
         validate_signal_digest_csv(trace_summary, csv_text)
+
+        trace_summary["trace_summary"]["signal_digest_sha256"] = "0" * 64  # type: ignore[index]
+        with self.assertRaisesRegex(ValueError, "sha256 must match"):
+            validate_signal_digest_csv(trace_summary, csv_text)
+        trace_summary["trace_summary"]["signal_digest_sha256"] = expected_hash  # type: ignore[index]
 
         lines = csv_text.splitlines()
         header = lines[0].split(",")
@@ -67,6 +74,9 @@ class ReportingTests(unittest.TestCase):
         row[change_index] = "2.000000"
         lines[1] = ",".join(row)
         bad_csv = "\n".join(lines) + "\n"
+        trace_summary["trace_summary"]["signal_digest_sha256"] = hashlib.sha256(  # type: ignore[index]
+            bad_csv.encode("utf-8")
+        ).hexdigest()
         with self.assertRaisesRegex(ValueError, "first_target_position must match"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
@@ -159,6 +169,9 @@ class ReportingTests(unittest.TestCase):
         row[timestamp_index] = "01-02-2026"
         lines[1] = ",".join(row)
         bad_csv = "\n".join(lines) + "\n"
+        trace_summary["trace_summary"]["signal_digest_sha256"] = hashlib.sha256(  # type: ignore[index]
+            bad_csv.encode("utf-8")
+        ).hexdigest()
         with self.assertRaisesRegex(ValueError, "timestamp must be ISO-8601"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
@@ -184,6 +197,9 @@ class ReportingTests(unittest.TestCase):
         row[score_index] = "1.0"
         lines[1] = ",".join(row)
         bad_csv = "\n".join(lines) + "\n"
+        trace_summary["trace_summary"]["signal_digest_sha256"] = hashlib.sha256(  # type: ignore[index]
+            bad_csv.encode("utf-8")
+        ).hexdigest()
         with self.assertRaisesRegex(ValueError, "fixed 6-decimal formatting"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
@@ -216,6 +232,9 @@ class ReportingTests(unittest.TestCase):
         lines[2] = ",".join(row2)
         bad_csv = "\n".join(lines) + "\n"
 
+        trace_summary["trace_summary"]["signal_digest_sha256"] = hashlib.sha256(  # type: ignore[index]
+            bad_csv.encode("utf-8")
+        ).hexdigest()
         with self.assertRaisesRegex(ValueError, "is_long_entry mismatch"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
@@ -253,6 +272,9 @@ class ReportingTests(unittest.TestCase):
         lines[2] = ",".join(row)
         bad_csv = "\n".join(lines) + "\n"
 
+        trace_summary["trace_summary"]["signal_digest_sha256"] = hashlib.sha256(  # type: ignore[index]
+            bad_csv.encode("utf-8")
+        ).hexdigest()
         with self.assertRaisesRegex(ValueError, "hold_side mismatch"):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
@@ -672,8 +694,9 @@ class ReportingTests(unittest.TestCase):
                             '    "reasons": [',
                             '      "entry"',
                             "    ],",
-                            '    "schema_version": 4,',
+                            '    "schema_version": 5,',
                             '    "short_entry_count": 0,',
+                            '    "signal_digest_sha256": "0f609595a6fa312748bb9729fbf34cc07d87a11f666ea5bfd4fbfcfec88f7092",',
                             '    "start_date": "2026-01-01",',
                             '    "timestamps_iso8601": true,',
                             '    "unique_reason_count": 1',

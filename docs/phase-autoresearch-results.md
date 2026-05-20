@@ -81,6 +81,7 @@ git diff --check
 | 2026-05-20 07:38 | Trace summary 擴充 `hold_long_count` / `hold_short_count` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic hold side buckets，並驗證 `hold_long_count + hold_short_count == hold_count`（schema_version=4，test-covered）。 |
 | 2026-05-20 07:52 | Signals CSV 擴充 `hold_side` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_signals.csv` 追加 deterministic `hold_side`（none/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 per-row hold side 語意與 `hold_long_count` / `hold_short_count` 一致（test-covered）。 |
 | 2026-05-20 08:05 | Phase markdown 顯示 hold long/short | 110 -> 110 | pass | keep | pushed to `origin/main` | Phase markdown 的 `Backtest Trace Summary` 追加 `hold_long_count` / `hold_short_count`（hold long/short）顯示，並更新 exact-text regression test contract（test-covered）。 |
+| 2026-05-20 08:20 | Trace summary 加入 `signal_digest_sha256` | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic `signal_digest_sha256`（schema_version=5），並在 `validate_signal_digest_csv(...)` 驗證 signals CSV hash 與 trace summary 一致（test-covered）；同時固定 `*_signals.csv` 換行為 `\\n`，避免 hash 因 OS newline 正規化 drift。 |
 
 ## 總結
 
