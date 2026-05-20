@@ -17,7 +17,7 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 
 目前主線是 Phase 工作流：同一份 OHLCV CSV、同一個 strategy、同一組參數，必須產生可重複、可比較、可被測試鎖住的 artifacts。這份筆記專注說明架構與安全邊界；策略研究細節放在 [[../策略筆記/策略筆記索引|策略筆記索引]]，規劃方向放在 [[../02-規劃/SignalForge 大框架規劃|大框架規劃]]。
 
-每個資料夾、Python 模組與測試檔案的責任分工，請看 [[SignalForge 資料夾與程式碼導覽|資料夾與程式碼導覽]]。
+每個資料夾、Python 模組與測試檔案的責任分工，請看 [[SignalForge 資料夾與程式碼導覽|資料夾與程式碼導覽]]；實際 CLI、console script 與 Python API 的呼叫方式，請看 [[SignalForge 呼叫程式方式|呼叫程式方式]]。
 
 > [!warning]
 > 本專案只做研究與回測，不構成投資建議。`live` 模式目前只允許 dry-run order intent，不接 broker、不讀 API key、不送真實訂單。

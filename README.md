@@ -17,6 +17,15 @@ SignalForge 是研究導向的交易訊號沙盒，用來把 TradingView / Pine 
 
 ## 快速執行（PowerShell）
 
+目前有兩個等價的命令列入口：
+
+| 場景 | 呼叫方式 |
+|---|---|
+| 直接跑 source tree | 先設定 `$env:PYTHONPATH='src'`，再用 `python -m signal_forge.cli ...`。 |
+| 安裝後使用 console script | 先跑 `python -m pip install -e .`，再用 `signal-forge ...`。 |
+
+完整呼叫方式、subcommand 參數與 Python API 範例整理在 `docs\01-架構\SignalForge 呼叫程式方式.md`。
+
 ```powershell
 # readiness metric
 python tools\phase_readiness_score.py

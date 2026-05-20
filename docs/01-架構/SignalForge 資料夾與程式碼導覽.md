@@ -125,6 +125,8 @@ aliases:
 
 `cli` 只負責命令列介面、參數轉型、呼叫正式 API 與輸出使用者訊息。策略語意、回測計算與 artifact schema 不應散在 CLI。
 
+目前實際支援的開發呼叫、安裝後 console script、subcommand 範例與 Python API 用法，集中整理在 [[SignalForge 呼叫程式方式|呼叫程式方式]]。
+
 | 檔案 | 責任 | 備註 |
 |---|---|---|
 | `__init__.py` | 提供 `main` public entry。 | 保持 `from signal_forge.cli import main` 可用。 |

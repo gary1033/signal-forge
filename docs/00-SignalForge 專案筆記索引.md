@@ -19,6 +19,7 @@ updated: 2026-05-20
 ## 主要入口
 
 - [[01-架構/SignalForge 架構總覽|SignalForge 架構總覽]]
+- [[01-架構/SignalForge 呼叫程式方式|SignalForge 呼叫程式方式]]
 - [[02-規劃/SignalForge 大框架規劃|SignalForge 大框架規劃]]
 - [[策略筆記/策略筆記索引|策略筆記索引]]
 - [[03-程式疊代/Phase 程式疊代紀錄|Phase 程式疊代紀錄]]
@@ -40,7 +41,7 @@ updated: 2026-05-20
 
 | 區塊 | 用途 |
 |---|---|
-| `01-架構/` | 說明 SignalForge 的模組、資料流、PhaseMode 與 live dry-run 安全邊界。 |
+| `01-架構/` | 說明 SignalForge 的模組、資料流、PhaseMode、呼叫入口與 live dry-run 安全邊界。 |
 | `02-規劃/` | 放大框架方向、Phase 分期、資料準備、策略蒸餾規則與下一步 backlog。 |
 | `策略筆記/` | 一種策略一份筆記，包含策略假設、進出場條件、風險、圖片解說。 |
 | `03-程式疊代/` | 保存程式與 artifact contract 的疊代紀錄。 |
