@@ -77,6 +77,7 @@
 | 2026-05-20 09:08 | 強化 signals CSV vs trace summary cross-check（reasons） | `validate_signal_digest_csv(...)` 追加 `reasons` / `reason_counts` cross-check，要求 `*_signals.csv` 的 `reason` 分佈與 `*_trace_summary.json` 完全一致（避免 reason drift；test-covered） | 110 -> 110；55 tests OK | keep |
 | 2026-05-20 09:22 | Phase markdown 顯示 trace schema 與 position buckets | Phase markdown 的 `Backtest Trace Summary` 追加 `schema_version` 與 `position_bucket_counts`（flat/long/short）顯示，並以 exact-text regression test 鎖住 backtest markdown contract | 110 -> 110；55 tests OK | keep |
 | 2026-05-20 09:36 | Trace summary 加入 `first_previous_target_position` | `*_trace_summary.json` 追加 deterministic `first_previous_target_position`（schema_version=7），並在 `validate_signal_digest_csv(...)` 交叉驗證與 signals CSV 一致；Phase markdown 顯示該欄位 | 110 -> 110；55 tests OK | keep |
+| 2026-05-20 09:51 | Trace summary 加入 `first_index` / `last_index` | `*_trace_summary.json` 追加 deterministic index range 欄位（schema_version=8），並擴充 validator + exact-text regression test contract（test-covered） | 110 -> 110；55 tests OK | keep |
 
 ## 方法紀錄
 

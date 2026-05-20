@@ -736,6 +736,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "close_count": int,
         "end_date": (type(None), str),
         "entry_count": int,
+        "first_index": (type(None), int),
         "first_previous_target_position": (int, float),
         "first_target_position": (int, float),
         "first_timestamp": (type(None), str),
@@ -747,6 +748,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "hold_count": int,
         "hold_long_count": int,
         "hold_short_count": int,
+        "last_index": (type(None), int),
         "last_previous_target_position": (int, float),
         "last_target_position": (int, float),
         "last_timestamp": (type(None), str),
@@ -782,6 +784,25 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     bar_count = int(trace_summary["bar_count"])
     if bar_count < 0:
         raise ValueError("trace summary trace_summary.bar_count must be non-negative")
+
+    first_index = trace_summary.get("first_index")
+    last_index = trace_summary.get("last_index")
+    if bar_count == 0:
+        if first_index is not None or last_index is not None:
+            raise ValueError(
+                "trace summary trace_summary first_index/last_index must be None when bar_count=0"
+            )
+    else:
+        if not isinstance(first_index, int) or not isinstance(last_index, int):
+            raise ValueError(
+                "trace summary trace_summary first_index/last_index must be int when bar_count>0"
+            )
+        if first_index < 0:
+            raise ValueError("trace summary trace_summary.first_index must be non-negative")
+        if last_index < first_index:
+            raise ValueError(
+                "trace summary trace_summary.last_index must be >= first_index"
+            )
 
     digest_hash = trace_summary.get("signal_digest_sha256")
     if not isinstance(digest_hash, str) or len(digest_hash) != 64 or not all(
@@ -1183,6 +1204,8 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     nonzero_position_change_count = sum(
         1 for digest in digests if abs(digest.position_change) > epsilon
     )
+    first_index = digests[0].index if digests else None
+    last_index = digests[-1].index if digests else None
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None
     first_previous_target_position = (
@@ -1211,11 +1234,12 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     short_bucket_count = sum(1 for digest in digests if digest.target_position < -epsilon)
     return {
         "trace_summary": {
-            "schema_version": 7,
+            "schema_version": 8,
             "bar_count": len(digests),
             "close_count": close_count,
             "end_date": end_date,
             "entry_count": open_count,
+            "first_index": first_index,
             "first_previous_target_position": _round_float(first_previous_target_position, 6),
             "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
@@ -1227,6 +1251,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "hold_count": hold_count,
             "hold_long_count": hold_long_count,
             "hold_short_count": hold_short_count,
+            "last_index": last_index,
             "last_previous_target_position": _round_float(last_previous_target_position, 6),
             "nonzero_target_position_count": nonzero_target_position_count,
             "nonzero_position_change_count": nonzero_position_change_count,
