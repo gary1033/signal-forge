@@ -252,6 +252,7 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
             raise ValueError(f"signal digest csv {field} must be a float") from exc
 
     tolerance = 1e-9
+    reason_counts: Counter[str] = Counter()
     long_entry_count = 0
     flatten_count = 0
     flatten_to_short_count = 0
@@ -301,6 +302,7 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         target_position = parse_float(row["target_position"], field="target_position")
         position_bucket = row["position_bucket"]
         position_change = parse_float(row["position_change"], field="position_change")
+        reason = row["reason"]
         score = parse_float(row["score"], field="score")
         if not math.isfinite(score):
             raise ValueError(f"signal digest csv score must be finite: index={index}")
@@ -324,6 +326,20 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
                 "signal digest csv position_change must match target_position delta: "
                 f"index={index}"
             )
+
+        if not reason:
+            raise ValueError(f"signal digest csv reason must be non-empty: index={index}")
+        if reason.strip() != reason:
+            raise ValueError(
+                "signal digest csv reason must not have leading/trailing whitespace: "
+                f"index={index}"
+            )
+        if (not reason.isascii()) or any(char in {"\r", "\n", "\t"} for char in reason):
+            raise ValueError(
+                "signal digest csv reason must be ASCII-only and single-line: "
+                f"index={index}"
+            )
+        reason_counts[reason] += 1
 
         epsilon = 1e-12
         if abs(target_position) <= epsilon:
@@ -453,6 +469,28 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
                 "signal digest csv position bucket count must match trace summary: "
                 f"bucket={key} csv={expected_value} trace_summary={actual_value}"
             )
+
+    expected_reasons = sorted(reason_counts.keys())
+    actual_reasons = trace.get("reasons") or []
+    if actual_reasons != expected_reasons:
+        raise ValueError(
+            "signal digest csv reasons must match trace summary: "
+            f"csv={expected_reasons} trace_summary={actual_reasons}"
+        )
+
+    if int(trace.get("unique_reason_count", -1)) != len(expected_reasons):
+        raise ValueError(
+            "signal digest csv unique reason count must match trace summary unique_reason_count: "
+            f"csv={len(expected_reasons)} trace_summary={trace.get('unique_reason_count')}"
+        )
+
+    expected_reason_count_items = [
+        {"reason": reason, "count": count}
+        for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    actual_reason_count_items = trace.get("reason_counts") or []
+    if actual_reason_count_items != expected_reason_count_items:
+        raise ValueError("signal digest csv reason_counts must match trace summary reason_counts")
 
     def assert_close(name: str, expected_value: float, actual_value: float) -> None:
         if abs(expected_value - actual_value) > tolerance:

@@ -118,6 +118,34 @@ class ReportingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "flatten_to_zero_count must match trace summary"):
             validate_signal_digest_csv(trace_summary, csv_text)
 
+    def test_signal_digest_csv_validator_rejects_reason_mismatch(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-csv-reason-mismatch")
+            csv_text = paths.signal_digest_csv.read_text(encoding="utf-8")  # type: ignore[union-attr]
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        validate_trace_summary(trace_summary)
+        validate_signal_digest_csv(trace_summary, csv_text)
+
+        lines = csv_text.splitlines()
+        header = lines[0].split(",")
+        reason_index = header.index("reason")
+        row = lines[1].split(",")
+        row[reason_index] = "other-reason"
+        lines[1] = ",".join(row)
+        bad_csv = "\n".join(lines) + "\n"
+        trace_summary["trace_summary"]["signal_digest_sha256"] = hashlib.sha256(  # type: ignore[index]
+            bad_csv.encode("utf-8")
+        ).hexdigest()
+        with self.assertRaisesRegex(ValueError, "reasons must match trace summary"):
+            validate_signal_digest_csv(trace_summary, bad_csv)
+
     def test_signal_digest_csv_validator_handles_tiny_positions_deterministically(self) -> None:
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),

@@ -82,6 +82,7 @@
 58. 回測報表可稽核性：Phase markdown 的 `Backtest Trace Summary` 顯示 `hold_long_count` / `hold_short_count`（hold long/short），並用 exact-text regression test 鎖住。
 59. 回測 artifact 可驗證性：`*_trace_summary.json` 追加 deterministic `signal_digest_sha256`，並在 `validate_signal_digest_csv(...)` 驗證 CSV hash 與 trace summary 一致（schema_version=5，test-covered）。
 60. 回測 trace 可稽核性：`*_trace_summary.json` 追加 deterministic `position_bucket_counts`（flat/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 bucket counts 一致（schema_version=6，test-covered）。
+61. 回測 artifact validation：`validate_signal_digest_csv(...)` 交叉驗證 `reason` / `reasons` / `reason_counts` 與 `*_trace_summary.json` 完全一致，避免 CSV reason drift（test-covered）。
 
 ## 下一步候選
 
