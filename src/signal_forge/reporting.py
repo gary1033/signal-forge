@@ -1367,15 +1367,25 @@ def _phase_markdown_report(
         if trace_summary is not None:
             trace = trace_summary.get("trace_summary")
             if isinstance(trace, dict):
-                        lines.extend(
+                bucket_counts = trace.get("position_bucket_counts")
+                flat_bucket = None
+                long_bucket = None
+                short_bucket = None
+                if isinstance(bucket_counts, dict):
+                    flat_bucket = bucket_counts.get("flat")
+                    long_bucket = bucket_counts.get("long")
+                    short_bucket = bucket_counts.get("short")
+                lines.extend(
                     [
                         "",
                         "## Backtest Trace Summary",
                         "",
                         f"- Bar count: {trace.get('bar_count')}",
+                        f"- Trace schema version: {trace.get('schema_version')}",
                         f"- Entry/Flatten/Hold: {trace.get('entry_count')}/{trace.get('flatten_count')}/{trace.get('hold_count')}",
                         f"- Hold long/short: {trace.get('hold_long_count')}/{trace.get('hold_short_count')}",
                         f"- Open/Close: {trace.get('open_count')}/{trace.get('close_count')}",
+                        f"- Position buckets (flat/long/short): {flat_bucket}/{long_bucket}/{short_bucket}",
                         f"- First target position: {trace.get('first_target_position')}",
                         f"- Last previous target position: {trace.get('last_previous_target_position')}",
                         f"- Nonzero target positions: {trace.get('nonzero_target_position_count')}",

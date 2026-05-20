@@ -825,9 +825,11 @@ class ReportingTests(unittest.TestCase):
                     "## Backtest Trace Summary",
                     "",
                     "- Bar count: 2",
+                    "- Trace schema version: 6",
                     "- Entry/Flatten/Hold: 1/1/0",
                     "- Hold long/short: 0/0",
                     "- Open/Close: 1/1",
+                    "- Position buckets (flat/long/short): 1/1/0",
                     "- First target position: 1.0",
                     "- Last previous target position: 1.0",
                     "- Nonzero target positions: 1",
@@ -841,9 +843,6 @@ class ReportingTests(unittest.TestCase):
                 ]
             ),
         )
-        self.assertIn("Backtest Result", markdown)
-        self.assertIn("Profit Factor: Infinity", markdown)
-        self.assertIn("End equity: 10995.80", markdown)
 
     def test_writes_phase_output_live_has_stable_contract(self) -> None:
         bars = [
