@@ -1207,13 +1207,14 @@ def _phase_markdown_report(
         if trace_summary is not None:
             trace = trace_summary.get("trace_summary")
             if isinstance(trace, dict):
-                lines.extend(
+                        lines.extend(
                     [
                         "",
                         "## Backtest Trace Summary",
                         "",
                         f"- Bar count: {trace.get('bar_count')}",
                         f"- Entry/Flatten/Hold: {trace.get('entry_count')}/{trace.get('flatten_count')}/{trace.get('hold_count')}",
+                        f"- Hold long/short: {trace.get('hold_long_count')}/{trace.get('hold_short_count')}",
                         f"- Open/Close: {trace.get('open_count')}/{trace.get('close_count')}",
                         f"- First target position: {trace.get('first_target_position')}",
                         f"- Last previous target position: {trace.get('last_previous_target_position')}",

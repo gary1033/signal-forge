@@ -741,6 +741,7 @@ class ReportingTests(unittest.TestCase):
                     "",
                     "- Bar count: 2",
                     "- Entry/Flatten/Hold: 1/1/0",
+                    "- Hold long/short: 0/0",
                     "- Open/Close: 1/1",
                     "- First target position: 1.0",
                     "- Last previous target position: 1.0",
