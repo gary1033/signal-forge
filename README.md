@@ -95,6 +95,56 @@ python -m signal_forge.cli entry-edge `
   --run-name sma-fast2-slow3-demo
 ```
 
+## 簡單策略執行版：台積電 2330
+
+下面是一個最短的台積電研究流程。第一次先下載 `2330` 日線資料；之後若 `data\processed\TWSE_2330_1D.csv` 已存在，可以直接從策略執行開始。
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+cd C:\Projects\signal-forge
+$env:PYTHONPATH = "src"
+
+# 1. 下載台積電日線 OHLCV
+python -m signal_forge.cli fetch-data `
+  --market twse `
+  --symbol 2330 `
+  --start 2024-01-01 `
+  --end 2024-12-31
+
+# 2. 用策略 default parameters 跑三個 entry-edge
+python -m signal_forge.cli entry-edge `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --strategy sma-crossover `
+  --output-dir reports\generated `
+  --run-name tsmc-sma-default
+
+python -m signal_forge.cli entry-edge `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --strategy vwap-reversion `
+  --output-dir reports\generated `
+  --run-name tsmc-vwap-default
+
+python -m signal_forge.cli entry-edge `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --strategy confluence-score `
+  --output-dir reports\generated `
+  --run-name tsmc-confluence-default
+```
+
+輸出會放在 `reports\generated\`，每個 run 會產生 markdown、summary JSON 與 trade log CSV。這些報表只是研究與回測稽核，不構成投資建議。
+
+若要測同一策略不同參數，再覆寫參數即可：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --strategy sma-crossover `
+  --fast-window 10 `
+  --slow-window 60 `
+  --output-dir reports\generated `
+  --run-name tsmc-sma-10-60
+```
+
 ## Phase 核心概念
 
 - `PhaseConfig`：`backtest` / `live` 共用設定；`dry_run` 由 mode 推導，避免 CLI 與核心設定各自維護一份語意。
