@@ -57,6 +57,8 @@ signal-forge --help
 
 ## 常用 CLI 範例
 
+一般呼叫只需要指定資料、mode 與策略。策略參數會使用該策略自己的 default；只有在比較同一策略不同參數時，才加上 `--fast-window`、`--slow-window`、`--entry-z` 這類覆寫參數。
+
 下載台股日線：
 
 ```powershell
@@ -74,8 +76,6 @@ python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --mode backtest `
   --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
   --output-dir reports\generated `
   --run-name phase-backtest-demo
 ```
@@ -87,8 +87,6 @@ python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --mode live `
   --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
   --output-dir reports\generated `
   --run-name phase-live-demo
 ```
@@ -99,8 +97,6 @@ python -m signal_forge.cli phase `
 python -m signal_forge.cli entry-edge `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
   --hold-bars-per-day 1 `
   --hold-bars-list 1,3,5,10 `
   --output-dir reports\generated `
@@ -113,11 +109,7 @@ python -m signal_forge.cli entry-edge `
 python -m signal_forge.cli entry-edge `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
   --volume-filter `
-  --volume-window 20 `
-  --volume-multiplier 1.2 `
   --output-dir reports\generated `
   --run-name sma-volume-filter-demo
 ```
@@ -128,18 +120,33 @@ python -m signal_forge.cli entry-edge `
 python -m signal_forge.cli entry-edge `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --strategy vwap-reversion `
-  --vwap-window 20 `
-  --entry-z 1.5 `
-  --exit-z 0.25 `
   --vwap-regime-filter `
-  --vwap-regime-window 50 `
   --output-dir reports\generated `
   --run-name vwap-regime-demo
 ```
 
+若要比較同一策略的不同參數，再明確覆寫：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv data\sample\phase1_demo_ohlcv.csv `
+  --strategy sma-crossover `
+  --fast-window 2 `
+  --slow-window 3 `
+  --output-dir reports\generated `
+  --run-name sma-fast2-slow3-demo
+```
+
 ## 共用策略參數
 
-`entry-edge` 與 `phase` 共用 `src\signal_forge\cli\strategy_options.py` 的策略參數：
+`entry-edge` 與 `phase` 共用 `src\signal_forge\cli\strategy_options.py` 的策略參數。未輸入的欄位會交給 `src\signal_forge\strategies\registry.py` 使用各策略自己的 default，不再用單一全域預設硬套所有策略。
+
+| 策略 | Default parameters |
+|---|---|
+| `sma-crossover` | `fast_window=20`、`slow_window=200`、Phase 1 `allow_short=False`。 |
+| `vwap-reversion` | `vwap_window=20`、`entry_z=1.5`、`exit_z=0.25`、`vwap_regime_filter=False`、`vwap_regime_window=50`、Phase 1 `allow_short=False`。 |
+| `confluence-score` | `fast_window=20`、`slow_window=50`、`rsi_window=14`、`vwap_window=20`、`threshold=3.0`、Phase 1 `allow_short=False`。 |
+| volume filter wrapper | 只有啟用 `--volume-filter` 時套用，預設 `volume_window=20`、`volume_multiplier=1.2`。 |
 
 | 參數 | 適用策略或用途 |
 |---|---|
@@ -158,7 +165,7 @@ CLI 以外，可以直接走 public API。這是 tests 或研究腳本比較適�
 from signal_forge import PhaseConfig, PhaseRunner, build_phase1_strategy, load_bars_from_csv
 
 bars = load_bars_from_csv("data/sample/phase1_demo_ohlcv.csv")
-strategy = build_phase1_strategy("sma-crossover", fast_window=2, slow_window=3)
+strategy = build_phase1_strategy("sma-crossover")
 result = PhaseRunner().run(
     PhaseConfig(
         mode="backtest",

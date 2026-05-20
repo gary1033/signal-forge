@@ -56,20 +56,15 @@ python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --mode backtest `
   --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
   --output-dir reports\generated `
   --run-name phase-backtest-demo
 
-# Entry-edge with optional relative-volume filter
+# Entry-edge with optional relative-volume filter.
+# Strategy and wrapper parameters use defaults unless explicitly overridden.
 python -m signal_forge.cli entry-edge `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
   --volume-filter `
-  --volume-window 20 `
-  --volume-multiplier 1.2 `
   --output-dir reports\generated `
   --run-name sma-volume-filter-demo
 
@@ -78,8 +73,6 @@ python -m signal_forge.cli phase `
   --csv data\sample\phase1_demo_ohlcv.csv `
   --mode live `
   --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
   --output-dir reports\generated `
   --run-name phase-live-demo
 ```

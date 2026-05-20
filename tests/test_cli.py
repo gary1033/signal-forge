@@ -9,11 +9,59 @@ import unittest
 from unittest.mock import patch
 
 from signal_forge import MarketDataValidationError
-from signal_forge.cli import main
+from signal_forge.cli import build_parser, build_strategy_from_args, main
 from signal_forge.data_fetch import FetchDataResult
+from signal_forge.strategies import ConfluenceScoreStrategy
 
 
 class CliTests(unittest.TestCase):
+    def test_cli_uses_strategy_defaults_when_parameters_are_omitted(self) -> None:
+        """
+        用途與流程：驗證 CLI 未輸入策略參數時不套用全域預設，而是交由各策略自己的 default parameter 生效。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        args = build_parser().parse_args(
+            [
+                "phase",
+                "--csv",
+                "sample.csv",
+                "--strategy",
+                "confluence-score",
+            ]
+        )
+
+        strategy = build_strategy_from_args(args)
+
+        self.assertIsInstance(strategy, ConfluenceScoreStrategy)
+        self.assertEqual(strategy.slow_window, 50)
+
+    def test_phase_command_accepts_minimal_strategy_invocation(self) -> None:
+        """
+        用途與流程：驗證 phase CLI 可只指定 CSV、mode 與 strategy，策略參數全部使用 default，不需要在一般呼叫時輸入長串參數。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_sample_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "phase",
+                    "--csv",
+                    str(csv_path),
+                    "--mode",
+                    "backtest",
+                    "--strategy",
+                    "sma-crossover",
+                    "--output-dir",
+                    temp_dir,
+                ]
+            )
+
+        self.assertIn("phase=backtest", output)
+        self.assertIn("adapter=backtest", output)
+        self.assertIn("phase_summary_json=", output)
+
     def test_phase_backtest_command_reports_entry_edge_result(self) -> None:
         """
         用途與流程：驗證 phase backtest command reports entry edge result 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。

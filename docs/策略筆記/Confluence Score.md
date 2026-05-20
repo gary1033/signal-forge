@@ -5,7 +5,7 @@ tags:
   - trading/strategy
   - trading/multi-factor
 status: research
-updated: 2026-05-20
+updated: 2026-05-21
 repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\confluence_score.py
 ---
 
@@ -52,7 +52,7 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 ## 主要參數
 
 - `fast_window` / CLI `--fast-window`：預設 `20`。
-- `slow_window` / CLI `--slow-window`：預設 `200`。
+- `slow_window` / CLI `--slow-window`：預設 `50`。
 - `rsi_window` / CLI `--rsi-window`：預設 `14`。
 - `vwap_window` / CLI `--vwap-window`：預設 `20`。
 - `threshold` / CLI `--threshold`：預設 `3.0`。

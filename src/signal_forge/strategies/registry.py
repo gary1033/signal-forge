@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from signal_forge.strategies.confluence_score import ConfluenceScoreStrategy
 from signal_forge.strategies.sma_crossover import SmaCrossoverStrategy
@@ -18,23 +19,69 @@ SUPPORTED_STRATEGY_NAMES = (
 )
 
 
+@dataclass(frozen=True)
+class StrategyParameterDefaults:
+    fast_window: int
+    slow_window: int
+    vwap_window: int
+    rsi_window: int
+    entry_z: float
+    exit_z: float
+    threshold: float
+    vwap_regime_window: int
+
+
+STRATEGY_PARAMETER_DEFAULTS: dict[str, StrategyParameterDefaults] = {
+    "sma-crossover": StrategyParameterDefaults(
+        fast_window=SmaCrossoverStrategy.fast_window,
+        slow_window=SmaCrossoverStrategy.slow_window,
+        vwap_window=20,
+        rsi_window=14,
+        entry_z=1.5,
+        exit_z=0.25,
+        threshold=3.0,
+        vwap_regime_window=50,
+    ),
+    "vwap-reversion": StrategyParameterDefaults(
+        fast_window=20,
+        slow_window=200,
+        vwap_window=VwapReversionStrategy.window,
+        rsi_window=14,
+        entry_z=VwapReversionStrategy.entry_z,
+        exit_z=VwapReversionStrategy.exit_z,
+        threshold=3.0,
+        vwap_regime_window=VwapReversionStrategy.regime_window,
+    ),
+    "confluence-score": StrategyParameterDefaults(
+        fast_window=ConfluenceScoreStrategy.fast_window,
+        slow_window=ConfluenceScoreStrategy.slow_window,
+        vwap_window=ConfluenceScoreStrategy.vwap_window,
+        rsi_window=ConfluenceScoreStrategy.rsi_window,
+        entry_z=1.5,
+        exit_z=0.25,
+        threshold=ConfluenceScoreStrategy.threshold,
+        vwap_regime_window=50,
+    ),
+}
+
+
 def build_strategy(
     strategy_name: str,
     *,
-    fast_window: int = 20,
-    slow_window: int = 200,
-    vwap_window: int = 20,
-    rsi_window: int = 14,
-    entry_z: float = 1.5,
-    exit_z: float = 0.25,
-    threshold: float = 3.0,
+    fast_window: int | None = None,
+    slow_window: int | None = None,
+    vwap_window: int | None = None,
+    rsi_window: int | None = None,
+    entry_z: float | None = None,
+    exit_z: float | None = None,
+    threshold: float | None = None,
     vwap_regime_filter: bool = False,
-    vwap_regime_window: int = 50,
+    vwap_regime_window: int | None = None,
     allow_short: bool | None = None,
 ) -> Strategy:
     """
     用途與流程：依策略名稱與參數建立 registry 中支援的策略實例。
-    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract；fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；vwap_regime_filter（bool）控制 VWAP long entry 是否要求 close >= regime SMA；vwap_regime_window（int）是 regime SMA 週期；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    參數：strategy_name 是 registry key；各技術指標參數傳入 None 表示使用該策略自己的 default，只有明確給值才覆寫；vwap_regime_filter 控制 VWAP long entry 是否要求 close >= regime SMA；allow_short 為 None 時交給各策略 builder 決定預設多空語意。
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     normalized = _normalize_strategy_name(strategy_name)
@@ -60,22 +107,22 @@ def build_strategy(
 def build_phase1_strategy(
     strategy_name: str,
     *,
-    fast_window: int = 20,
-    slow_window: int = 200,
-    vwap_window: int = 20,
-    rsi_window: int = 14,
-    entry_z: float = 1.5,
-    exit_z: float = 0.25,
-    threshold: float = 3.0,
+    fast_window: int | None = None,
+    slow_window: int | None = None,
+    vwap_window: int | None = None,
+    rsi_window: int | None = None,
+    entry_z: float | None = None,
+    exit_z: float | None = None,
+    threshold: float | None = None,
     vwap_regime_filter: bool = False,
-    vwap_regime_window: int = 50,
+    vwap_regime_window: int | None = None,
     volume_filter: bool = False,
-    volume_window: int = 20,
-    volume_multiplier: float = 1.2,
+    volume_window: int | None = None,
+    volume_multiplier: float | None = None,
 ) -> Strategy:
     """
     用途與流程：建立 Phase 1 long-only 策略，必要時包上成交量濾網 wrapper。
-    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract；fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；vwap_regime_filter（bool）控制 VWAP long entry 是否要求 close >= regime SMA；vwap_regime_window（int）是 regime SMA 週期；volume_filter（bool）由呼叫端傳入，需符合函式 contract；volume_window（int）由呼叫端傳入，需符合函式 contract；volume_multiplier（float）由呼叫端傳入，需符合函式 contract
+    參數：strategy_name 是 registry key；策略參數為 None 時使用該策略 default，Phase 1 只強制 allow_short=False；volume_filter 控制是否套用成交量 wrapper，volume_window 與 volume_multiplier 為 None 時使用 wrapper default。
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     strategy = build_strategy(
@@ -96,60 +143,70 @@ def build_phase1_strategy(
 
     return VolumeFilteredStrategy(
         strategy,
-        volume_window=volume_window,
-        volume_multiplier=volume_multiplier,
+        volume_window=VolumeFilteredStrategy.volume_window
+        if volume_window is None
+        else volume_window,
+        volume_multiplier=VolumeFilteredStrategy.volume_multiplier
+        if volume_multiplier is None
+        else volume_multiplier,
     )
 
 
 def _build_sma_crossover(
     *,
-    fast_window: int,
-    slow_window: int,
-    vwap_window: int,
-    rsi_window: int,
-    entry_z: float,
-    exit_z: float,
-    threshold: float,
+    fast_window: int | None,
+    slow_window: int | None,
+    vwap_window: int | None,
+    rsi_window: int | None,
+    entry_z: float | None,
+    exit_z: float | None,
+    threshold: float | None,
     vwap_regime_filter: bool,
-    vwap_regime_window: int,
+    vwap_regime_window: int | None,
     allow_short: bool | None,
 ) -> Strategy:
     """
     用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
-    參數：fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；vwap_regime_filter（bool）此策略不使用；vwap_regime_window（int）此策略不使用；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    參數：fast_window 與 slow_window 為 None 時使用 SMA Crossover default；其他參數保留相同 builder 介面但此策略不使用；allow_short 為 None 時使用 long-only。
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     return SmaCrossoverStrategy(
-        fast_window=fast_window,
-        slow_window=slow_window,
+        fast_window=SmaCrossoverStrategy.fast_window
+        if fast_window is None
+        else fast_window,
+        slow_window=SmaCrossoverStrategy.slow_window
+        if slow_window is None
+        else slow_window,
         allow_short=False if allow_short is None else allow_short,
     )
 
 
 def _build_vwap_reversion(
     *,
-    fast_window: int,
-    slow_window: int,
-    vwap_window: int,
-    rsi_window: int,
-    entry_z: float,
-    exit_z: float,
-    threshold: float,
+    fast_window: int | None,
+    slow_window: int | None,
+    vwap_window: int | None,
+    rsi_window: int | None,
+    entry_z: float | None,
+    exit_z: float | None,
+    threshold: float | None,
     vwap_regime_filter: bool,
-    vwap_regime_window: int,
+    vwap_regime_window: int | None,
     allow_short: bool | None,
 ) -> Strategy:
     """
     用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
-    參數：fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；vwap_regime_filter（bool）控制 VWAP long entry 是否要求 close >= regime SMA；vwap_regime_window（int）是 regime SMA 週期；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    參數：vwap_window、entry_z、exit_z、vwap_regime_window 為 None 時使用 VWAP Reversion default；fast/slow/rsi/threshold 保留相同 builder 介面但此策略不使用；allow_short 為 None 時使用策略 constructor default。
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     kwargs: dict[str, object] = {
-        "window": vwap_window,
-        "entry_z": entry_z,
-        "exit_z": exit_z,
+        "window": VwapReversionStrategy.window if vwap_window is None else vwap_window,
+        "entry_z": VwapReversionStrategy.entry_z if entry_z is None else entry_z,
+        "exit_z": VwapReversionStrategy.exit_z if exit_z is None else exit_z,
         "regime_filter": vwap_regime_filter,
-        "regime_window": vwap_regime_window,
+        "regime_window": VwapReversionStrategy.regime_window
+        if vwap_regime_window is None
+        else vwap_regime_window,
     }
     if allow_short is not None:
         kwargs["allow_short"] = allow_short
@@ -158,28 +215,38 @@ def _build_vwap_reversion(
 
 def _build_confluence_score(
     *,
-    fast_window: int,
-    slow_window: int,
-    vwap_window: int,
-    rsi_window: int,
-    entry_z: float,
-    exit_z: float,
-    threshold: float,
+    fast_window: int | None,
+    slow_window: int | None,
+    vwap_window: int | None,
+    rsi_window: int | None,
+    entry_z: float | None,
+    exit_z: float | None,
+    threshold: float | None,
     vwap_regime_filter: bool,
-    vwap_regime_window: int,
+    vwap_regime_window: int | None,
     allow_short: bool | None,
 ) -> Strategy:
     """
     用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
-    參數：fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；vwap_regime_filter（bool）此策略不使用；vwap_regime_window（int）此策略不使用；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    參數：fast_window、slow_window、rsi_window、vwap_window 與 threshold 為 None 時使用 Confluence Score default；entry_z/exit_z/regime 參數保留相同 builder 介面但此策略不使用；allow_short 為 None 時使用策略 constructor default。
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     kwargs: dict[str, object] = {
-        "fast_window": fast_window,
-        "slow_window": slow_window,
-        "rsi_window": rsi_window,
-        "vwap_window": vwap_window,
-        "threshold": threshold,
+        "fast_window": ConfluenceScoreStrategy.fast_window
+        if fast_window is None
+        else fast_window,
+        "slow_window": ConfluenceScoreStrategy.slow_window
+        if slow_window is None
+        else slow_window,
+        "rsi_window": ConfluenceScoreStrategy.rsi_window
+        if rsi_window is None
+        else rsi_window,
+        "vwap_window": ConfluenceScoreStrategy.vwap_window
+        if vwap_window is None
+        else vwap_window,
+        "threshold": ConfluenceScoreStrategy.threshold
+        if threshold is None
+        else threshold,
     }
     if allow_short is not None:
         kwargs["allow_short"] = allow_short

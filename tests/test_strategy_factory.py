@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from signal_forge.strategies import (
+    STRATEGY_PARAMETER_DEFAULTS,
     SUPPORTED_STRATEGY_NAMES,
     ConfluenceScoreStrategy,
     SmaCrossoverStrategy,
@@ -45,6 +46,9 @@ class StrategyFactoryTests(unittest.TestCase):
             build_phase1_strategy("confluence-score").name,
             "confluence_score_long_only",
         )
+        confluence = build_phase1_strategy("confluence-score")
+        self.assertIsInstance(confluence, ConfluenceScoreStrategy)
+        self.assertEqual(confluence.slow_window, 50)
 
     def test_phase1_factory_can_enable_vwap_regime_filter(self) -> None:
         """
@@ -79,6 +83,28 @@ class StrategyFactoryTests(unittest.TestCase):
         self.assertEqual(
             build_strategy("confluence-score").name,
             "confluence_score_long_short",
+        )
+        confluence = build_strategy("confluence-score")
+        self.assertIsInstance(confluence, ConfluenceScoreStrategy)
+        self.assertEqual(confluence.slow_window, 50)
+
+    def test_strategy_defaults_are_registered_for_cli_display(self) -> None:
+        """
+        用途與流程：驗證 strategy default registry 與各策略 constructor 預設值一致，避免 CLI 未輸入參數時套用錯誤的全域預設。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        self.assertEqual(
+            STRATEGY_PARAMETER_DEFAULTS["sma-crossover"].slow_window,
+            SmaCrossoverStrategy.slow_window,
+        )
+        self.assertEqual(
+            STRATEGY_PARAMETER_DEFAULTS["vwap-reversion"].vwap_window,
+            VwapReversionStrategy.window,
+        )
+        self.assertEqual(
+            STRATEGY_PARAMETER_DEFAULTS["confluence-score"].slow_window,
+            ConfluenceScoreStrategy.slow_window,
         )
 
     def test_phase1_factory_can_wrap_volume_filter(self) -> None:
