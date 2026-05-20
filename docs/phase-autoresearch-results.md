@@ -85,7 +85,7 @@ git diff --check
 | 2026-05-20 08:52 | Trace summary 加入 position bucket counts | 110 -> 110 | pass | keep | pushed to `origin/main` | `*_trace_summary.json` 追加 deterministic `position_bucket_counts`（flat/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 bucket counts 與 `*_signals.csv` 一致（schema_version=6，test-covered）。 |
 | 2026-05-20 09:08 | Signals CSV vs trace summary cross-check 擴充（reasons） | 110 -> 110 | pass | keep | pushed to `origin/main` | `validate_signal_digest_csv(...)` 追加 deterministic `reason` 稽核：要求 `*_signals.csv` 的 `reasons` / `reason_counts` 與 `*_trace_summary.json` 完全一致，避免 reason drift（test-covered）。 |
 | 2026-05-20 09:22 | Phase markdown 顯示 trace schema 與 position buckets | 110 -> 110 | pass | keep | pushed to `origin/main` | Phase markdown 的 `Backtest Trace Summary` 追加 `schema_version` 與 `position_bucket_counts`（flat/long/short）顯示，並以 exact-text regression test 鎖住 backtest markdown contract（test-covered）。 |
-| 2026-05-20 09:36 | Trace summary 加入 `first_previous_target_position` | 110 -> 110 | pass | keep | pending | `*_trace_summary.json` 追加 deterministic `first_previous_target_position`（schema_version=7），並在 `validate_signal_digest_csv(...)` 交叉驗證與 signals CSV 一致；Phase markdown 顯示該欄位（test-covered）。 |
+| 2026-05-20 09:36 | Trace summary 加入 `first_previous_target_position` | 110 -> 110 | pass | keep | `cbd29e2` pushed | `*_trace_summary.json` 追加 deterministic `first_previous_target_position`（schema_version=7），並在 `validate_signal_digest_csv(...)` 交叉驗證與 signals CSV 一致；Phase markdown 顯示該欄位（test-covered）。 |
 
 ## 總結
 
