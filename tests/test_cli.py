@@ -15,6 +15,11 @@ from signal_forge.data_fetch import FetchDataResult
 
 class CliTests(unittest.TestCase):
     def test_phase_backtest_command_reports_entry_edge_result(self) -> None:
+        """
+        用途與流程：驗證 phase backtest command reports entry edge result 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = _write_sample_csv(Path(temp_dir))
             output = _run_cli(
@@ -41,6 +46,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("phase_summary_json=", output)
 
     def test_phase_backtest_command_accepts_volume_filter(self) -> None:
+        """
+        用途與流程：驗證 phase backtest command accepts volume filter 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = _write_sample_csv(Path(temp_dir))
             output = _run_cli(
@@ -70,6 +80,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("entry_edge_trades=1", output)
 
     def test_phase_live_command_reports_dry_run_intent_without_submission(self) -> None:
+        """
+        用途與流程：驗證 phase live command reports dry run intent without submission 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = _write_sample_csv(Path(temp_dir))
             output = _run_cli(
@@ -98,6 +113,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("phase_markdown=", output)
 
     def test_entry_edge_command_writes_volume_filter_strategy_spec(self) -> None:
+        """
+        用途與流程：驗證 entry edge command writes volume filter strategy spec 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = _write_sample_csv(Path(temp_dir))
             output = _run_cli(
@@ -137,6 +157,11 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("hold_comparison_json=", output)
 
     def test_entry_edge_command_writes_hold_comparison_outputs(self) -> None:
+        """
+        用途與流程：驗證 entry edge command writes hold comparison outputs 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = _write_trending_csv(Path(temp_dir), row_count=8)
             output = _run_cli(
@@ -176,6 +201,11 @@ class CliTests(unittest.TestCase):
         )
 
     def test_entry_edge_command_rejects_invalid_hold_comparison_list(self) -> None:
+        """
+        用途與流程：驗證 entry edge command rejects invalid hold comparison list 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = _write_sample_csv(Path(temp_dir))
             with self.assertRaisesRegex(ValueError, "--hold-bars-list"):
@@ -198,6 +228,11 @@ class CliTests(unittest.TestCase):
                 )
 
     def test_fetch_data_command_reports_written_paths(self) -> None:
+        """
+        用途與流程：驗證 fetch data command reports written paths 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_result = FetchDataResult(
                 market="twse",
@@ -235,6 +270,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("processed_csv=", output)
 
     def test_fetch_data_command_reports_data_source_errors_without_traceback(self) -> None:
+        """
+        用途與流程：驗證 fetch data command reports data source errors without traceback 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with patch(
             "signal_forge.cli.fetch_market_data",
             side_effect=MarketDataValidationError(
@@ -262,6 +302,11 @@ class CliTests(unittest.TestCase):
 
 
 def _run_cli(argv: list[str]) -> str:
+    """
+    用途與流程：用測試參數呼叫 CLI main，捕捉 stdout 與 exit code 供 assertion 使用。
+    參數：argv（list[str]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     buffer = io.StringIO()
     with redirect_stdout(buffer):
         exit_code = main(argv)
@@ -271,6 +316,11 @@ def _run_cli(argv: list[str]) -> str:
 
 
 def _write_sample_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出最小可用 OHLCV CSV fixture，供 CLI 與資料載入測試讀取。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     csv_path = directory / "sample.csv"
     csv_path.write_text(
         "\n".join(
@@ -288,6 +338,11 @@ def _write_sample_csv(directory: Path) -> Path:
 
 
 def _write_trending_csv(directory: Path, row_count: int) -> Path:
+    """
+    用途與流程：寫出趨勢型 OHLCV CSV fixture，讓策略在 CLI 測試中產生可預期 entry。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract；row_count（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     csv_path = directory / "trending.csv"
     rows = ["timestamp,open,high,low,close,volume"]
     for index in range(row_count):

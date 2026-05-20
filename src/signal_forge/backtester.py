@@ -46,9 +46,19 @@ class Backtester:
     """Simple close-to-close target-exposure backtester."""
 
     def __init__(self, config: BacktestConfig | None = None) -> None:
+        """
+        用途與流程：初始化物件狀態，保存後續執行所需的設定或 adapter 相依物件。
+        參數：self 表示目前物件實例；config（BacktestConfig | None）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         self.config = config or BacktestConfig()
 
     def run(self, strategy: Strategy, bars: list[Bar]) -> BacktestResult:
+        """
+        用途與流程：執行主要工作流程，先驗證輸入 contract，再產生結果物件供 reporting 或測試使用。
+        參數：self 表示目前物件實例；strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 BacktestResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         if len(bars) < 2:
             raise ValueError("at least two bars are required")
 
@@ -101,6 +111,11 @@ class Backtester:
 
 
 def _max_drawdown(equity_values: list[float]) -> float:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：equity_values（list[float]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 float；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     peak = equity_values[0]
     max_drawdown = 0.0
     for equity in equity_values:
@@ -111,5 +126,10 @@ def _max_drawdown(equity_values: list[float]) -> float:
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：value（float）由呼叫端傳入，需符合函式 contract；lower（float）由呼叫端傳入，需符合函式 contract；upper（float）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 float；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return min(max(value, lower), upper)
 

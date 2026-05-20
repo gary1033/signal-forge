@@ -31,11 +31,20 @@ class Strategy(ABC):
 
     @abstractmethod
     def generate_signals(self, bars: list[Bar]) -> list[Signal]:
-        """Return one target-position signal for every input bar."""
+        """
+        用途與流程：根據輸入 K 線序列產生逐 bar 對齊的 Signal 清單，維持策略輸出 contract。
+        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
 
 
 class BarByBarStrategy(Strategy, Generic[ContextT]):
     def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        """
+        用途與流程：根據輸入 K 線序列產生逐 bar 對齊的 Signal 清單，維持策略輸出 contract。
+        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         context = self.prepare_context(bars)
         previous_target_position = 0.0
         signals: list[Signal] = []
@@ -63,7 +72,11 @@ class BarByBarStrategy(Strategy, Generic[ContextT]):
 
     @abstractmethod
     def prepare_context(self, bars: list[Bar]) -> ContextT:
-        """Precompute indicator values or shared state for bar-by-bar decisions."""
+        """
+        用途與流程：預先計算策略決策會重複使用的技術指標或中介資料，避免逐 bar 重複計算。
+        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 ContextT；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
 
     @abstractmethod
     def decide_bar(
@@ -75,4 +88,8 @@ class BarByBarStrategy(Strategy, Generic[ContextT]):
         context: ContextT,
         previous_target_position: float,
     ) -> StrategyDecision:
-        """Return the target-position decision for one bar."""
+        """
+        用途與流程：針對單一 bar 與前一根目標部位做策略判斷，輸出 target position、reason 與 score。
+        參數：self 表示目前物件實例；index（int）由呼叫端傳入，需符合函式 contract；bar（Bar）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract；context（ContextT）由呼叫端傳入，需符合函式 contract；previous_target_position（float）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 StrategyDecision；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """

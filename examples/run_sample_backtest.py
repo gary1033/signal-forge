@@ -16,6 +16,11 @@ from signal_forge.strategies import (  # noqa: E402
 
 
 def build_sample_bars(count: int = 260) -> list[Bar]:
+    """
+    用途與流程：執行此模組定義的業務流程，依輸入資料產生後續 reporting、策略或測試所需結果。
+    參數：count（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[Bar]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     bars: list[Bar] = []
     price = 100.0
     for index in range(count):
@@ -38,6 +43,11 @@ def build_sample_bars(count: int = 260) -> list[Bar]:
 
 
 def main() -> None:
+    """
+    用途與流程：作為命令列或工具入口，解析輸入、呼叫對應流程，最後回傳 process exit code。
+    參數：無參數。
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     bars = build_sample_bars()
     strategies = [
         SmaCrossoverStrategy(),

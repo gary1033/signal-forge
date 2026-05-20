@@ -36,6 +36,11 @@ class NormalizedBar:
     volume: float
 
     def to_bar(self) -> Bar:
+        """
+        用途與流程：將資料下載層的 NormalizedBar 轉成回測層共用的 Bar 物件。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 Bar；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         return Bar(self.timestamp, self.open, self.high, self.low, self.close, self.volume)
 
 
@@ -48,6 +53,11 @@ def fetch_market_data(
     output_root: str | Path = ".",
     stooq_api_key: str | None = None,
 ) -> FetchDataResult:
+    """
+    用途與流程：依市場代碼下載日線資料，驗證後寫出 raw CSV、processed CSV 與 manifest。
+    參數：market（str）由呼叫端傳入，需符合函式 contract；symbol（str）由呼叫端傳入，需符合函式 contract；start（str）由呼叫端傳入，需符合函式 contract；end（str）由呼叫端傳入，需符合函式 contract；output_root（str | Path）由呼叫端傳入，需符合函式 contract；stooq_api_key（str | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 FetchDataResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     normalized_market = market.strip().lower()
     normalized_symbol = symbol.strip().upper()
     start_date = _parse_iso_date(start)
@@ -124,6 +134,11 @@ def fetch_twse_daily_stock(
     *,
     fetch_text: Callable[[str], str] | None = None,
 ) -> tuple[str, list[NormalizedBar], str]:
+    """
+    用途與流程：從 TWSE 月資料端點抓取指定區間日線，轉成 SignalForge 正規化 K 線。
+    參數：symbol（str）由呼叫端傳入，需符合函式 contract；start（date）由呼叫端傳入，需符合函式 contract；end（date）由呼叫端傳入，需符合函式 contract；fetch_text（Callable[[str], str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 tuple[str, list[NormalizedBar], str]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     fetch = fetch_text or _fetch_url_text
     raw_rows: list[dict[str, str]] = []
     bars: list[NormalizedBar] = []
@@ -152,6 +167,11 @@ def fetch_stooq_daily_stock(
     api_key: str | None = None,
     fetch_text: Callable[[str], str] | None = None,
 ) -> tuple[str, list[NormalizedBar], str]:
+    """
+    用途與流程：從 Stooq daily CSV 端點抓取美股日線，處理 API key 要求並轉成正規化 K 線。
+    參數：symbol（str）由呼叫端傳入，需符合函式 contract；start（date）由呼叫端傳入，需符合函式 contract；end（date）由呼叫端傳入，需符合函式 contract；api_key（str | None）由呼叫端傳入，需符合函式 contract；fetch_text（Callable[[str], str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 tuple[str, list[NormalizedBar], str]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     key = api_key or os.environ.get("STOOQ_API_KEY")
     fetch = fetch_text or _fetch_url_text
     raw_csv = fetch(_stooq_daily_url(symbol, start, end, api_key=key))
@@ -164,6 +184,11 @@ def fetch_stooq_daily_stock(
 
 
 def parse_twse_row(row: dict[str, str]) -> NormalizedBar | None:
+    """
+    用途與流程：解析單筆 TWSE 原始列，將民國日期與含逗號數字轉成 NormalizedBar。
+    參數：row（dict[str, str]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 NormalizedBar | None；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     values = (
         row.get("日期", ""),
         row.get("開盤價", ""),
@@ -185,6 +210,11 @@ def parse_twse_row(row: dict[str, str]) -> NormalizedBar | None:
 
 
 def parse_stooq_csv(raw_csv: str) -> list[NormalizedBar]:
+    """
+    用途與流程：解析 Stooq CSV 文字，檢查必要欄位並轉成 NormalizedBar 清單。
+    參數：raw_csv（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[NormalizedBar]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     reader = csv.DictReader(io.StringIO(raw_csv))
     required = {"Date", "Open", "High", "Low", "Close", "Volume"}
     if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
@@ -208,6 +238,11 @@ def parse_stooq_csv(raw_csv: str) -> list[NormalizedBar]:
 
 
 def format_signal_forge_csv(bars: list[NormalizedBar]) -> str:
+    """
+    用途與流程：把正規化 K 線輸出為 SignalForge 固定 OHLCV CSV schema。
+    參數：bars（list[NormalizedBar]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     output = io.StringIO()
     writer = csv.writer(output, lineterminator="\n")
     writer.writerow(("timestamp", "open", "high", "low", "close", "volume"))
@@ -226,6 +261,11 @@ def format_signal_forge_csv(bars: list[NormalizedBar]) -> str:
 
 
 def _twse_stock_day_url(symbol: str, month_start: date) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：symbol（str）由呼叫端傳入，需符合函式 contract；month_start（date）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return (
         "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?"
         + urlencode(
@@ -241,6 +281,11 @@ def _twse_stock_day_url(symbol: str, month_start: date) -> str:
 def _stooq_daily_url(
     symbol: str, start: date, end: date, *, api_key: str | None = None
 ) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：symbol（str）由呼叫端傳入，需符合函式 contract；start（date）由呼叫端傳入，需符合函式 contract；end（date）由呼叫端傳入，需符合函式 contract；api_key（str | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     query = {
         "s": f"{symbol.lower()}.us",
         "i": "d",
@@ -253,11 +298,21 @@ def _stooq_daily_url(
 
 
 def _fetch_url_text(url: str) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：url（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     with urlopen(url, timeout=30) as response:
         return response.read().decode("utf-8-sig")
 
 
 def _iter_month_starts(start: date, end: date) -> list[date]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：start（date）由呼叫端傳入，需符合函式 contract；end（date）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[date]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     current = date(start.year, start.month, 1)
     last = date(end.year, end.month, 1)
     months: list[date] = []
@@ -271,6 +326,11 @@ def _iter_month_starts(start: date, end: date) -> list[date]:
 
 
 def _roc_date_to_iso(value: str) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：value（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     parts = value.strip().split("/")
     if len(parts) != 3:
         raise MarketDataValidationError(f"invalid TWSE date: {value}")
@@ -278,37 +338,72 @@ def _roc_date_to_iso(value: str) -> str:
 
 
 def _parse_iso_date(value: str) -> date:
+    """
+    用途與流程：解析外部輸入文字或 CSV 欄位，轉成程式內部可驗證的型別與格式。
+    參數：value（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 date；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
 def _parse_market_float(value: str) -> float:
+    """
+    用途與流程：解析外部輸入文字或 CSV 欄位，轉成程式內部可驗證的型別與格式。
+    參數：value（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 float；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return float(value.strip().replace(",", ""))
 
 
 def _is_empty_market_value(value: str | None) -> bool:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：value（str | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 bool；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if value is None:
         return True
     return value.strip() in {"", "--", "N/A", "null"}
 
 
 def _sort_unique_bars(bars: list[NormalizedBar]) -> list[NormalizedBar]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：bars（list[NormalizedBar]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[NormalizedBar]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     by_timestamp = {bar.timestamp: bar for bar in bars}
     return [by_timestamp[timestamp] for timestamp in sorted(by_timestamp)]
 
 
 def _validate_normalized_bars(bars: list[NormalizedBar]) -> None:
+    """
+    用途與流程：執行內部 contract 驗證，將格式錯誤、語意不一致或安全邊界破壞轉成明確例外。
+    參數：bars（list[NormalizedBar]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     result = validate_bars([bar.to_bar() for bar in bars])
     if not result.is_valid:
         raise MarketDataValidationError("; ".join(result.errors))
 
 
 def _format_number(value: float) -> str:
+    """
+    用途與流程：將內部資料格式化為 artifact 或 CLI 需要的 deterministic 文字表示。
+    參數：value（float）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if value.is_integer():
         return str(int(value))
     return f"{value:.6f}".rstrip("0").rstrip(".")
 
 
 def _format_dict_csv(rows: list[dict[str, str]]) -> str:
+    """
+    用途與流程：將內部資料格式化為 artifact 或 CLI 需要的 deterministic 文字表示。
+    參數：rows（list[dict[str, str]]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if not rows:
         return ""
     fields: list[str] = []
@@ -324,5 +419,10 @@ def _format_dict_csv(rows: list[dict[str, str]]) -> str:
 
 
 def _write_text(path: Path, text: str) -> None:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：path（Path）由呼叫端傳入，需符合函式 contract；text（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="")

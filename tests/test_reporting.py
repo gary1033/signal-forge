@@ -32,6 +32,11 @@ class OneTradeStrategy(Strategy):
     name = "one_trade"
 
     def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        """
+        用途與流程：在測試替身策略中產生固定 Signal 序列，讓測試可聚焦於被測流程而非策略細節。
+        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         return [Signal(index, bar.timestamp, 1.0 if index == 0 else 0.0, "entry") for index, bar in enumerate(bars)]
 
 
@@ -41,12 +46,22 @@ class TinyPositionStrategy(Strategy):
     def generate_signals(self, bars: list[Bar]) -> list[Signal]:
         # Use a position that is below the reporting epsilon threshold so that
         # trace_summary + CSV flags remain deterministic and consistent.
+        """
+        用途與流程：在測試替身策略中產生固定 Signal 序列，讓測試可聚焦於被測流程而非策略細節。
+        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         tiny_position = 1e-13
         return [Signal(index, bar.timestamp, tiny_position, "tiny") for index, bar in enumerate(bars)]
 
 
 class ReportingTests(unittest.TestCase):
     def test_signal_digest_csv_validator_matches_trace_summary(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator matches trace summary 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -83,6 +98,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_csv_validator_rejects_short_entry_count_mismatch(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects short entry count mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -102,6 +122,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, csv_text)
 
     def test_signal_digest_csv_validator_rejects_min_target_position_mismatch(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects min target position mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -121,6 +146,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, csv_text)
 
     def test_signal_digest_csv_validator_rejects_flatten_bucket_mismatch(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects flatten bucket mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -140,6 +170,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, csv_text)
 
     def test_signal_digest_csv_validator_rejects_reason_mismatch(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects reason mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -168,6 +203,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_csv_validator_handles_tiny_positions_deterministically(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator handles tiny positions deterministically 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -197,6 +237,11 @@ class ReportingTests(unittest.TestCase):
             self.assertEqual(row[hold_index], "False")
 
     def test_signal_digest_csv_validator_rejects_non_iso8601_timestamp(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects non iso8601 timestamp 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -225,6 +270,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_csv_validator_rejects_non_fixed_decimal_numeric_fields(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects non fixed decimal numeric fields 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -253,6 +303,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_csv_validator_rejects_semantic_flag_mismatch(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects semantic flag mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -288,6 +343,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_csv_validator_rejects_hold_side_mismatch(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects hold side mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -298,6 +358,11 @@ class ReportingTests(unittest.TestCase):
             name = "hold_long"
 
             def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+                """
+                用途與流程：在測試替身策略中產生固定 Signal 序列，讓測試可聚焦於被測流程而非策略細節。
+                參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+                回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+                """
                 return [
                     Signal(index, bar.timestamp, 1.0 if index == 0 else 1.0, "hold")
                     for index, bar in enumerate(bars)
@@ -328,6 +393,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_csv_validator_rejects_position_bucket_mismatch(self) -> None:
+        """
+        用途與流程：驗證 signal digest csv validator rejects position bucket mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -357,6 +427,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digest_csv(trace_summary, bad_csv)
 
     def test_signal_digest_validator_rejects_non_monotonic_index(self) -> None:
+        """
+        用途與流程：驗證 signal digest validator rejects non monotonic index 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         digests = [
             SignalDigest(
                 index=1,
@@ -383,6 +458,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digests(digests)
 
     def test_signal_digest_validator_rejects_decreasing_timestamp(self) -> None:
+        """
+        用途與流程：驗證 signal digest validator rejects decreasing timestamp 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         digests = [
             SignalDigest(
                 index=0,
@@ -409,6 +489,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digests(digests)
 
     def test_signal_digest_validator_rejects_non_iso8601_timestamp(self) -> None:
+        """
+        用途與流程：驗證 signal digest validator rejects non iso8601 timestamp 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         digests = [
             SignalDigest(
                 index=0,
@@ -425,6 +510,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digests(digests)
 
     def test_signal_digest_validator_rejects_empty_reason(self) -> None:
+        """
+        用途與流程：驗證 signal digest validator rejects empty reason 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         digests = [
             SignalDigest(
                 index=0,
@@ -441,6 +531,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digests(digests)
 
     def test_signal_digest_validator_rejects_non_ascii_reason(self) -> None:
+        """
+        用途與流程：驗證 signal digest validator rejects non ascii reason 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         digests = [
             SignalDigest(
                 index=0,
@@ -457,6 +552,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digests(digests)
 
     def test_signal_digest_validator_rejects_mismatched_position_delta(self) -> None:
+        """
+        用途與流程：驗證 signal digest validator rejects mismatched position delta 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         digests = [
             SignalDigest(
                 index=0,
@@ -483,6 +583,11 @@ class ReportingTests(unittest.TestCase):
             validate_signal_digests(digests)
 
     def test_trace_summary_validator_rejects_reason_count_total_mismatch(self) -> None:
+        """
+        用途與流程：驗證 trace summary validator rejects reason count total mismatch 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -499,6 +604,11 @@ class ReportingTests(unittest.TestCase):
             validate_trace_summary(trace_summary)
 
     def test_writes_markdown_json_and_trade_log(self) -> None:
+        """
+        用途與流程：驗證 writes markdown json and trade log 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -526,6 +636,11 @@ class ReportingTests(unittest.TestCase):
             )
 
     def test_entry_edge_outputs_have_stable_contract(self) -> None:
+        """
+        用途與流程：驗證 entry edge outputs have stable contract 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -653,6 +768,11 @@ class ReportingTests(unittest.TestCase):
         )
 
     def test_entry_edge_hold_comparison_outputs_have_stable_contract(self) -> None:
+        """
+        用途與流程：驗證 entry edge hold comparison outputs have stable contract 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 12.5, 9.5, 12, 100),
@@ -776,6 +896,11 @@ class ReportingTests(unittest.TestCase):
         )
 
     def test_writes_phase_output_with_adapter_metadata(self) -> None:
+        """
+        用途與流程：驗證 writes phase output with adapter metadata 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -830,6 +955,11 @@ class ReportingTests(unittest.TestCase):
         )
 
     def test_writes_phase_output_backtest_has_stable_summary_contract(self) -> None:
+        """
+        用途與流程：驗證 writes phase output backtest has stable summary contract 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -995,6 +1125,11 @@ class ReportingTests(unittest.TestCase):
         )
 
     def test_writes_phase_output_live_has_stable_contract(self) -> None:
+        """
+        用途與流程：驗證 writes phase output live has stable contract 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -1046,10 +1181,20 @@ class ReportingTests(unittest.TestCase):
         )
 
     def test_phase_summary_schema_validator_rejects_missing_phase(self) -> None:
+        """
+        用途與流程：驗證 phase summary schema validator rejects missing phase 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with self.assertRaisesRegex(ValueError, "missing required dict key: phase"):
             validate_phase_summary({})
 
     def test_phase_summary_schema_validator_rejects_live_submitted_intent(self) -> None:
+        """
+        用途與流程：驗證 phase summary schema validator rejects live submitted intent 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
@@ -1065,6 +1210,11 @@ class ReportingTests(unittest.TestCase):
             validate_phase_summary(summary)
 
     def test_phase_summary_schema_validator_rejects_backtest_missing_entry_edge(self) -> None:
+        """
+        用途與流程：驗證 phase summary schema validator rejects backtest missing entry edge 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = [
             Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
             Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),

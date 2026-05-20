@@ -15,6 +15,11 @@ from signal_forge.phase import PhaseExecutionResult, SignalDigest
 
 
 def _round_float(value: float, decimals: int) -> float:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：value（float）由呼叫端傳入，需符合函式 contract；decimals（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 float；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return float(f"{value:.{decimals}f}")
 
 
@@ -22,6 +27,11 @@ _ISO_DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 def _is_iso8601_timestamp(timestamp: str) -> bool:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：timestamp（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 bool；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if not timestamp:
         return False
     if _ISO_DATE_PATTERN.match(timestamp):
@@ -39,6 +49,11 @@ def _is_iso8601_timestamp(timestamp: str) -> bool:
 
 
 def _extract_iso8601_date(timestamp: str | None) -> str | None:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：timestamp（str | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str | None；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if not timestamp:
         return None
     if _ISO_DATE_PATTERN.match(timestamp):
@@ -84,6 +99,11 @@ def write_entry_edge_outputs(
     data_validation: BarValidationResult | None = None,
     strategy_spec: dict[str, str] | None = None,
 ) -> EntryEdgeReportPaths:
+    """
+    用途與流程：寫出 Entry Edge markdown、summary JSON 與 trade log CSV，並回傳輸出路徑。
+    參數：result（EntryEdgeResult）由呼叫端傳入，需符合函式 contract；output_dir（str | Path）由呼叫端傳入，需符合函式 contract；run_name（str | None）由呼叫端傳入，需符合函式 contract；data_validation（BarValidationResult | None）由呼叫端傳入，需符合函式 contract；strategy_spec（dict[str, str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 EntryEdgeReportPaths；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -118,6 +138,11 @@ def write_entry_edge_comparison_outputs(
     data_validation: BarValidationResult | None = None,
     strategy_spec: dict[str, str] | None = None,
 ) -> EntryEdgeComparisonReportPaths:
+    """
+    用途與流程：寫出多持有期比較 markdown 與 summary JSON，維持 deterministic artifact contract。
+    參數：comparison（EntryEdgeComparisonResult）由呼叫端傳入，需符合函式 contract；output_dir（str | Path）由呼叫端傳入，需符合函式 contract；run_name（str | None）由呼叫端傳入，需符合函式 contract；data_validation（BarValidationResult | None）由呼叫端傳入，需符合函式 contract；strategy_spec（dict[str, str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 EntryEdgeComparisonReportPaths；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -151,6 +176,11 @@ def write_phase_outputs(
     *,
     run_name: str | None = None,
 ) -> PhaseReportPaths:
+    """
+    用途與流程：依 Phase 執行結果寫出 summary JSON、markdown 與 backtest signal artifacts。
+    參數：result（PhaseExecutionResult）由呼叫端傳入，需符合函式 contract；output_dir（str | Path）由呼叫端傳入，需符合函式 contract；run_name（str | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 PhaseReportPaths；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -215,6 +245,11 @@ def write_phase_outputs(
 
 
 def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) -> None:
+    """
+    用途與流程：讀回 signals CSV 與 trace summary，交叉驗證 deterministic artifact invariants。
+    參數：trace_summary（dict[str, object]）由呼叫端傳入，需符合函式 contract；csv_text（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     import io
     import math
     import re
@@ -267,6 +302,11 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     fixed_decimal_re = re.compile(r"^-?\d+\.\d{6}$")
 
     def parse_bool(value: str, *, field: str) -> bool:
+        """
+        用途與流程：解析外部輸入文字或 CSV 欄位，轉成程式內部可驗證的型別與格式。
+        參數：value（str）由呼叫端傳入，需符合函式 contract；field（str）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 bool；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         if value == "True":
             return True
         if value == "False":
@@ -274,6 +314,11 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         raise ValueError(f"signal digest csv {field} must be 'True' or 'False'")
 
     def assert_fixed_decimal(value: str, *, field: str, index: int) -> None:
+        """
+        用途與流程：執行此模組定義的業務流程，依輸入資料產生後續 reporting、策略或測試所需結果。
+        參數：value（str）由呼叫端傳入，需符合函式 contract；field（str）由呼叫端傳入，需符合函式 contract；index（int）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         if not fixed_decimal_re.match(value):
             raise ValueError(
                 "signal digest csv numeric fields must use fixed 6-decimal formatting: "
@@ -281,12 +326,22 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
             )
 
     def parse_int(value: str, *, field: str) -> int:
+        """
+        用途與流程：解析外部輸入文字或 CSV 欄位，轉成程式內部可驗證的型別與格式。
+        參數：value（str）由呼叫端傳入，需符合函式 contract；field（str）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 int；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         try:
             return int(value)
         except ValueError as exc:
             raise ValueError(f"signal digest csv {field} must be an int") from exc
 
     def parse_float(value: str, *, field: str) -> float:
+        """
+        用途與流程：解析外部輸入文字或 CSV 欄位，轉成程式內部可驗證的型別與格式。
+        參數：value（str）由呼叫端傳入，需符合函式 contract；field（str）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 float；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         try:
             return float(value)
         except ValueError as exc:
@@ -551,6 +606,11 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         raise ValueError("signal digest csv reason_counts must match trace summary reason_counts")
 
     def assert_close(name: str, expected_value: float, actual_value: float) -> None:
+        """
+        用途與流程：執行此模組定義的業務流程，依輸入資料產生後續 reporting、策略或測試所需結果。
+        參數：name（str）由呼叫端傳入，需符合函式 contract；expected_value（float）由呼叫端傳入，需符合函式 contract；actual_value（float）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         if abs(expected_value - actual_value) > tolerance:
             raise ValueError(
                 f"signal digest csv {name} must match trace summary: "
@@ -619,6 +679,11 @@ def _summary_dict(
     data_validation: BarValidationResult | None,
     strategy_spec: dict[str, str] | None,
 ) -> dict[str, object]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：result（EntryEdgeResult）由呼叫端傳入，需符合函式 contract；data_validation（BarValidationResult | None）由呼叫端傳入，需符合函式 contract；strategy_spec（dict[str, str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 dict[str, object]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return {
         "strategy_name": result.strategy_name,
         "decision": result.decision,
@@ -650,6 +715,11 @@ def _entry_edge_comparison_summary_dict(
     data_validation: BarValidationResult | None,
     strategy_spec: dict[str, str] | None,
 ) -> dict[str, object]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：comparison（EntryEdgeComparisonResult）由呼叫端傳入，需符合函式 contract；data_validation（BarValidationResult | None）由呼叫端傳入，需符合函式 contract；strategy_spec（dict[str, str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 dict[str, object]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if not comparison.results:
         raise ValueError("entry-edge comparison must include at least one result")
     config = comparison.results[0].config
@@ -672,6 +742,11 @@ def _entry_edge_comparison_summary_dict(
 
 
 def _entry_edge_comparison_row(result: EntryEdgeResult) -> dict[str, object]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：result（EntryEdgeResult）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 dict[str, object]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     profit_factor = (
         None
         if result.profit_factor is None
@@ -695,6 +770,11 @@ def _entry_edge_comparison_row(result: EntryEdgeResult) -> dict[str, object]:
 
 
 def _phase_summary_dict(result: PhaseExecutionResult) -> dict[str, object]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：result（PhaseExecutionResult）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 dict[str, object]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     summary: dict[str, object] = {
         "phase": {
             "mode": result.mode,
@@ -718,6 +798,11 @@ def _phase_summary_dict(result: PhaseExecutionResult) -> dict[str, object]:
 
 
 def validate_phase_summary(summary: dict[str, object]) -> None:
+    """
+    用途與流程：執行內部 contract 驗證，將格式錯誤、語意不一致或安全邊界破壞轉成明確例外。
+    參數：summary（dict[str, object]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     allowed_keys = {"phase", "entry_edge", "order_intents"}
     extra_keys = sorted(set(summary.keys()) - allowed_keys)
     if extra_keys:
@@ -788,8 +873,12 @@ def validate_phase_summary(summary: dict[str, object]) -> None:
 
 
 def validate_signal_digests(digests: list[SignalDigest]) -> None:
-    """Enforce deterministic invariants for backtest signal digests."""
 
+    """
+    用途與流程：驗證記憶體中的 SignalDigest 清單符合 index、timestamp、reason 與 position contract。
+    參數：digests（list[SignalDigest]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     previous_index: int | None = None
     previous_timestamp: str | None = None
     previous_target_position: float | None = None
@@ -846,6 +935,11 @@ def validate_signal_digests(digests: list[SignalDigest]) -> None:
 
 
 def validate_trace_summary(summary: dict[str, object]) -> None:
+    """
+    用途與流程：驗證 trace summary JSON 與 signal digest 統計值一致，避免 reporting drift。
+    參數：summary（dict[str, object]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     allowed_keys = {"trace_summary"}
     extra_keys = sorted(set(summary.keys()) - allowed_keys)
     if extra_keys:
@@ -1165,6 +1259,11 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         raise ValueError("trace summary trace_summary.reason_counts total must equal bar_count")
 
 def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:
+    """
+    用途與流程：執行內部 contract 驗證，將格式錯誤、語意不一致或安全邊界破壞轉成明確例外。
+    參數：intent（dict[str, object]）由呼叫端傳入，需符合函式 contract；index（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     required_fields = {
         "timestamp": str,
         "side": str,
@@ -1188,6 +1287,11 @@ def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:
 
 
 def _validate_entry_edge_dict(entry_edge: dict[str, object]) -> None:
+    """
+    用途與流程：執行內部 contract 驗證，將格式錯誤、語意不一致或安全邊界破壞轉成明確例外。
+    參數：entry_edge（dict[str, object]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     required_fields = {
         "strategy_name": str,
         "decision": str,
@@ -1205,6 +1309,11 @@ def _validate_entry_edge_dict(entry_edge: dict[str, object]) -> None:
             raise ValueError(f"phase summary entry_edge.{field} has invalid type")
 
 def _trade_log_csv(result: EntryEdgeResult) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：result（EntryEdgeResult）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     import io
 
     buffer = io.StringIO()
@@ -1242,6 +1351,11 @@ def _trade_log_csv(result: EntryEdgeResult) -> str:
 
 
 def _signal_digest_csv(digests: list[SignalDigest]) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：digests（list[SignalDigest]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     import io
 
     buffer = io.StringIO()
@@ -1297,6 +1411,11 @@ def _signal_digest_csv(digests: list[SignalDigest]) -> str:
 
 
 def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：digests（list[SignalDigest]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 dict[str, object]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     long_entry_count = sum(1 for digest in digests if digest.is_long_entry)
     flatten_count = sum(1 for digest in digests if digest.is_flatten)
     flatten_to_long_count = sum(
@@ -1427,6 +1546,11 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
 
 
 def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, object]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：digests（list[SignalDigest]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 dict[str, object]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     index_increasing = True
     timestamp_non_decreasing = True
     timestamps_non_empty = True
@@ -1491,6 +1615,11 @@ def _phase_markdown_report(
     *,
     trace_summary: dict[str, object] | None = None,
 ) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：result（PhaseExecutionResult）由呼叫端傳入，需符合函式 contract；trace_summary（dict[str, object] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     lines = [
         f"# Phase Report - {result.mode}",
         "",
@@ -1602,6 +1731,11 @@ def _markdown_report(
     data_validation: BarValidationResult | None,
     strategy_spec: dict[str, str] | None,
 ) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：result（EntryEdgeResult）由呼叫端傳入，需符合函式 contract；data_validation（BarValidationResult | None）由呼叫端傳入，需符合函式 contract；strategy_spec（dict[str, str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     pf = _format_profit_factor(result)
     lines = [
         f"# Entry Edge Report - {result.strategy_name}",
@@ -1682,6 +1816,11 @@ def _entry_edge_comparison_markdown(
     data_validation: BarValidationResult | None,
     strategy_spec: dict[str, str] | None,
 ) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：comparison（EntryEdgeComparisonResult）由呼叫端傳入，需符合函式 contract；data_validation（BarValidationResult | None）由呼叫端傳入，需符合函式 contract；strategy_spec（dict[str, str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if not comparison.results:
         raise ValueError("entry-edge comparison must include at least one result")
     config = comparison.results[0].config
@@ -1759,6 +1898,11 @@ def _entry_edge_comparison_markdown(
 
 
 def _format_profit_factor(result: EntryEdgeResult) -> str:
+    """
+    用途與流程：將內部資料格式化為 artifact 或 CLI 需要的 deterministic 文字表示。
+    參數：result（EntryEdgeResult）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if result.profit_factor_status == "infinite":
         return "Infinity"
     if result.profit_factor is None:
@@ -1767,6 +1911,11 @@ def _format_profit_factor(result: EntryEdgeResult) -> str:
 
 
 def _safe_stem(value: str) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：value（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     allowed = []
     for char in value.lower():
         if char.isalnum() or char in {"-", "_"}:

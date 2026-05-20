@@ -8,6 +8,11 @@ Number = float | int
 
 
 def sma(values: Sequence[Number], window: int) -> list[float | None]:
+    """
+    用途與流程：計算簡單移動平均，暖身不足的位置回傳 None 以維持與輸入等長。
+    參數：values（Sequence[Number]）由呼叫端傳入，需符合函式 contract；window（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[float | None]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     _require_window(window)
     result: list[float | None] = []
     rolling_sum = 0.0
@@ -23,6 +28,11 @@ def sma(values: Sequence[Number], window: int) -> list[float | None]:
 
 
 def ema(values: Sequence[Number], window: int) -> list[float | None]:
+    """
+    用途與流程：計算指數移動平均，先以 SMA 種子啟動，再用 EMA multiplier 遞推。
+    參數：values（Sequence[Number]）由呼叫端傳入，需符合函式 contract；window（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[float | None]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     _require_window(window)
     if not values:
         return []
@@ -45,6 +55,11 @@ def ema(values: Sequence[Number], window: int) -> list[float | None]:
 
 
 def rolling_std(values: Sequence[Number], window: int) -> list[float | None]:
+    """
+    用途與流程：計算固定視窗 rolling standard deviation，暖身不足的位置回傳 None。
+    參數：values（Sequence[Number]）由呼叫端傳入，需符合函式 contract；window（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[float | None]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     _require_window(window)
     result: list[float | None] = []
     for index in range(len(values)):
@@ -59,6 +74,11 @@ def rolling_std(values: Sequence[Number], window: int) -> list[float | None]:
 
 
 def rsi(values: Sequence[Number], window: int = 14) -> list[float | None]:
+    """
+    用途與流程：計算 RSI 動能指標，使用平均漲跌幅產生 0 到 100 的強弱值。
+    參數：values（Sequence[Number]）由呼叫端傳入，需符合函式 contract；window（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[float | None]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     _require_window(window)
     if len(values) < 2:
         return [None for _ in values]
@@ -88,6 +108,11 @@ def rsi(values: Sequence[Number], window: int = 14) -> list[float | None]:
 def rolling_vwap(
     close_values: Sequence[Number], volume_values: Sequence[Number], window: int
 ) -> list[float | None]:
+    """
+    用途與流程：計算固定視窗 rolling VWAP，使用 close 與 volume 權重並維持輸出等長。
+    參數：close_values（Sequence[Number]）由呼叫端傳入，需符合函式 contract；volume_values（Sequence[Number]）由呼叫端傳入，需符合函式 contract；window（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[float | None]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     _require_window(window)
     if len(close_values) != len(volume_values):
         raise ValueError("close_values and volume_values must have the same length")
@@ -116,6 +141,11 @@ def rolling_vwap(
 
 
 def _require_window(window: int) -> None:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：window（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+    """
     if window <= 0:
         raise ValueError("window must be positive")
 

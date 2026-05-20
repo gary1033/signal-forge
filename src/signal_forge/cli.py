@@ -29,6 +29,11 @@ from signal_forge.strategy import Strategy
 
 
 def main(argv: list[str] | None = None) -> int:
+    """
+    用途與流程：作為命令列或工具入口，解析輸入、呼叫對應流程，最後回傳 process exit code。
+    參數：argv（list[str] | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 int；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     parser = argparse.ArgumentParser(prog="signal-forge")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -132,6 +137,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_entry_edge(args: argparse.Namespace) -> int:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：args（argparse.Namespace）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 int；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     bars = load_bars_from_csv(args.csv)
     data_validation = validate_bars(bars)
     strategy = _build_strategy(args)
@@ -189,6 +199,11 @@ def _run_entry_edge(args: argparse.Namespace) -> int:
 
 
 def _run_phase(args: argparse.Namespace) -> int:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：args（argparse.Namespace）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 int；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     bars = load_bars_from_csv(args.csv)
     strategy = _build_strategy(args)
     mode = parse_phase_mode(args.mode)
@@ -231,6 +246,11 @@ def _run_phase(args: argparse.Namespace) -> int:
 
 
 def _run_fetch_data(args: argparse.Namespace) -> int:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：args（argparse.Namespace）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 int；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     try:
         result = fetch_market_data(
             market=args.market,
@@ -255,6 +275,11 @@ def _run_fetch_data(args: argparse.Namespace) -> int:
 
 
 def _build_strategy(args: argparse.Namespace) -> Strategy:
+    """
+    用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
+    參數：args（argparse.Namespace）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return build_phase1_strategy(
         args.strategy,
         fast_window=args.fast_window,
@@ -271,6 +296,11 @@ def _build_strategy(args: argparse.Namespace) -> Strategy:
 
 
 def _parse_hold_bars_list(value: str | None) -> tuple[int, ...] | None:
+    """
+    用途與流程：解析外部輸入文字或 CSV 欄位，轉成程式內部可驗證的型別與格式。
+    參數：value（str | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 tuple[int, ...] | None；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     if value is None:
         return None
     parts = [part.strip() for part in value.split(",")]
@@ -288,6 +318,11 @@ def _parse_hold_bars_list(value: str | None) -> tuple[int, ...] | None:
 
 
 def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：args（argparse.Namespace）由呼叫端傳入，需符合函式 contract；strategy（Strategy）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 dict[str, str]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return {
         "source_strategy": args.strategy,
         "strategy_impl": strategy.name,

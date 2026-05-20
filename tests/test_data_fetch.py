@@ -19,6 +19,11 @@ from signal_forge.market_data import MarketDataValidationError, load_bars_from_c
 
 class DataFetchTests(unittest.TestCase):
     def test_parse_twse_row_converts_roc_date_and_numeric_fields(self) -> None:
+        """
+        用途與流程：驗證 parse twse row converts roc date and numeric fields 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bar = parse_twse_row(
             {
                 "日期": "113/01/02",
@@ -40,6 +45,11 @@ class DataFetchTests(unittest.TestCase):
         self.assertEqual(bar.volume, 27997826.0)
 
     def test_parse_twse_row_skips_empty_market_values(self) -> None:
+        """
+        用途與流程：驗證 parse twse row skips empty market values 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         self.assertIsNone(
             parse_twse_row(
                 {
@@ -54,6 +64,11 @@ class DataFetchTests(unittest.TestCase):
         )
 
     def test_fetch_twse_daily_stock_uses_monthly_json_and_filters_range(self) -> None:
+        """
+        用途與流程：驗證 fetch twse daily stock uses monthly json and filters range 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         payload = {
             "fields": ["日期", "成交股數", "成交金額", "開盤價", "最高價", "最低價", "收盤價"],
             "data": [
@@ -65,6 +80,11 @@ class DataFetchTests(unittest.TestCase):
         seen_urls: list[str] = []
 
         def fake_fetch(url: str) -> str:
+            """
+            用途與流程：執行此模組定義的業務流程，依輸入資料產生後續 reporting、策略或測試所需結果。
+            參數：url（str）由呼叫端傳入，需符合函式 contract
+            回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+            """
             seen_urls.append(url)
             return json.dumps(payload)
 
@@ -83,6 +103,11 @@ class DataFetchTests(unittest.TestCase):
         self.assertEqual([bar.timestamp for bar in bars], ["2024-01-03"])
 
     def test_parse_stooq_csv_converts_daily_ohlcv(self) -> None:
+        """
+        用途與流程：驗證 parse stooq csv converts daily ohlcv 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = parse_stooq_csv(
             "\n".join(
                 [
@@ -98,6 +123,11 @@ class DataFetchTests(unittest.TestCase):
         self.assertEqual(bars[0].volume, 82488700.0)
 
     def test_fetch_stooq_requires_apikey_when_endpoint_requests_it(self) -> None:
+        """
+        用途與流程：驗證 fetch stooq requires apikey when endpoint requests it 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         with self.assertRaisesRegex(MarketDataValidationError, "requires a free apikey"):
             fetch_stooq_daily_stock(
                 "AAPL",
@@ -107,6 +137,11 @@ class DataFetchTests(unittest.TestCase):
             )
 
     def test_fetch_market_data_outputs_loadable_signal_forge_csv(self) -> None:
+        """
+        用途與流程：驗證 fetch market data outputs loadable signal forge csv 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         payload = {
             "fields": ["日期", "成交股數", "成交金額", "開盤價", "最高價", "最低價", "收盤價"],
             "data": [

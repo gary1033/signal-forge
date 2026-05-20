@@ -16,9 +16,19 @@ class StaticSignalStrategy(Strategy):
     name = "static_signal"
 
     def __init__(self, targets: list[float]) -> None:
+        """
+        用途與流程：初始化測試替身物件，保存 fixture 或測試案例需要的輸入資料。
+        參數：self 表示目前物件實例；targets（list[float]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         self.targets = targets
 
     def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        """
+        用途與流程：在測試替身策略中產生固定 Signal 序列，讓測試可聚焦於被測流程而非策略細節。
+        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 list[Signal]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         return [
             Signal(index, bar.timestamp, self.targets[index], f"target_{self.targets[index]}")
             for index, bar in enumerate(bars)
@@ -26,6 +36,11 @@ class StaticSignalStrategy(Strategy):
 
 
 def bars_with_prices(prices: list[tuple[float, float]]) -> list[Bar]:
+    """
+    用途與流程：依測試案例建立帶有指定價格路徑的 Bar fixture，方便驗證進出場計算。
+    參數：prices（list[tuple[float, float]]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 list[Bar]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return [
         Bar(
             f"2026-01-{index + 1:02d}",
@@ -41,6 +56,11 @@ def bars_with_prices(prices: list[tuple[float, float]]) -> list[Bar]:
 
 class EntryEdgeTests(unittest.TestCase):
     def test_enters_next_bar_and_exits_after_fixed_hold(self) -> None:
+        """
+        用途與流程：驗證 enters next bar and exits after fixed hold 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = bars_with_prices([(10, 10), (10, 12), (12, 12)])
         strategy = StaticSignalStrategy([1.0, 1.0, 0.0])
         result = EntryEdgeEvaluator(
@@ -54,6 +74,11 @@ class EntryEdgeTests(unittest.TestCase):
         self.assertEqual(result.profit_factor_status, "infinite")
 
     def test_ignores_short_signals_in_pure_long_mode(self) -> None:
+        """
+        用途與流程：驗證 ignores short signals in pure long mode 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = bars_with_prices([(10, 10), (10, 11), (11, 11)])
         strategy = StaticSignalStrategy([-1.0, 0.0, 0.0])
         result = EntryEdgeEvaluator().run(strategy, bars)
@@ -62,6 +87,11 @@ class EntryEdgeTests(unittest.TestCase):
         self.assertEqual(result.decision, "fail")
 
     def test_finite_profit_factor_can_fail_threshold(self) -> None:
+        """
+        用途與流程：驗證 finite profit factor can fail threshold 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = bars_with_prices(
             [
                 (10, 10),
@@ -82,6 +112,11 @@ class EntryEdgeTests(unittest.TestCase):
         self.assertEqual(result.decision, "fail")
 
     def test_all_losing_trades_have_zero_profit_factor(self) -> None:
+        """
+        用途與流程：驗證 all losing trades have zero profit factor 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = bars_with_prices([(10, 10), (10, 9), (9, 9)])
         strategy = StaticSignalStrategy([1.0, 0.0, 0.0])
         result = EntryEdgeEvaluator(
@@ -92,6 +127,11 @@ class EntryEdgeTests(unittest.TestCase):
         self.assertEqual(result.decision, "fail")
 
     def test_failure_reason_is_ascii_and_deterministic(self) -> None:
+        """
+        用途與流程：驗證 failure reason is ascii and deterministic 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = bars_with_prices([(10, 10), (10, 11), (11, 11)])
         strategy = StaticSignalStrategy([-1.0, 0.0, 0.0])
         result = EntryEdgeEvaluator(EntryEdgeConfig(commission_bps=0, slippage_bps=0)).run(
@@ -109,6 +149,11 @@ class EntryEdgeTests(unittest.TestCase):
         self.assertEqual(flat_result.failure_reason, "No profitable closed trades.")
 
     def test_hold_comparison_preserves_requested_order(self) -> None:
+        """
+        用途與流程：驗證 hold comparison preserves requested order 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         bars = bars_with_prices([(10, 10), (10, 12), (12, 15), (15, 15)])
         strategy = StaticSignalStrategy([1.0, 0.0, 0.0, 0.0])
 

@@ -79,11 +79,21 @@ class EntryEdgeEvaluator:
     """Evaluate pure long entry edge with a fixed one-day holding contract."""
 
     def __init__(self, config: EntryEdgeConfig | None = None) -> None:
+        """
+        用途與流程：初始化物件狀態，保存後續執行所需的設定或 adapter 相依物件。
+        參數：self 表示目前物件實例；config（EntryEdgeConfig | None）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         self.config = config or EntryEdgeConfig()
         if self.config.hold_bars_per_day <= 0:
             raise ValueError("hold_bars_per_day must be positive")
 
     def run(self, strategy: Strategy, bars: list[Bar]) -> EntryEdgeResult:
+        """
+        用途與流程：執行主要工作流程，先驗證輸入 contract，再產生結果物件供 reporting 或測試使用。
+        參數：self 表示目前物件實例；strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 EntryEdgeResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         validation = validate_bars(bars, min_bars=self.config.hold_bars_per_day + 1)
         if not validation.is_valid:
             raise ValueError("; ".join(validation.errors))
@@ -168,6 +178,11 @@ def run_entry_edge_hold_comparison(
     base_config: EntryEdgeConfig,
     hold_bars_per_day: Sequence[int],
 ) -> EntryEdgeComparisonResult:
+    """
+    用途與流程：用同一策略與資料依序跑多個固定持有期，產生可比較的 Entry Edge 結果。
+    參數：strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract；base_config（EntryEdgeConfig）由呼叫端傳入，需符合函式 contract；hold_bars_per_day（Sequence[int]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 EntryEdgeComparisonResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     hold_values = tuple(hold_bars_per_day)
     if not hold_values:
         raise ValueError("hold_bars_per_day comparison list must not be empty")
@@ -199,6 +214,11 @@ def _build_result(
     unclosed_signal_count: int,
     overlapping_signal_count: int,
 ) -> EntryEdgeResult:
+    """
+    用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
+    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract；config（EntryEdgeConfig）由呼叫端傳入，需符合函式 contract；trades（list[EntryEdgeTrade]）由呼叫端傳入，需符合函式 contract；equity_curve（list[EntryEdgeEquityPoint]）由呼叫端傳入，需符合函式 contract；ignored_short_count（int）由呼叫端傳入，需符合函式 contract；unclosed_signal_count（int）由呼叫端傳入，需符合函式 contract；overlapping_signal_count（int）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 EntryEdgeResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     gross_profit = sum(trade.net_pnl for trade in trades if trade.net_pnl > 0)
     gross_loss = sum(trade.net_pnl for trade in trades if trade.net_pnl < 0)
     trade_count = len(trades)
@@ -263,6 +283,11 @@ def _build_result(
 
 
 def _max_drawdown(equity_values: list[float]) -> float:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：equity_values（list[float]）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 float；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     peak = equity_values[0]
     max_drawdown = 0.0
     for equity in equity_values:

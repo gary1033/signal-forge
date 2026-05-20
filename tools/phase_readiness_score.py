@@ -73,6 +73,11 @@ CHECKS: tuple[tuple[str, int, tuple[str, ...], tuple[str, ...]], ...] = (
 
 
 def main() -> int:
+    """
+    用途與流程：作為命令列或工具入口，解析輸入、呼叫對應流程，最後回傳 process exit code。
+    參數：無參數。
+    回傳與錯誤：回傳 int；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     score = 0
     for _name, points, paths, needles in CHECKS:
         text = "\n".join(_read_path(path) for path in paths)
@@ -83,6 +88,11 @@ def main() -> int:
 
 
 def _read_path(relative_path: str) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：relative_path（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     path = ROOT / relative_path
     if not path.exists():
         return ""

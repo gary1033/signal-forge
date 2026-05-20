@@ -14,6 +14,11 @@ OrderSide = Literal["buy"]
 
 
 def normalize_signal_reason(value: str) -> str:
+    """
+    用途與流程：把 strategy reason 正規化成 deterministic、單行、ASCII-only 的 artifact 欄位。
+    參數：value（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     max_len = 120
     normalized = value.replace("\r", " ").replace("\n", " ").replace("\t", " ")
     normalized = " ".join(normalized.split())
@@ -45,6 +50,11 @@ class PhaseConfig:
     dry_run: bool | None = None
 
     def __post_init__(self) -> None:
+        """
+        用途與流程：在 dataclass 建立後檢查設定值，將不合法或破壞安全邊界的輸入及早拒絕。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         if self.mode not in {"backtest", "live"}:
             raise ValueError("mode must be either 'backtest' or 'live'")
         if self.hold_bars_per_day <= 0:
@@ -63,10 +73,20 @@ class PhaseConfig:
 
     @property
     def is_backtest(self) -> bool:
+        """
+        用途與流程：判斷目前 PhaseConfig 是否走 backtest 路徑，供 runner 分派 adapter。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 bool；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         return self.mode == "backtest"
 
     @property
     def is_live(self) -> bool:
+        """
+        用途與流程：判斷目前 PhaseConfig 是否走 live dry-run 路徑，供 runner 分派 adapter。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 bool；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         return self.mode == "live"
 
 
@@ -111,6 +131,11 @@ class BacktestExecutionAdapter:
     def run(
         self, config: PhaseConfig, strategy: Strategy, bars: list[Bar]
     ) -> PhaseExecutionResult:
+        """
+        用途與流程：執行主要工作流程，先驗證輸入 contract，再產生結果物件供 reporting 或測試使用。
+        參數：self 表示目前物件實例；config（PhaseConfig）由呼叫端傳入，需符合函式 contract；strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 PhaseExecutionResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         signals = strategy.generate_signals(bars)
         if len(signals) != len(bars):
             raise ValueError("strategy must return exactly one signal per bar")
@@ -155,6 +180,11 @@ class LiveExecutionAdapter:
     def run(
         self, config: PhaseConfig, strategy: Strategy, bars: list[Bar]
     ) -> PhaseExecutionResult:
+        """
+        用途與流程：執行主要工作流程，先驗證輸入 contract，再產生結果物件供 reporting 或測試使用。
+        參數：self 表示目前物件實例；config（PhaseConfig）由呼叫端傳入，需符合函式 contract；strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 PhaseExecutionResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         if not config.dry_run:
             raise ValueError("live mode is dry-run only until backtests are stable")
 
@@ -195,12 +225,22 @@ class PhaseRunner:
         backtest_adapter: BacktestExecutionAdapter | None = None,
         live_adapter: LiveExecutionAdapter | None = None,
     ) -> None:
+        """
+        用途與流程：初始化物件狀態，保存後續執行所需的設定或 adapter 相依物件。
+        參數：self 表示目前物件實例；backtest_adapter（BacktestExecutionAdapter | None）由呼叫端傳入，需符合函式 contract；live_adapter（LiveExecutionAdapter | None）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
         self.backtest_adapter = backtest_adapter or BacktestExecutionAdapter()
         self.live_adapter = live_adapter or LiveExecutionAdapter()
 
     def run(
         self, config: PhaseConfig, strategy: Strategy, bars: list[Bar]
     ) -> PhaseExecutionResult:
+        """
+        用途與流程：執行主要工作流程，先驗證輸入 contract，再產生結果物件供 reporting 或測試使用。
+        參數：self 表示目前物件實例；config（PhaseConfig）由呼叫端傳入，需符合函式 contract；strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
+        回傳與錯誤：回傳 PhaseExecutionResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        """
         validation = validate_bars(bars, min_bars=config.hold_bars_per_day + 1)
         if not validation.is_valid:
             errors = "; ".join(validation.errors)
@@ -212,6 +252,11 @@ class PhaseRunner:
 
 
 def parse_phase_mode(value: str) -> PhaseMode:
+    """
+    用途與流程：解析 CLI 傳入的 Phase mode 字串，統一大小寫與空白處理後回傳合法 mode。
+    參數：value（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 PhaseMode；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     normalized = value.strip().lower()
     if normalized not in {"backtest", "live"}:
         raise ValueError("mode must be either 'backtest' or 'live'")

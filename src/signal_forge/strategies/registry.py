@@ -30,6 +30,11 @@ def build_strategy(
     threshold: float = 3.0,
     allow_short: bool | None = None,
 ) -> Strategy:
+    """
+    用途與流程：依策略名稱與參數建立 registry 中支援的策略實例。
+    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract；fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     normalized = _normalize_strategy_name(strategy_name)
     try:
         builder = STRATEGY_REGISTRY[normalized]
@@ -62,6 +67,11 @@ def build_phase1_strategy(
     volume_window: int = 20,
     volume_multiplier: float = 1.2,
 ) -> Strategy:
+    """
+    用途與流程：建立 Phase 1 long-only 策略，必要時包上成交量濾網 wrapper。
+    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract；fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；volume_filter（bool）由呼叫端傳入，需符合函式 contract；volume_window（int）由呼叫端傳入，需符合函式 contract；volume_multiplier（float）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     strategy = build_strategy(
         strategy_name,
         fast_window=fast_window,
@@ -94,6 +104,11 @@ def _build_sma_crossover(
     threshold: float,
     allow_short: bool | None,
 ) -> Strategy:
+    """
+    用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
+    參數：fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return SmaCrossoverStrategy(
         fast_window=fast_window,
         slow_window=slow_window,
@@ -112,6 +127,11 @@ def _build_vwap_reversion(
     threshold: float,
     allow_short: bool | None,
 ) -> Strategy:
+    """
+    用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
+    參數：fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     kwargs: dict[str, object] = {
         "window": vwap_window,
         "entry_z": entry_z,
@@ -133,6 +153,11 @@ def _build_confluence_score(
     threshold: float,
     allow_short: bool | None,
 ) -> Strategy:
+    """
+    用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
+    參數：fast_window（int）由呼叫端傳入，需符合函式 contract；slow_window（int）由呼叫端傳入，需符合函式 contract；vwap_window（int）由呼叫端傳入，需符合函式 contract；rsi_window（int）由呼叫端傳入，需符合函式 contract；entry_z（float）由呼叫端傳入，需符合函式 contract；exit_z（float）由呼叫端傳入，需符合函式 contract；threshold（float）由呼叫端傳入，需符合函式 contract；allow_short（bool | None）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     kwargs: dict[str, object] = {
         "fast_window": fast_window,
         "slow_window": slow_window,
@@ -146,6 +171,11 @@ def _build_confluence_score(
 
 
 def _normalize_strategy_name(strategy_name: str) -> str:
+    """
+    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
     return strategy_name.strip().lower()
 
 
