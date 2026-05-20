@@ -26,6 +26,15 @@ SignalForge 是研究導向的交易訊號沙盒，用來把 TradingView / Pine 
 
 完整呼叫方式、subcommand 參數與 Python API 範例整理在 `docs\01-架構\SignalForge 呼叫程式方式.md`。
 
+一般執行不需要把策略參數全部打出來。`entry-edge` 與 `phase` 會使用各策略自己的 default parameters；只有在比較同一策略的不同設定時，才覆寫 `--fast-window`、`--slow-window`、`--entry-z` 等參數。
+
+| 策略 | Default parameters |
+|---|---|
+| `sma-crossover` | `fast_window=20`、`slow_window=200`、Phase 1 `allow_short=False`。 |
+| `vwap-reversion` | `vwap_window=20`、`entry_z=1.5`、`exit_z=0.25`、`vwap_regime_filter=False`、`vwap_regime_window=50`、Phase 1 `allow_short=False`。 |
+| `confluence-score` | `fast_window=20`、`slow_window=50`、`rsi_window=14`、`vwap_window=20`、`threshold=3.0`、Phase 1 `allow_short=False`。 |
+| volume filter wrapper | 只有啟用 `--volume-filter` 時套用，預設 `volume_window=20`、`volume_multiplier=1.2`。 |
+
 ```powershell
 # readiness metric
 python tools\phase_readiness_score.py
@@ -75,6 +84,15 @@ python -m signal_forge.cli phase `
   --strategy sma-crossover `
   --output-dir reports\generated `
   --run-name phase-live-demo
+
+# Only override parameters when comparing variants of the same strategy
+python -m signal_forge.cli entry-edge `
+  --csv data\sample\phase1_demo_ohlcv.csv `
+  --strategy sma-crossover `
+  --fast-window 2 `
+  --slow-window 3 `
+  --output-dir reports\generated `
+  --run-name sma-fast2-slow3-demo
 ```
 
 ## Phase 核心概念
