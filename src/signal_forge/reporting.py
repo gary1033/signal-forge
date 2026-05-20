@@ -435,6 +435,25 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
                 f"csv={expected_value} trace_summary={actual_value}"
             )
 
+    bucket_counts = trace.get("position_bucket_counts")
+    if not isinstance(bucket_counts, dict):
+        raise ValueError("trace summary position_bucket_counts missing required dict")
+
+    expected_bucket_counts = {
+        "flat": position_bucket_flat_count,
+        "long": position_bucket_long_count,
+        "short": position_bucket_short_count,
+    }
+    for key, expected_value in expected_bucket_counts.items():
+        actual_value = bucket_counts.get(key)
+        if not isinstance(actual_value, int):
+            raise ValueError(f"trace summary position_bucket_counts.{key} must be an int")
+        if actual_value != expected_value:
+            raise ValueError(
+                "signal digest csv position bucket count must match trace summary: "
+                f"bucket={key} csv={expected_value} trace_summary={actual_value}"
+            )
+
     def assert_close(name: str, expected_value: float, actual_value: float) -> None:
         if abs(expected_value - actual_value) > tolerance:
             raise ValueError(
@@ -691,6 +710,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "nonzero_target_position_count": int,
         "nonzero_position_change_count": int,
         "open_count": int,
+        "position_bucket_counts": dict,
         "reason_counts": list,
         "reasons": list,
         "signal_digest_sha256": str,
@@ -764,6 +784,40 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
             raise ValueError(f"trace summary trace_summary.{name} must be non-negative")
         if value > bar_count:
             raise ValueError(f"trace summary trace_summary.{name} must be <= bar_count")
+
+    bucket_counts = trace_summary.get("position_bucket_counts")
+    if not isinstance(bucket_counts, dict):
+        raise ValueError("trace summary trace_summary.position_bucket_counts must be a dict")
+
+    expected_bucket_keys = {"flat", "long", "short"}
+    actual_bucket_keys = set(bucket_counts.keys())
+    if actual_bucket_keys != expected_bucket_keys:
+        raise ValueError(
+            "trace summary trace_summary.position_bucket_counts must have deterministic keys: "
+            f"expected={sorted(expected_bucket_keys)} got={sorted(actual_bucket_keys)}"
+        )
+
+    total_bucket_count = 0
+    for key in sorted(expected_bucket_keys):
+        value = bucket_counts.get(key)
+        if not isinstance(value, int):
+            raise ValueError(
+                f"trace summary trace_summary.position_bucket_counts.{key} must be an int"
+            )
+        if value < 0:
+            raise ValueError(
+                f"trace summary trace_summary.position_bucket_counts.{key} must be non-negative"
+            )
+        if value > bar_count:
+            raise ValueError(
+                f"trace summary trace_summary.position_bucket_counts.{key} must be <= bar_count"
+            )
+        total_bucket_count += value
+
+    if total_bucket_count != bar_count:
+        raise ValueError(
+            "trace summary trace_summary.position_bucket_counts must sum to bar_count"
+        )
 
     if counts["entry_count"] != counts["open_count"]:
         raise ValueError("trace summary trace_summary.entry_count must equal open_count")
@@ -1102,9 +1156,12 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     timestamps_iso8601 = all(_is_iso8601_timestamp(digest.timestamp) for digest in digests)
     start_date = _extract_iso8601_date(first_timestamp)
     end_date = _extract_iso8601_date(last_timestamp)
+    flat_bucket_count = sum(1 for digest in digests if abs(digest.target_position) <= epsilon)
+    long_bucket_count = sum(1 for digest in digests if digest.target_position > epsilon)
+    short_bucket_count = sum(1 for digest in digests if digest.target_position < -epsilon)
     return {
         "trace_summary": {
-            "schema_version": 5,
+            "schema_version": 6,
             "bar_count": len(digests),
             "close_count": close_count,
             "end_date": end_date,
@@ -1123,6 +1180,11 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "nonzero_target_position_count": nonzero_target_position_count,
             "nonzero_position_change_count": nonzero_position_change_count,
             "open_count": open_count,
+            "position_bucket_counts": {
+                "flat": flat_bucket_count,
+                "long": long_bucket_count,
+                "short": short_bucket_count,
+            },
             "first_timestamp": first_timestamp,
             "last_timestamp": last_timestamp,
             "last_target_position": _round_float(last_target_position, 6),

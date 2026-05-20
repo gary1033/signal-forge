@@ -73,6 +73,7 @@
 | 2026-05-20 07:52 | Signals CSV 增加 `hold_side` 稽核欄位 | `*_signals.csv` 追加 deterministic `hold_side`（none/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 per-row hold side 語意與 `hold_long_count` / `hold_short_count` 一致 | 110 -> 110；53 tests OK | keep |
 | 2026-05-20 08:05 | Phase markdown 顯示 hold long/short | Phase markdown 的 `Backtest Trace Summary` 追加 `hold_long_count` / `hold_short_count`（hold long/short）顯示，並更新 exact-text regression test contract | 110 -> 110；53 tests OK | keep |
 | 2026-05-20 08:20 | Trace summary 加入 `signal_digest_sha256` | `*_trace_summary.json` 追加 deterministic `signal_digest_sha256`（schema_version=5），並在 `validate_signal_digest_csv(...)` 驗證 signals CSV hash 與 trace summary 一致（含測試）；同時固定 CSV 換行為 `\\n` 以避免 hash 因 OS newline 正規化 drift | 110 -> 110；53 tests OK | keep |
+| 2026-05-20 08:52 | Trace summary 加入 position bucket counts | `*_trace_summary.json` 追加 deterministic `position_bucket_counts`（flat/long/short），並在 `validate_signal_digest_csv(...)` 交叉驗證 bucket counts 與 CSV 一致（schema_version=6） | 110 -> 110；54 tests OK | keep |
 
 ## 方法紀錄
 
@@ -102,6 +103,6 @@
 ## 最後狀態
 
 - 最新已知 metric：`110`
-- 最新已知 guard：52 tests OK，`git diff --check` clean
+- 最新已知 guard：54 tests OK，`git diff --check` clean
 - 最後一輪 commit：已推送到 `origin/main`（以 `git log -5` 為準）
 - 下一步：只擴充 backtest verifiability 與 deterministic artifacts；live 在回測穩定前維持 dry-run only。
