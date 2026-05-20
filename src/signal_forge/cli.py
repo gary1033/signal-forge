@@ -5,14 +5,22 @@ import os
 from pathlib import Path
 
 from signal_forge.data_fetch import fetch_market_data
-from signal_forge.entry_edge import EntryEdgeConfig, EntryEdgeEvaluator
+from signal_forge.entry_edge import (
+    EntryEdgeConfig,
+    EntryEdgeEvaluator,
+    run_entry_edge_hold_comparison,
+)
 from signal_forge.market_data import (
     MarketDataValidationError,
     load_bars_from_csv,
     validate_bars,
 )
 from signal_forge.phase import PhaseConfig, PhaseRunner, parse_phase_mode
-from signal_forge.reporting import write_entry_edge_outputs, write_phase_outputs
+from signal_forge.reporting import (
+    write_entry_edge_comparison_outputs,
+    write_entry_edge_outputs,
+    write_phase_outputs,
+)
 from signal_forge.strategies import (
     SUPPORTED_STRATEGY_NAMES,
     build_phase1_strategy,
@@ -37,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     entry_edge.add_argument("--output-dir", default="reports/generated")
     entry_edge.add_argument("--run-name")
     entry_edge.add_argument("--hold-bars-per-day", type=int, default=1)
+    entry_edge.add_argument(
+        "--hold-bars-list",
+        help="comma-separated positive fixed-hold bars for comparison reports",
+    )
     entry_edge.add_argument("--initial-equity", type=float, default=10_000.0)
     entry_edge.add_argument("--commission-bps", type=float, default=1.0)
     entry_edge.add_argument("--slippage-bps", type=float, default=1.0)
@@ -123,6 +135,7 @@ def _run_entry_edge(args: argparse.Namespace) -> int:
     bars = load_bars_from_csv(args.csv)
     data_validation = validate_bars(bars)
     strategy = _build_strategy(args)
+    strategy_spec = _strategy_spec(args, strategy)
     config = EntryEdgeConfig(
         initial_equity=args.initial_equity,
         commission_bps=args.commission_bps,
@@ -130,14 +143,30 @@ def _run_entry_edge(args: argparse.Namespace) -> int:
         hold_bars_per_day=args.hold_bars_per_day,
         pass_profit_factor=args.pass_profit_factor,
     )
+    hold_bars_list = _parse_hold_bars_list(args.hold_bars_list)
     result = EntryEdgeEvaluator(config).run(strategy, bars)
     paths = write_entry_edge_outputs(
         result,
         Path(args.output_dir),
         run_name=args.run_name,
         data_validation=data_validation,
-        strategy_spec=_strategy_spec(args, strategy),
+        strategy_spec=strategy_spec,
     )
+    comparison_paths = None
+    if hold_bars_list is not None:
+        comparison = run_entry_edge_hold_comparison(
+            strategy,
+            bars,
+            config,
+            hold_bars_list,
+        )
+        comparison_paths = write_entry_edge_comparison_outputs(
+            comparison,
+            Path(args.output_dir),
+            run_name=args.run_name,
+            data_validation=data_validation,
+            strategy_spec=strategy_spec,
+        )
 
     profit_factor = (
         "Infinity"
@@ -153,6 +182,9 @@ def _run_entry_edge(args: argparse.Namespace) -> int:
     print(f"markdown={paths.markdown}")
     print(f"summary_json={paths.summary_json}")
     print(f"trade_log_csv={paths.trade_log_csv}")
+    if comparison_paths is not None:
+        print(f"hold_comparison_markdown={comparison_paths.markdown}")
+        print(f"hold_comparison_json={comparison_paths.summary_json}")
     return 0
 
 
@@ -236,6 +268,23 @@ def _build_strategy(args: argparse.Namespace) -> Strategy:
         volume_window=getattr(args, "volume_window", 20),
         volume_multiplier=getattr(args, "volume_multiplier", 1.2),
     )
+
+
+def _parse_hold_bars_list(value: str | None) -> tuple[int, ...] | None:
+    if value is None:
+        return None
+    parts = [part.strip() for part in value.split(",")]
+    if not parts or any(part == "" for part in parts):
+        raise ValueError("--hold-bars-list must be a comma-separated list of positive integers")
+    try:
+        hold_values = tuple(int(part) for part in parts)
+    except ValueError as exc:
+        raise ValueError(
+            "--hold-bars-list must be a comma-separated list of positive integers"
+        ) from exc
+    if any(value <= 0 for value in hold_values):
+        raise ValueError("--hold-bars-list values must be positive integers")
+    return hold_values
 
 
 def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:

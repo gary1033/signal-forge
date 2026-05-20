@@ -2,7 +2,13 @@
 
 from signal_forge.backtester import Backtester, BacktestConfig, BacktestResult
 from signal_forge.data_fetch import FetchDataResult, fetch_market_data
-from signal_forge.entry_edge import EntryEdgeConfig, EntryEdgeEvaluator, EntryEdgeResult
+from signal_forge.entry_edge import (
+    EntryEdgeComparisonResult,
+    EntryEdgeConfig,
+    EntryEdgeEvaluator,
+    EntryEdgeResult,
+    run_entry_edge_hold_comparison,
+)
 from signal_forge.market_data import (
     Bar,
     BarValidationResult,
@@ -38,6 +44,7 @@ __all__ = [
     "Bar",
     "BarValidationResult",
     "EntryEdgeConfig",
+    "EntryEdgeComparisonResult",
     "EntryEdgeEvaluator",
     "EntryEdgeResult",
     "FetchDataResult",
@@ -59,5 +66,6 @@ __all__ = [
     "load_bars_from_csv",
     "normalize_signal_reason",
     "parse_phase_mode",
+    "run_entry_edge_hold_comparison",
     "validate_bars",
 ]

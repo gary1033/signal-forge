@@ -31,6 +31,7 @@ updated: 2026-05-20
 - GitHub：`gary1033/signal-forge`
 - 主線：Phase 工作流可切換 `backtest` 與 `live`。
 - `backtest`：優先 deterministic artifacts、regression tests、報表可稽核性。
+- `entry-edge`：支援單一固定持有期，也可用 `--hold-bars-list` 輸出多持有期 comparison JSON/Markdown。
 - `live`：只產生 dry-run `OrderIntent`，安全邊界由 `LIVE_DRY_RUN_ONLY` 鎖住。
 - 最新整理基線：readiness score 目標仍為 `110`，固定 guard 是 `python -m unittest discover -s tests` 與 `git diff --check`。
 

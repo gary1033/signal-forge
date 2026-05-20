@@ -95,6 +95,7 @@ SMA Crossover 是趨勢追蹤 baseline。它假設短期平均價格高於長期
 - `allow_short`：實作預設支援，但 CLI 目前固定 `False`。
 - 可選成交量過濾器：CLI 使用 `--volume-filter --volume-window 20 --volume-multiplier 1.2`，實作位置是 `C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py`。
 - entry-edge 評估：訊號於 bar close 後確認，下一根 open 進場，固定持有 `hold_bars_per_day=1` 後以 exit bar close 出場。
+- 多持有期比較：CLI 可用 `--hold-bars-list 1,3,5,10` 產生同一策略在不同固定持有期下的 comparison JSON/Markdown。這是評估工具，不會改變 SMA 訊號，也不會自動挑最佳參數。
 
 ## 股價走勢解說圖
 
@@ -113,7 +114,7 @@ SMA Crossover 是趨勢追蹤 baseline。它假設短期平均價格高於長期
 
 ## 下一步
 
-- 用 `hold_bars_per_day=3/5/10` 測試趨勢持有期是否改善。
+- 用 `entry-edge --hold-bars-list 1,3,5,10` 比較不同固定持有期，判斷一日 entry-edge 是否低估趨勢策略用途。
 - 比較 entry-only volume filter 與 target-state volume filter，確認哪一種比較符合趨勢策略語意。
 - 若進入 Phase 2，應建立多日持倉與出場規則，而不是只用一日 entry-edge。
 - 檢查不同標的與不同 market regime 下的表現差異。

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from signal_forge import Bar
+from signal_forge import Bar, BarByBarStrategy
 from signal_forge.strategies import (
     ConfluenceScoreStrategy,
     SmaCrossoverStrategy,
@@ -30,6 +30,7 @@ class StrategyRegressionTests(unittest.TestCase):
     def test_sma_crossover_contract_after_template_refactor(self) -> None:
         strategy = SmaCrossoverStrategy(fast_window=2, slow_window=3, allow_short=False)
 
+        self.assertIsInstance(strategy, BarByBarStrategy)
         signals = strategy.generate_signals(bars_from_closes([10, 11, 12, 13, 14, 15]))
 
         self.assertEqual([signal.target_position for signal in signals], [0.0, 0.0, 1.0, 1.0, 1.0, 1.0])

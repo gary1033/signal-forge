@@ -52,6 +52,7 @@ git diff --check
 - Entry Edge summary JSON。
 - Entry Edge markdown。
 - Entry Edge trade log CSV。
+- Entry Edge hold comparison JSON / Markdown。
 - `*_signals.csv`。
 - `*_trace_summary.json`。
 
@@ -110,6 +111,14 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - `VolumeFilteredStrategy` 維持外層 wrapper，不併入策略本體。
 - 新增 template、factory、三策略 regression tests，確保重構不改 target / reason / score contract。
 
+### 7. Entry Edge 多持有期比較
+
+- `entry-edge` 新增 `--hold-bars-list`，支援逗號分隔正整數，例如 `1,3,5,10`。
+- 不提供 `--hold-bars-list` 時，原本單一 `--hold-bars-per-day` 的 markdown / summary JSON / trade CSV 輸出不變。
+- 提供 `--hold-bars-list` 時，會保留原本單一 hold report，另外輸出 `<run-name>_hold_comparison.json` 與 `<run-name>_hold_comparison.md`。
+- comparison row 固定包含 hold bars、decision、Profit Factor status/value、trade count、win rate、average net PnL、max drawdown、ignored/unclosed/overlap counts 與 failure reason。
+- 這個功能是為了比較同一策略在不同固定持有期下的 entry-edge 稽核結果，不自動推薦最佳持有期，也不改 SMA Crossover 的 `fast_sma > slow_sma` 訊號語意。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |
@@ -124,6 +133,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 
 - 只擴充 deterministic、test-covered 的 backtest artifacts。
 - 優先補強 trace summary 或 validation，不做績效最佳化。
-- OOP template 已完成後，下一步可以分開討論 SMA Crossover、VWAP Reversion、Confluence Score 的策略語意修改。
+- SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
+- OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

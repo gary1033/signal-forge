@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from signal_forge.entry_edge import EntryEdgeResult
+from signal_forge.entry_edge import EntryEdgeComparisonResult, EntryEdgeResult
 from signal_forge.market_data import BarValidationResult
 from signal_forge.phase import PhaseExecutionResult, SignalDigest
 
@@ -63,6 +63,12 @@ class EntryEdgeReportPaths:
 
 
 @dataclass(frozen=True)
+class EntryEdgeComparisonReportPaths:
+    markdown: Path
+    summary_json: Path
+
+
+@dataclass(frozen=True)
 class PhaseReportPaths:
     markdown: Path
     summary_json: Path
@@ -101,6 +107,41 @@ def write_entry_edge_outputs(
         markdown=markdown_path,
         summary_json=summary_path,
         trade_log_csv=trade_log_path,
+    )
+
+
+def write_entry_edge_comparison_outputs(
+    comparison: EntryEdgeComparisonResult,
+    output_dir: str | Path,
+    *,
+    run_name: str | None = None,
+    data_validation: BarValidationResult | None = None,
+    strategy_spec: dict[str, str] | None = None,
+) -> EntryEdgeComparisonReportPaths:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    stem = _safe_stem(run_name or comparison.strategy_name)
+    markdown_path = output_path / f"{stem}_hold_comparison.md"
+    summary_path = output_path / f"{stem}_hold_comparison.json"
+
+    summary = _entry_edge_comparison_summary_dict(
+        comparison,
+        data_validation,
+        strategy_spec,
+    )
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path.write_text(
+        _entry_edge_comparison_markdown(comparison, data_validation, strategy_spec),
+        encoding="utf-8",
+    )
+
+    return EntryEdgeComparisonReportPaths(
+        markdown=markdown_path,
+        summary_json=summary_path,
     )
 
 
@@ -601,6 +642,55 @@ def _summary_dict(
         "config": asdict(result.config),
         "data_validation": asdict(data_validation) if data_validation else None,
         "strategy_spec": strategy_spec or {},
+    }
+
+
+def _entry_edge_comparison_summary_dict(
+    comparison: EntryEdgeComparisonResult,
+    data_validation: BarValidationResult | None,
+    strategy_spec: dict[str, str] | None,
+) -> dict[str, object]:
+    if not comparison.results:
+        raise ValueError("entry-edge comparison must include at least one result")
+    config = comparison.results[0].config
+    return {
+        "strategy_name": comparison.strategy_name,
+        "hold_bars_per_day": list(comparison.hold_bars_per_day),
+        "config": {
+            "initial_equity": config.initial_equity,
+            "commission_bps": config.commission_bps,
+            "slippage_bps": config.slippage_bps,
+            "pass_profit_factor": config.pass_profit_factor,
+        },
+        "rows": [
+            _entry_edge_comparison_row(result)
+            for result in comparison.results
+        ],
+        "data_validation": asdict(data_validation) if data_validation else None,
+        "strategy_spec": strategy_spec or {},
+    }
+
+
+def _entry_edge_comparison_row(result: EntryEdgeResult) -> dict[str, object]:
+    profit_factor = (
+        None
+        if result.profit_factor is None
+        else _round_float(result.profit_factor, 6)
+    )
+    return {
+        "hold_bars_per_day": result.config.hold_bars_per_day,
+        "decision": result.decision,
+        "profit_factor_status": result.profit_factor_status,
+        "profit_factor": profit_factor,
+        "trade_count": result.trade_count,
+        "win_rate": _round_float(result.win_rate, 6),
+        "average_net_pnl": _round_float(result.average_net_pnl, 2),
+        "max_drawdown": _round_float(result.max_drawdown, 6),
+        "ignored_short_count": result.ignored_short_count,
+        "unclosed_signal_count": result.unclosed_signal_count,
+        "overlapping_signal_count": result.overlapping_signal_count,
+        "failure_reason": result.failure_reason,
+        "end_equity": _round_float(result.end_equity, 2),
     }
 
 
@@ -1584,6 +1674,87 @@ def _markdown_report(
             "",
         ]
     )
+    return "\n".join(lines)
+
+
+def _entry_edge_comparison_markdown(
+    comparison: EntryEdgeComparisonResult,
+    data_validation: BarValidationResult | None,
+    strategy_spec: dict[str, str] | None,
+) -> str:
+    if not comparison.results:
+        raise ValueError("entry-edge comparison must include at least one result")
+    config = comparison.results[0].config
+    compared_holds = ", ".join(
+        str(result.config.hold_bars_per_day) for result in comparison.results
+    )
+    lines = [
+        f"# Entry Edge Hold Comparison - {comparison.strategy_name}",
+        "",
+        "## Comparison",
+        "",
+        "| Hold bars | Decision | PF status | PF value | Trades | Win rate | Avg net PnL | Max drawdown | Ignored shorts | Unclosed | Overlap | Failure reason |",
+        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for result in comparison.results:
+        failure_reason = result.failure_reason or "-"
+        lines.append(
+            "| "
+            f"{result.config.hold_bars_per_day} | "
+            f"{result.decision.upper()} | "
+            f"{result.profit_factor_status} | "
+            f"{_format_profit_factor(result)} | "
+            f"{result.trade_count} | "
+            f"{result.win_rate:.2%} | "
+            f"{result.average_net_pnl:.2f} | "
+            f"{result.max_drawdown:.2%} | "
+            f"{result.ignored_short_count} | "
+            f"{result.unclosed_signal_count} | "
+            f"{result.overlapping_signal_count} | "
+            f"{failure_reason} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Backtest Settings",
+            "",
+            f"- Initial equity: {config.initial_equity:.2f}",
+            f"- Commission (bps): {config.commission_bps:.2f}",
+            f"- Slippage (bps): {config.slippage_bps:.2f}",
+            f"- Compared hold bars: {compared_holds}",
+            f"- Pass threshold PF: >{config.pass_profit_factor:.2f}",
+            "- Execution: signal confirmed at bar close; enter at next bar open; exit at exit bar close after fixed hold.",
+            "- Phase 1 constraints: long-only; ignore short signals; no stops/take-profit/filters/parameter optimization.",
+            "- Interpretation: comparison is for audit and research only; it does not pick or optimize parameters.",
+            "",
+            "## Data Validation",
+            "",
+        ]
+    )
+    if data_validation:
+        lines.extend(
+            [
+                f"- Bars: {data_validation.bar_count}",
+                f"- Start: {data_validation.start_timestamp}",
+                f"- End: {data_validation.end_timestamp}",
+                f"- Errors: {len(data_validation.errors)}",
+                f"- Warnings: {len(data_validation.warnings)}",
+            ]
+        )
+        for warning in data_validation.warnings:
+            lines.append(f"- Warning: {warning}")
+    else:
+        lines.append("- Data validation was not provided.")
+
+    lines.extend(["", "## Strategy Spec (Distilled)", ""])
+    if strategy_spec:
+        for key, value in strategy_spec.items():
+            lines.append(f"- {key}: {value}")
+    else:
+        lines.append("- No strategy spec was provided.")
+
+    lines.append("")
     return "\n".join(lines)
 
 

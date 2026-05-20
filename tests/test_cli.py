@@ -134,6 +134,68 @@ class CliTests(unittest.TestCase):
             summary["strategy_spec"]["volume_rule"],
             "volume >= sma(volume, volume_window) * volume_multiplier",
         )
+        self.assertNotIn("hold_comparison_json=", output)
+
+    def test_entry_edge_command_writes_hold_comparison_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_trending_csv(Path(temp_dir), row_count=8)
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "sma-crossover",
+                    "--fast-window",
+                    "1",
+                    "--slow-window",
+                    "2",
+                    "--hold-bars-list",
+                    "1,3,5",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "sma-multi-hold",
+                ]
+            )
+            comparison = json.loads(
+                (Path(temp_dir) / "sma-multi-hold_hold_comparison.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertIn("markdown=", output)
+        self.assertIn("summary_json=", output)
+        self.assertIn("trade_log_csv=", output)
+        self.assertIn("hold_comparison_markdown=", output)
+        self.assertIn("hold_comparison_json=", output)
+        self.assertEqual(comparison["hold_bars_per_day"], [1, 3, 5])
+        self.assertEqual(
+            [row["hold_bars_per_day"] for row in comparison["rows"]],
+            [1, 3, 5],
+        )
+
+    def test_entry_edge_command_rejects_invalid_hold_comparison_list(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_sample_csv(Path(temp_dir))
+            with self.assertRaisesRegex(ValueError, "--hold-bars-list"):
+                _run_cli(
+                    [
+                        "entry-edge",
+                        "--csv",
+                        str(csv_path),
+                        "--strategy",
+                        "sma-crossover",
+                        "--fast-window",
+                        "1",
+                        "--slow-window",
+                        "2",
+                        "--hold-bars-list",
+                        "1,0",
+                        "--output-dir",
+                        temp_dir,
+                    ]
+                )
 
     def test_fetch_data_command_reports_written_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -222,6 +284,18 @@ def _write_sample_csv(directory: Path) -> Path:
         + "\n",
         encoding="utf-8",
     )
+    return csv_path
+
+
+def _write_trending_csv(directory: Path, row_count: int) -> Path:
+    csv_path = directory / "trending.csv"
+    rows = ["timestamp,open,high,low,close,volume"]
+    for index in range(row_count):
+        price = 10 + index
+        rows.append(
+            f"2026-01-{index + 1:02d},{price},{price + 0.5},{price - 0.5},{price},100"
+        )
+    csv_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     return csv_path
 
 

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from signal_forge import Bar, EntryEdgeConfig, EntryEdgeEvaluator, Signal, Strategy
+from signal_forge import (
+    Bar,
+    EntryEdgeConfig,
+    EntryEdgeEvaluator,
+    Signal,
+    Strategy,
+    run_entry_edge_hold_comparison,
+)
 
 
 class StaticSignalStrategy(Strategy):
@@ -100,6 +107,26 @@ class EntryEdgeTests(unittest.TestCase):
         ).run(flat_strategy, flat_bars)
         self.assertEqual(flat_result.decision, "fail")
         self.assertEqual(flat_result.failure_reason, "No profitable closed trades.")
+
+    def test_hold_comparison_preserves_requested_order(self) -> None:
+        bars = bars_with_prices([(10, 10), (10, 12), (12, 15), (15, 15)])
+        strategy = StaticSignalStrategy([1.0, 0.0, 0.0, 0.0])
+
+        comparison = run_entry_edge_hold_comparison(
+            strategy,
+            bars,
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0),
+            [2, 1],
+        )
+
+        self.assertEqual(comparison.strategy_name, "static_signal")
+        self.assertEqual(comparison.hold_bars_per_day, (2, 1))
+        self.assertEqual(
+            [result.config.hold_bars_per_day for result in comparison.results],
+            [2, 1],
+        )
+        self.assertEqual([result.trade_count for result in comparison.results], [1, 1])
+        self.assertEqual([result.end_equity for result in comparison.results], [15000.0, 12000.0])
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, replace
+from typing import Literal, Sequence
 
 from signal_forge.market_data import Bar, validate_bars
 from signal_forge.strategy import Strategy
@@ -66,6 +66,13 @@ class EntryEdgeResult:
     end_equity: float
     trades: list[EntryEdgeTrade]
     equity_curve: list[EntryEdgeEquityPoint]
+
+
+@dataclass(frozen=True)
+class EntryEdgeComparisonResult:
+    strategy_name: str
+    hold_bars_per_day: tuple[int, ...]
+    results: list[EntryEdgeResult]
 
 
 class EntryEdgeEvaluator:
@@ -153,6 +160,33 @@ class EntryEdgeEvaluator:
             unclosed_signal_count=unclosed_signal_count,
             overlapping_signal_count=overlapping_signal_count,
         )
+
+
+def run_entry_edge_hold_comparison(
+    strategy: Strategy,
+    bars: list[Bar],
+    base_config: EntryEdgeConfig,
+    hold_bars_per_day: Sequence[int],
+) -> EntryEdgeComparisonResult:
+    hold_values = tuple(hold_bars_per_day)
+    if not hold_values:
+        raise ValueError("hold_bars_per_day comparison list must not be empty")
+    invalid_values = [value for value in hold_values if value <= 0]
+    if invalid_values:
+        raise ValueError("hold_bars_per_day comparison values must be positive")
+
+    results = [
+        EntryEdgeEvaluator(replace(base_config, hold_bars_per_day=value)).run(
+            strategy,
+            bars,
+        )
+        for value in hold_values
+    ]
+    return EntryEdgeComparisonResult(
+        strategy_name=strategy.name,
+        hold_bars_per_day=hold_values,
+        results=results,
+    )
 
 
 def _build_result(

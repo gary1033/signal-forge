@@ -13,6 +13,7 @@ from signal_forge import (
     PhaseRunner,
     Signal,
     Strategy,
+    run_entry_edge_hold_comparison,
     validate_bars,
 )
 from signal_forge.reporting import (
@@ -20,6 +21,7 @@ from signal_forge.reporting import (
     validate_phase_summary,
     validate_signal_digest_csv,
     validate_signal_digests,
+    write_entry_edge_comparison_outputs,
     write_entry_edge_outputs,
     write_phase_outputs,
 )
@@ -645,6 +647,129 @@ class ReportingTests(unittest.TestCase):
                 [
                     "signal_index,signal_timestamp,entry_index,entry_timestamp,exit_index,exit_timestamp,entry_price,exit_price,gross_pnl,cost,net_pnl,return_pct,signal_reason,signal_score",
                     "0,2026-01-01,1,2026-01-02,1,2026-01-02,10,11,1000.00,0.00,1000.00,0.100000,entry,0.000000",
+                    "",
+                ]
+            ),
+        )
+
+    def test_entry_edge_hold_comparison_outputs_have_stable_contract(self) -> None:
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 12.5, 9.5, 12, 100),
+            Bar("2026-01-03", 12, 15.5, 11.5, 15, 100),
+        ]
+        comparison = run_entry_edge_hold_comparison(
+            OneTradeStrategy(),
+            bars,
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0),
+            [2, 1],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_entry_edge_comparison_outputs(
+                comparison,
+                temp_dir,
+                run_name="entry-edge-comparison-contract",
+                data_validation=validate_bars(bars),
+                strategy_spec={"entry_side": "long_only"},
+            )
+            summary_text = paths.summary_json.read_text(encoding="utf-8")
+            summary = json.loads(summary_text)
+            markdown_text = paths.markdown.read_text(encoding="utf-8")
+
+        expected_summary = {
+            "config": {
+                "commission_bps": 0,
+                "initial_equity": 10000.0,
+                "pass_profit_factor": 1.2,
+                "slippage_bps": 0,
+            },
+            "data_validation": {
+                "bar_count": 3,
+                "end_timestamp": "2026-01-03",
+                "errors": [],
+                "start_timestamp": "2026-01-01",
+                "warnings": [
+                    "Sample has fewer than 30 bars; profit factor may be unstable."
+                ],
+            },
+            "hold_bars_per_day": [2, 1],
+            "rows": [
+                {
+                    "average_net_pnl": 5000.0,
+                    "decision": "pass",
+                    "end_equity": 15000.0,
+                    "failure_reason": None,
+                    "hold_bars_per_day": 2,
+                    "ignored_short_count": 0,
+                    "max_drawdown": 0.0,
+                    "overlapping_signal_count": 0,
+                    "profit_factor": None,
+                    "profit_factor_status": "infinite",
+                    "trade_count": 1,
+                    "unclosed_signal_count": 0,
+                    "win_rate": 1.0,
+                },
+                {
+                    "average_net_pnl": 2000.0,
+                    "decision": "pass",
+                    "end_equity": 12000.0,
+                    "failure_reason": None,
+                    "hold_bars_per_day": 1,
+                    "ignored_short_count": 0,
+                    "max_drawdown": 0.0,
+                    "overlapping_signal_count": 0,
+                    "profit_factor": None,
+                    "profit_factor_status": "infinite",
+                    "trade_count": 1,
+                    "unclosed_signal_count": 0,
+                    "win_rate": 1.0,
+                },
+            ],
+            "strategy_name": "one_trade",
+            "strategy_spec": {"entry_side": "long_only"},
+        }
+        self.assertEqual(summary, expected_summary)
+        self.assertEqual(
+            summary_text,
+            json.dumps(expected_summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        self.assertEqual(
+            markdown_text,
+            "\n".join(
+                [
+                    "# Entry Edge Hold Comparison - one_trade",
+                    "",
+                    "## Comparison",
+                    "",
+                    "| Hold bars | Decision | PF status | PF value | Trades | Win rate | Avg net PnL | Max drawdown | Ignored shorts | Unclosed | Overlap | Failure reason |",
+                    "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+                    "| 2 | PASS | infinite | Infinity | 1 | 100.00% | 5000.00 | 0.00% | 0 | 0 | 0 | - |",
+                    "| 1 | PASS | infinite | Infinity | 1 | 100.00% | 2000.00 | 0.00% | 0 | 0 | 0 | - |",
+                    "",
+                    "## Backtest Settings",
+                    "",
+                    "- Initial equity: 10000.00",
+                    "- Commission (bps): 0.00",
+                    "- Slippage (bps): 0.00",
+                    "- Compared hold bars: 2, 1",
+                    "- Pass threshold PF: >1.20",
+                    "- Execution: signal confirmed at bar close; enter at next bar open; exit at exit bar close after fixed hold.",
+                    "- Phase 1 constraints: long-only; ignore short signals; no stops/take-profit/filters/parameter optimization.",
+                    "- Interpretation: comparison is for audit and research only; it does not pick or optimize parameters.",
+                    "",
+                    "## Data Validation",
+                    "",
+                    "- Bars: 3",
+                    "- Start: 2026-01-01",
+                    "- End: 2026-01-03",
+                    "- Errors: 0",
+                    "- Warnings: 1",
+                    "- Warning: Sample has fewer than 30 bars; profit factor may be unstable.",
+                    "",
+                    "## Strategy Spec (Distilled)",
+                    "",
+                    "- entry_side: long_only",
                     "",
                 ]
             ),
