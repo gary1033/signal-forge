@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # - 規則刻意維持簡單且 deterministic，只檢查必要關鍵字是否存在。
 CHECKS: tuple[tuple[str, int, tuple[str, ...], tuple[str, ...]], ...] = (
     (
-        "phase roadmap",
+        "phase architecture note",
         10,
-        ("docs/phase-roadmap.md",),
+        ("docs/01-架構/SignalForge 架構總覽.md",),
         ("PhaseMode", "backtest", "live"),
     ),
     (

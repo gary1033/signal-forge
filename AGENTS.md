@@ -29,9 +29,11 @@ Get-Content -Encoding UTF8 -LiteralPath <path>
 git status --short --branch
 git log -5 --oneline
 Get-Content -Encoding UTF8 -LiteralPath AGENTS.md
-Get-Content -Encoding UTF8 -LiteralPath docs\phase-roadmap.md
-Get-Content -Encoding UTF8 -LiteralPath docs\phase-iteration-log.md
-Get-Content -Encoding UTF8 -LiteralPath docs\phase-autoresearch-results.md
+Get-Content -Encoding UTF8 -LiteralPath docs\00-SignalForge 專案筆記索引.md
+Get-Content -Encoding UTF8 -LiteralPath docs\01-架構\SignalForge 架構總覽.md
+Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\SignalForge 大框架規劃.md
+Get-Content -Encoding UTF8 -LiteralPath docs\03-程式疊代\Phase 程式疊代紀錄.md
+Get-Content -Encoding UTF8 -LiteralPath docs\04-實驗記錄\Autoresearch 實驗記錄.md
 Get-Content -Encoding UTF8 -LiteralPath src\signal_forge\phase.py
 Get-Content -Encoding UTF8 -LiteralPath tests\test_phase.py
 Get-Content -Encoding UTF8 -LiteralPath tools\phase_readiness_score.py
@@ -53,7 +55,7 @@ modify -> verify -> keep/discard -> log
 2. 強化 `*_signals.csv`：只加入能由既有 signal digest 穩定推導的欄位。
 3. 強化 Phase markdown：讓回測報表更容易人工檢查，但必須有 exact-text regression test。
 4. 強化 validation：把 backtest artifact 的 ordering、reason、timestamp、position invariants 變成更清楚的 validator。
-5. 強化中文筆記同步：每輪更新 `docs\phase-roadmap.md`、`docs\phase-iteration-log.md`、`docs\phase-autoresearch-results.md`，並同步到 Obsidian `repo-notes`。
+5. 強化中文筆記同步：每輪先更新 Obsidian `SignalForge` 專案筆記，再同步回 repo `docs\` 作為可 push 的鏡像副本。
 
 禁止事項：
 
@@ -98,13 +100,28 @@ git diff --check
 
 ## Obsidian 同步
 
-Repo 筆記若有更新，必須同步到：
+Obsidian 是 SignalForge 筆記主來源。整理、研究、策略解說與實驗紀錄先更新：
 
 ```text
-C:\Users\gary1\OneDrive\桌面\obsidian\project開發\SignalForge\repo-notes
+C:\Users\gary1\OneDrive\桌面\obsidian\project開發\SignalForge
 ```
 
-同步後用 UTF-8 讀回確認。Obsidian vault 不是這個 repo 的 Git 工作樹；push 邊界只適用於 `C:\Projects\signal-forge`。
+push 前必須將上述 Obsidian 資料夾同步到：
+
+```text
+C:\Projects\signal-forge\docs
+```
+
+同步方向是 Obsidian -> repo `docs\`。同步時先清空 repo `docs\` 的舊內容，再複製目前整理後的 Obsidian 筆記與策略圖片。同步後用 UTF-8 讀回確認。Obsidian vault 不是這個 repo 的 Git 工作樹；push 邊界只適用於 `C:\Projects\signal-forge`。
+
+目前 repo `docs\` 的 canonical 結構：
+
+- `00-SignalForge 專案筆記索引.md`
+- `01-架構\SignalForge 架構總覽.md`
+- `02-規劃\SignalForge 大框架規劃.md`
+- `策略筆記\`
+- `03-程式疊代\Phase 程式疊代紀錄.md`
+- `04-實驗記錄\`
 
 ## 策略筆記同步
 

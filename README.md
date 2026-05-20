@@ -73,9 +73,15 @@ python -m signal_forge.cli phase `
 
 ## Autoresearch 筆記
 
-- `docs/phase-roadmap.md`
-- `docs/phase-iteration-log.md`
-- `docs/phase-autoresearch-results.md`
+- `docs/00-SignalForge 專案筆記索引.md`
+- `docs/01-架構/SignalForge 架構總覽.md`
+- `docs/02-規劃/SignalForge 大框架規劃.md`
+- `docs/03-程式疊代/Phase 程式疊代紀錄.md`
+- `docs/04-實驗記錄/Autoresearch 實驗記錄.md`
+- `docs/策略筆記/策略筆記索引.md`
+
+`docs/` 是 Obsidian 專案筆記的 repo 鏡像。筆記主來源是
+`C:\Users\gary1\OneDrive\桌面\obsidian\project開發\SignalForge`；每次 push 前先從 Obsidian 同步回 `docs/`，再執行驗證、commit、push。
 
 ## 免費資料來源
 
