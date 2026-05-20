@@ -117,6 +117,7 @@ python -m signal_forge.cli fetch-data `
 - `LiveExecutionAdapter` 只產生 dry-run `OrderIntent`。
 - CLI 支援 `phase --mode backtest|live`。
 - CLI 支援 `entry-edge` / `phase` 的可選成交量過濾器 `--volume-filter`。
+- CLI 支援 VWAP Reversion 的可選趨勢 regime filter：`--vwap-regime-filter --vwap-regime-window 50`。
 - 策略開發模板已整理為 hook-based `BarByBarStrategy`，三個既有策略透過 `prepare_context(...)` / `decide_bar(...)` 實作，外部 `Signal` contract 不變。
 - Strategy registry / factory 已接上 CLI，Phase 1 factory 固定建構 long-only 策略，並保留 `VolumeFilteredStrategy` wrapper。
 - `entry-edge` 支援 `--hold-bars-list`，可用同一個 strategy、資料與成本設定比較多個固定持有期，並輸出 deterministic hold comparison JSON/Markdown。
@@ -133,7 +134,7 @@ python -m signal_forge.cli fetch-data `
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
-- 針對 VWAP Reversion 加入 regime filter，避免強趨勢下反向接刀。
+- 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
 - 針對成交量過濾器，比較 entry-only filter 與 target-state filter，避免濾網語意本身造成交易數失真。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

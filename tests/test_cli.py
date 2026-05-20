@@ -227,6 +227,48 @@ class CliTests(unittest.TestCase):
                     ]
                 )
 
+    def test_entry_edge_command_accepts_vwap_regime_filter(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 VWAP regime filter，並把 regime 設定寫入 strategy spec。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_vwap_reversion_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "vwap-reversion",
+                    "--vwap-window",
+                    "3",
+                    "--vwap-regime-filter",
+                    "--vwap-regime-window",
+                    "3",
+                    "--entry-z",
+                    "0.5",
+                    "--exit-z",
+                    "0.25",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "vwap-regime-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "vwap-regime-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn("strategy=vwap_reversion_3_regime_sma3_long_only", output)
+        self.assertEqual(summary["strategy_spec"]["vwap_regime_filter"], "enabled")
+        self.assertEqual(summary["strategy_spec"]["vwap_regime_window"], "3")
+        self.assertEqual(
+            summary["strategy_spec"]["vwap_regime_rule"],
+            "long entries require close >= sma(close, vwap_regime_window) when enabled",
+        )
+
     def test_fetch_data_command_reports_written_paths(self) -> None:
         """
         用途與流程：驗證 fetch data command reports written paths 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
@@ -351,6 +393,29 @@ def _write_trending_csv(directory: Path, row_count: int) -> Path:
             f"2026-01-{index + 1:02d},{price},{price + 0.5},{price - 0.5},{price},100"
         )
     csv_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return csv_path
+
+
+def _write_vwap_reversion_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出可觸發 VWAP reversion long entry 且通過 regime SMA 的 CLI fixture。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "vwap_reversion.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01,20,20.5,19.5,20,100",
+                "2026-01-02,10,10.5,9.5,10,1",
+                "2026-01-03,15,15.5,14.5,15,1",
+                "2026-01-04,16,16.5,15.5,16,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return csv_path
 
 

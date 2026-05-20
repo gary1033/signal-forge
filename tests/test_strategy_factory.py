@@ -46,6 +46,25 @@ class StrategyFactoryTests(unittest.TestCase):
             "confluence_score_long_only",
         )
 
+    def test_phase1_factory_can_enable_vwap_regime_filter(self) -> None:
+        """
+        用途與流程：驗證 Phase 1 factory 可選擇性啟用 VWAP regime filter，且預設行為仍維持舊策略名稱。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        self.assertEqual(
+            build_phase1_strategy("vwap-reversion").name,
+            "vwap_reversion_20_long_only",
+        )
+        self.assertEqual(
+            build_phase1_strategy(
+                "vwap-reversion",
+                vwap_regime_filter=True,
+                vwap_regime_window=50,
+            ).name,
+            "vwap_reversion_20_regime_sma50_long_only",
+        )
+
     def test_direct_factory_preserves_strategy_constructor_defaults(self) -> None:
         """
         用途與流程：驗證 direct factory preserves strategy constructor defaults 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。

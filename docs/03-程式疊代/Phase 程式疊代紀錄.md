@@ -119,6 +119,13 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - comparison row 固定包含 hold bars、decision、Profit Factor status/value、trade count、win rate、average net PnL、max drawdown、ignored/unclosed/overlap counts 與 failure reason。
 - 這個功能是為了比較同一策略在不同固定持有期下的 entry-edge 稽核結果，不自動推薦最佳持有期，也不改 SMA Crossover 的 `fast_sma > slow_sma` 訊號語意。
 
+### 8. VWAP Reversion regime filter
+
+- `VwapReversionStrategy` 維持 `BarByBarStrategy` OOP template，只在 `prepare_context(...)` 新增 `regime_sma`，並在 `decide_bar(...)` 判斷可選 regime filter。
+- CLI / factory 新增 `--vwap-regime-filter` 與 `--vwap-regime-window`，預設關閉，避免改變既有 VWAP 回測 contract。
+- Regime filter 規則是新的 long entry 必須滿足 `close >= sma(close, regime_window)`；若不滿足，reason 為 `regime_downtrend_blocked`。
+- 濾網只阻擋 entry，不強制平掉既有持倉；出場仍由原本 `exit_z` / `hold` 語意控制。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |
@@ -134,6 +141,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 只擴充 deterministic、test-covered 的 backtest artifacts。
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
+- VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

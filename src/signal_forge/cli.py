@@ -61,6 +61,12 @@ def main(argv: list[str] | None = None) -> int:
     entry_edge.add_argument("--fast-window", type=int, default=20)
     entry_edge.add_argument("--slow-window", type=int, default=200)
     entry_edge.add_argument("--vwap-window", type=int, default=20)
+    entry_edge.add_argument(
+        "--vwap-regime-filter",
+        action="store_true",
+        help="enable close >= SMA regime filter for VWAP long entries",
+    )
+    entry_edge.add_argument("--vwap-regime-window", type=int, default=50)
     entry_edge.add_argument("--rsi-window", type=int, default=14)
     entry_edge.add_argument("--entry-z", type=float, default=1.5)
     entry_edge.add_argument("--exit-z", type=float, default=0.25)
@@ -93,6 +99,12 @@ def main(argv: list[str] | None = None) -> int:
     phase.add_argument("--fast-window", type=int, default=20)
     phase.add_argument("--slow-window", type=int, default=200)
     phase.add_argument("--vwap-window", type=int, default=20)
+    phase.add_argument(
+        "--vwap-regime-filter",
+        action="store_true",
+        help="enable close >= SMA regime filter for VWAP long entries",
+    )
+    phase.add_argument("--vwap-regime-window", type=int, default=50)
     phase.add_argument("--rsi-window", type=int, default=14)
     phase.add_argument("--entry-z", type=float, default=1.5)
     phase.add_argument("--exit-z", type=float, default=0.25)
@@ -276,7 +288,7 @@ def _run_fetch_data(args: argparse.Namespace) -> int:
 
 def _build_strategy(args: argparse.Namespace) -> Strategy:
     """
-    用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
+    用途與流程：依 CLI args 透過 Phase 1 factory 建立 long-only strategy，並傳入 VWAP regime 與成交量 wrapper 設定。
     參數：args（argparse.Namespace）由呼叫端傳入，需符合函式 contract
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
@@ -289,6 +301,8 @@ def _build_strategy(args: argparse.Namespace) -> Strategy:
         entry_z=args.entry_z,
         exit_z=args.exit_z,
         threshold=args.threshold,
+        vwap_regime_filter=getattr(args, "vwap_regime_filter", False),
+        vwap_regime_window=getattr(args, "vwap_regime_window", 50),
         volume_filter=getattr(args, "volume_filter", False),
         volume_window=getattr(args, "volume_window", 20),
         volume_multiplier=getattr(args, "volume_multiplier", 1.2),
@@ -319,7 +333,7 @@ def _parse_hold_bars_list(value: str | None) -> tuple[int, ...] | None:
 
 def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:
     """
-    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
+    用途與流程：整理 CLI strategy 來源、實作名稱、Phase 1 long-only 邊界與可選濾網設定，寫入 entry-edge reporting。
     參數：args（argparse.Namespace）由呼叫端傳入，需符合函式 contract；strategy（Strategy）由呼叫端傳入，需符合函式 contract
     回傳與錯誤：回傳 dict[str, str]；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
@@ -334,6 +348,11 @@ def _strategy_spec(args: argparse.Namespace, strategy: Strategy) -> dict[str, st
         "volume_window": str(getattr(args, "volume_window", 20)),
         "volume_multiplier": f"{getattr(args, 'volume_multiplier', 1.2):.2f}",
         "volume_rule": "volume >= sma(volume, volume_window) * volume_multiplier",
+        "vwap_regime_filter": "enabled"
+        if getattr(args, "vwap_regime_filter", False)
+        else "disabled",
+        "vwap_regime_window": str(getattr(args, "vwap_regime_window", 50)),
+        "vwap_regime_rule": "long entries require close >= sma(close, vwap_regime_window) when enabled",
     }
 
 

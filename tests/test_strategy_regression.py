@@ -70,6 +70,7 @@ class StrategyRegressionTests(unittest.TestCase):
             allow_short=False,
         )
 
+        self.assertIsInstance(strategy, BarByBarStrategy)
         signals = strategy.generate_signals(bars_from_closes([10, 11, 12, 8, 9]))
 
         self.assertEqual(
@@ -88,6 +89,73 @@ class StrategyRegressionTests(unittest.TestCase):
         )
         self.assertGreater(signals[3].score, 0.0)
         self.assertGreater(signals[4].score, 0.0)
+
+    def test_vwap_regime_filter_blocks_new_long_entry_below_regime_sma(self) -> None:
+        """
+        用途與流程：驗證 VWAP regime filter 在 close 低於 regime SMA 時只阻擋新的 long entry。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        strategy = VwapReversionStrategy(
+            window=3,
+            entry_z=0.5,
+            exit_z=0.25,
+            allow_short=False,
+            regime_filter=True,
+            regime_window=3,
+        )
+
+        signals = strategy.generate_signals(bars_from_closes([10, 20, 8]))
+
+        self.assertEqual(signals[2].target_position, 0.0)
+        self.assertEqual(signals[2].reason, "regime_downtrend_blocked")
+        self.assertGreater(signals[2].score, 0.0)
+
+    def test_vwap_regime_filter_allows_long_entry_above_regime_sma(self) -> None:
+        """
+        用途與流程：驗證 VWAP regime filter 在 close 不低於 regime SMA 時保留原本跌深進場 reason。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        strategy = VwapReversionStrategy(
+            window=3,
+            entry_z=0.5,
+            exit_z=0.25,
+            allow_short=False,
+            regime_filter=True,
+            regime_window=3,
+        )
+
+        signals = strategy.generate_signals(
+            bars_from_closes([20, 10, 15], volumes=[100, 1, 1])
+        )
+
+        self.assertEqual(signals[2].target_position, 1.0)
+        self.assertEqual(signals[2].reason, "price_below_vwap_band")
+        self.assertGreater(signals[2].score, 0.0)
+
+    def test_vwap_regime_filter_does_not_force_exit_existing_long(self) -> None:
+        """
+        用途與流程：驗證 VWAP regime filter 只處理 entry，不會在已持有時因 close 低於 regime SMA 強制歸零。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        strategy = VwapReversionStrategy(
+            window=3,
+            entry_z=0.5,
+            exit_z=0.25,
+            allow_short=False,
+            regime_filter=True,
+            regime_window=3,
+        )
+
+        signals = strategy.generate_signals(
+            bars_from_closes([20, 10, 15, 8], volumes=[100, 1, 1, 1])
+        )
+
+        self.assertEqual(signals[2].target_position, 1.0)
+        self.assertEqual(signals[3].target_position, 1.0)
+        self.assertEqual(signals[3].reason, "price_below_vwap_band")
 
     def test_confluence_score_contract_after_template_refactor(self) -> None:
         """

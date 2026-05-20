@@ -52,6 +52,7 @@ git diff --check
 - Cross-check validator：signals CSV 與 trace summary 完全對齊。
 - Strategy OOP template：`BarByBarStrategy`、`StrategyDecision`、strategy registry / factory、三策略 regression tests。
 - Entry Edge 多持有期比較：`--hold-bars-list`、hold comparison JSON/Markdown exact contract。
+- VWAP Reversion regime filter：`--vwap-regime-filter`、`--vwap-regime-window`、entry-only 趨勢濾網 regression。
 
 ## 近期實驗表
 
@@ -69,6 +70,7 @@ git diff --check
 | 2026-05-20 10:26 | Trace summary first/last reason 稽核 | 110；tests OK | keep |
 | 2026-05-20 22:50 | OOP strategy template 與 registry | 83 tests OK | keep |
 | 2026-05-20 23:20 | Entry Edge 多持有期比較報表 | 110；87 tests OK | keep |
+| 2026-05-20 23:50 | VWAP Reversion 可選 regime filter | 110；tests OK | keep |
 
 ## 最新已知狀態
 
@@ -83,5 +85,6 @@ git diff --check
 - 增加 `min_previous_target_position` / `max_previous_target_position` 類型欄位，讓 trace summary 的前一根部位範圍更好稽核。
 - 繼續補強 Phase markdown 的人工可讀性，但必須有 exact-text regression test。
 - SMA Crossover 先用 `--hold-bars-list` 比較固定持有期，再決定是否需要完整趨勢持有 / 出場規則。
+- VWAP Reversion 下一步比較 regime filter 啟用前後的 entry-edge 結果，暫不把成交量 gate 併入策略本體。
 - OOP template 已鎖住後，三種策略的下一步修改應分開討論與測試，避免混入模板重構。
 - 若要做策略研究實驗，結果放入 `04-實驗記錄/`，策略語意同步到 `策略筆記/`。
