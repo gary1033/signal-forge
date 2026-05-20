@@ -273,6 +273,7 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     previous_timestamp: str | None = None
     first_timestamp: str | None = None
     last_timestamp: str | None = None
+    first_previous_target_position = 0.0
     first_target_position = 0.0
     last_previous_target_position = 0.0
     last_target_position = 0.0
@@ -378,6 +379,7 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
 
         if first_timestamp is None:
             first_timestamp = timestamp
+            first_previous_target_position = previous_target_position
             first_target_position = target_position
         last_timestamp = timestamp
         last_previous_target_position = previous_target_position
@@ -499,6 +501,11 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
                 f"csv={expected_value} trace_summary={actual_value}"
             )
 
+    assert_close(
+        "first_previous_target_position",
+        first_previous_target_position,
+        float(trace["first_previous_target_position"]),
+    )
     assert_close(
         "first_target_position",
         first_target_position,
@@ -729,6 +736,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "close_count": int,
         "end_date": (type(None), str),
         "entry_count": int,
+        "first_previous_target_position": (int, float),
         "first_target_position": (int, float),
         "first_timestamp": (type(None), str),
         "flatten_count": int,
@@ -903,7 +911,8 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
                 "trace summary trace_summary timestamps must be None when bar_count=0"
             )
         if (
-            float(trace_summary["first_target_position"]) != 0.0
+            float(trace_summary["first_previous_target_position"]) != 0.0
+            or float(trace_summary["first_target_position"]) != 0.0
             or float(trace_summary["last_previous_target_position"]) != 0.0
             or float(trace_summary["last_target_position"]) != 0.0
             or min_target_position != 0.0
@@ -1176,6 +1185,9 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     )
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None
+    first_previous_target_position = (
+        digests[0].target_position - digests[0].position_change if digests else 0.0
+    )
     first_target_position = digests[0].target_position if digests else 0.0
     target_positions = [digest.target_position for digest in digests]
     min_target_position = min(target_positions) if target_positions else 0.0
@@ -1199,11 +1211,12 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     short_bucket_count = sum(1 for digest in digests if digest.target_position < -epsilon)
     return {
         "trace_summary": {
-            "schema_version": 6,
+            "schema_version": 7,
             "bar_count": len(digests),
             "close_count": close_count,
             "end_date": end_date,
             "entry_count": open_count,
+            "first_previous_target_position": _round_float(first_previous_target_position, 6),
             "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
@@ -1386,6 +1399,7 @@ def _phase_markdown_report(
                         f"- Hold long/short: {trace.get('hold_long_count')}/{trace.get('hold_short_count')}",
                         f"- Open/Close: {trace.get('open_count')}/{trace.get('close_count')}",
                         f"- Position buckets (flat/long/short): {flat_bucket}/{long_bucket}/{short_bucket}",
+                        f"- First previous target position: {trace.get('first_previous_target_position')}",
                         f"- First target position: {trace.get('first_target_position')}",
                         f"- Last previous target position: {trace.get('last_previous_target_position')}",
                         f"- Nonzero target positions: {trace.get('nonzero_target_position_count')}",
