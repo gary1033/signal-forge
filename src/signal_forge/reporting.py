@@ -273,6 +273,8 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
     previous_timestamp: str | None = None
     first_timestamp: str | None = None
     last_timestamp: str | None = None
+    first_reason: str | None = None
+    last_reason: str | None = None
     first_previous_target_position = 0.0
     first_target_position = 0.0
     last_previous_target_position = 0.0
@@ -382,12 +384,14 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
 
         if first_timestamp is None:
             first_timestamp = timestamp
+            first_reason = reason
             first_previous_target_position = previous_target_position
             first_target_position = target_position
             min_target_position = target_position
             max_target_position = target_position
             has_target_position = True
         last_timestamp = timestamp
+        last_reason = reason
         last_previous_target_position = previous_target_position
         last_target_position = target_position
         if has_target_position:
@@ -551,6 +555,16 @@ def validate_signal_digest_csv(trace_summary: dict[str, object], csv_text: str) 
         raise ValueError(
             "signal digest csv last_timestamp must match trace summary: "
             f"csv={last_timestamp} trace_summary={trace['last_timestamp']}"
+        )
+    if "first_reason" in trace and first_reason != trace.get("first_reason"):
+        raise ValueError(
+            "signal digest csv first_reason must match trace summary: "
+            f"csv={first_reason} trace_summary={trace.get('first_reason')}"
+        )
+    if "last_reason" in trace and last_reason != trace.get("last_reason"):
+        raise ValueError(
+            "signal digest csv last_reason must match trace summary: "
+            f"csv={last_reason} trace_summary={trace.get('last_reason')}"
         )
 
     if trace.get("timestamps_iso8601") is not True:
@@ -759,6 +773,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "entry_count": int,
         "first_index": (type(None), int),
         "first_previous_target_position": (int, float),
+        "first_reason": (type(None), str),
         "first_target_position": (int, float),
         "first_timestamp": (type(None), str),
         "flatten_count": int,
@@ -771,6 +786,7 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "hold_short_count": int,
         "last_index": (type(None), int),
         "last_previous_target_position": (int, float),
+        "last_reason": (type(None), str),
         "last_target_position": (int, float),
         "last_timestamp": (type(None), str),
         "long_entry_count": int,
@@ -945,12 +961,18 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
             "trace summary trace_summary.open_count + close_count must be <= nonzero_position_change_count"
         )
 
+    first_reason = trace_summary.get("first_reason")
+    last_reason = trace_summary.get("last_reason")
     first_timestamp = trace_summary.get("first_timestamp")
     last_timestamp = trace_summary.get("last_timestamp")
     if bar_count == 0:
         if first_timestamp is not None or last_timestamp is not None:
             raise ValueError(
                 "trace summary trace_summary timestamps must be None when bar_count=0"
+            )
+        if first_reason is not None or last_reason is not None:
+            raise ValueError(
+                "trace summary trace_summary first_reason/last_reason must be None when bar_count=0"
             )
         if (
             float(trace_summary["first_previous_target_position"]) != 0.0
@@ -971,6 +993,14 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         if not isinstance(last_timestamp, str) or not last_timestamp:
             raise ValueError(
                 "trace summary trace_summary.last_timestamp must be a non-empty str when bar_count>0"
+            )
+        if not isinstance(first_reason, str) or not first_reason:
+            raise ValueError(
+                "trace summary trace_summary.first_reason must be a non-empty str when bar_count>0"
+            )
+        if not isinstance(last_reason, str) or not last_reason:
+            raise ValueError(
+                "trace summary trace_summary.last_reason must be a non-empty str when bar_count>0"
             )
         if not _is_iso8601_timestamp(first_timestamp):
             raise ValueError(
@@ -1003,6 +1033,11 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         raise ValueError("trace summary trace_summary.reasons must be sorted")
     if len(set(reasons)) != len(reasons):
         raise ValueError("trace summary trace_summary.reasons must be unique")
+    if bar_count > 0:
+        if first_reason not in reasons:
+            raise ValueError("trace summary trace_summary.first_reason must be present in reasons")
+        if last_reason not in reasons:
+            raise ValueError("trace summary trace_summary.last_reason must be present in reasons")
 
     unique_reason_count = int(trace_summary["unique_reason_count"])
     if unique_reason_count != len(reasons):
@@ -1038,7 +1073,6 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
 
     if sum(count for _reason, count in parsed_reason_counts) != bar_count:
         raise ValueError("trace summary trace_summary.reason_counts total must equal bar_count")
-
 
 def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:
     required_fields = {
@@ -1229,6 +1263,8 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     last_index = digests[-1].index if digests else None
     first_timestamp = digests[0].timestamp if digests else None
     last_timestamp = digests[-1].timestamp if digests else None
+    first_reason = digests[0].reason if digests else None
+    last_reason = digests[-1].reason if digests else None
     first_previous_target_position = (
         digests[0].target_position - digests[0].position_change if digests else 0.0
     )
@@ -1255,13 +1291,14 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     short_bucket_count = sum(1 for digest in digests if digest.target_position < -epsilon)
     return {
         "trace_summary": {
-            "schema_version": 8,
+            "schema_version": 9,
             "bar_count": len(digests),
             "close_count": close_count,
             "end_date": end_date,
             "entry_count": open_count,
             "first_index": first_index,
             "first_previous_target_position": _round_float(first_previous_target_position, 6),
+            "first_reason": first_reason,
             "first_target_position": _round_float(first_target_position, 6),
             "long_entry_count": long_entry_count,
             "flatten_count": flatten_count,
@@ -1274,6 +1311,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
             "hold_short_count": hold_short_count,
             "last_index": last_index,
             "last_previous_target_position": _round_float(last_previous_target_position, 6),
+            "last_reason": last_reason,
             "nonzero_target_position_count": nonzero_target_position_count,
             "nonzero_position_change_count": nonzero_position_change_count,
             "open_count": open_count,
