@@ -2737,3 +2737,46 @@ git diff --check
 
 1. 下一輪若進入分析輪，不需要再為這個 wording 單獨重跑 runtime 比較；較合理的是把分析配額用在新的 filter family 或第二份 intraday 樣本。
 2. 若未來真的要落地 previous-day family，應先補資料邊界與 validator，再決定是否新增 artifact 欄位。
+
+## 2026-05-21 分析輪：phase markdown 加入 previous-day 邊界提示後，只影響可讀性，不改變 ORB runtime 指標
+
+這輪不新增策略條件，也不再開新一組 ORB filter 比較。目標只有一個：確認上一輪在 phase markdown 補進 `previous-day / higher-timeframe context is outside the current ORB contract` 之後，是否真的只改變報表解讀，不改變 runtime 行為。
+
+### 比較設定
+
+- 資料來源：`data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+- 比較對象：`EMA inside-range only`
+- 新執行輸出：以暫存目錄重跑
+  - `phase`
+  - `entry-edge`
+- 參照基線：
+  - `reports/generated/msft-orb-ema-family-20260521-ema-box-phase.md`
+  - `reports/generated/msft-orb-ema-family-comparison-20260521.json`
+
+### 結果
+
+- phase markdown interpretation 行已從：
+  - `state, tier, and rule metadata remain in entry-edge strategy_spec artifacts.`
+- 更新為：
+  - `state, tier, and rule metadata remain in entry-edge strategy_spec artifacts, and previous-day / higher-timeframe context is outside the current ORB contract until that family is defined explicitly.`
+- 但 `EMA inside-range only` 的核心指標維持不變：
+  - PF：`4.452`
+  - Trades：`13`
+  - Win rate：`38.46%`
+  - Avg net PnL：`16.27`
+  - Max DD：`-0.29%`
+  - blocked：`1754`
+  - accepted：`13`
+  - hold：`873`
+  - blocked reasons：`below_or_high(1480), breakout_volume_blocked(148), ema_inside_opening_range(126)`
+
+### 分析結論
+
+- 這次 phase markdown 的 previous-day 邊界提示，和先前的 `orb_vwap_slope_rule` wording cleanup 一樣，屬於 **reporting readability 修補**，不是策略或 artifact schema 變更。
+- 它的價值在於：後續回看 phase report 時，不會再把目前 ORB 主線和 `previous day high/low`、gap、overnight range 這類新 family 混讀。
+- 因為 runtime 指標完全不變，後續不需要再為這個 wording 題重複消耗分析輪次。
+
+### 下一步
+
+1. 分析輪配額應轉回新的 filter family、第二份 intraday 樣本，或 previous-day family 真正落地前需要的資料邊界題。
+2. 若未來再碰 previous-day family，應優先驗證資料與 validator contract，而不是先擴 phase markdown 或 strategy spec 欄位。
