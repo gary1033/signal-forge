@@ -5541,3 +5541,45 @@ phase hold 1 attribution 也維持原狀：
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
 3. 在那之前，不要把 `one-and-done` 寫成「第一碰就鎖死」；那和目前公開 ORB 常見模式並不一致。
+
+## 2026-05-21 Review：`one-and-done` accepted-entry-based 前的 execution-state 與文件分工風險
+
+### Findings
+
+1. **Severity: medium — `one-and-done` 若下一輪真的接進 accepted-entry-based runtime，現在還缺 execution-state 層的明確區分。**
+   - 目前 repo 已有完整的 contract metadata，例如：
+     - `orb_one_and_done_mode=research_candidate_only`
+     - `orb_one_and_done_guard_scope=long_only_per_direction_first_entry`
+     - `orb_one_and_done_position_effect=first_entry_only_no_force_flatten`
+   - 但這些欄位都還是在描述「研究候選的邊界」，不是在描述「本次 run 是否真的啟用了 accepted-entry quota」。
+   - **受影響檔案：** `src/signal_forge/cli/strategy_options.py`、未來的 ORB runtime / trace summary
+   - **建議修法：** 若下一輪真的要啟用 accepted-entry-based one-and-done，應另外補一層 execution-state 或 trace attribution，不要直接把現有 contract metadata 偷換成已啟用語意。
+
+2. **Severity: medium — accepted-entry-based 版本若直接上線，之後很難只靠現有 phase summary 判斷 quota 是在哪一筆 accepted long 被消耗。**
+   - 現在 ORB phase / trace 已能看 `accepted_entry_count`、blocked reasons、hold counts，但還不能明確回答：
+     - 哪一筆 accepted long 是當 session 的 first accepted entry
+     - 後續被 one-and-done 擋掉的 breakout 是因為 quota exhausted，而不是原本的 structure / volume gate
+   - 這不是現在要順手實作的大改，但它是下一輪啟用 runtime 前最需要先想清楚的 artifact 邊界。
+   - **受影響檔案：** `src/signal_forge/reporting/_orb_attribution.py`、未來的 `*_trace_summary.json`
+   - **建議修法：** 等真正進入語意實作輪時，把 `one_and_done_quota_consumed` 類的 attribution 視為同一輪的一部分；不要先啟用 runtime，再讓報表處於不可判讀狀態。
+
+3. **Severity: medium — `ORB + Volume + VWAP` 策略筆記持續混入 benchmark 排序與輪次時序，已超出策略筆記應承擔的範圍。**
+   - repo 的 `AGENTS.md` 已明確要求：策略筆記應聚焦在術語、假設、進出場條件、主要參數、風險與下一步；輪次結論、benchmark 排序、contract-ready / compare-only 這類內容應留在 `Autoresearch 實驗記錄`。
+   - 目前 `docs/策略筆記/ORB + Volume + VWAP.md` 仍保留大量時序性實驗結論，和這份實驗紀錄有重疊風險。
+   - **受影響檔案：** `docs/策略筆記/ORB + Volume + VWAP.md`
+   - **建議修法：** 下一個適合的文件輪，應把策略筆記去時序化，讓它回到策略定義文件；實驗排序與 benchmark 演進則集中留在 `Autoresearch 實驗記錄`。
+
+### 結論
+
+- `one-and-done` 目前仍應固定定性為 **contract-ready but semantics-not-enabled**。
+- 真正的 accepted-entry-based 版本若要上線，不能只有 runtime guard，還要一起補 execution-state / attribution 邊界。
+- 目前更急迫的債不在策略邏輯本身，而在：未來 runtime 啟用後的可判讀性，以及策略筆記與實驗紀錄之間的文件分工。
+
+### 下一步
+
+1. 若進入執行輪，應把 accepted-entry-based `one-and-done` runtime 與 execution-state attribution 視為同一個改動包，而不是只做前者。
+2. 若先進文件輪，應把 `ORB + Volume + VWAP` 策略筆記去時序化，讓 benchmark 排序與輪次結論回到 `Autoresearch 實驗記錄`。
+3. 在新的語意證據出來前，台股 canonical comparison anchors 維持：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
