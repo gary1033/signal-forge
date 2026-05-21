@@ -3345,6 +3345,392 @@ git diff --check
 1. 若還要推進 previous-day family，分析配額應優先轉向第二份獨立 intraday 樣本。
 2. 在沒有第二份樣本與 reporting 分工前，不要再為這個 helper 擴 schema 或加 gap-bias filter。
 
+## 2026-05-21 執行輪：正式收編 `TWSE_2330_5M` 為第二份 ORB-capable intraday 樣本
+
+這輪不改 ORB 策略語意，也不新增 previous-day / gap filter；只處理一個更基礎的 repo 邊界問題：**`TWSE_2330_5M.*` 其實已經被台積電延伸研究、ORB 策略筆記與 `reports/generated/tsmc-*` 報表實際使用，因此不應再被視為懸空工作樹，而應正式承認它是 repo 內第二份 ORB-capable intraday 樣本。**
+
+### 這輪收編的檔案
+
+- `data/processed/TWSE_2330_5M.csv`
+- `data/processed/TWSE_2330_5M_manifest.json`
+- `data/raw/TWSE_2330_5M_yahoo_raw.json`
+- `docs/04-實驗記錄/台積電四策略延伸研究.md`
+
+### 樣本身份結論
+
+1. `TWSE_2330_5M.csv` 符合目前 ORB intraday research contract：
+   - CSV contract 為 `timestamp,open,high,low,close,volume`
+   - bar 具時間資訊與時區偏移，例如 `2026-02-23T09:00:00+08:00`
+   - sample manifest 已明寫：
+     - `source = Yahoo Finance chart API`
+     - `interval = 5m`
+     - `timezone = Asia/Taipei`
+     - `row_count = 3141`
+     - `first_timestamp = 2026-02-23T09:00:00+08:00`
+     - `last_timestamp = 2026-05-21T13:30:00+08:00`
+2. 它不是 fixture，也不是純筆記附件；repo 已存在對應實驗輸出：
+   - `reports/generated/tsmc-orb-5m-20260521.json`
+   - `reports/generated/tsmc-orb-5m-20260521.md`
+   - `reports/generated/tsmc-orb-5m-20260521_hold_comparison.json`
+   - `reports/generated/tsmc-orb-5m-20260521_hold_comparison.md`
+3. 因此，先前「repo 目前只有一份 ORB-capable intraday 樣本」的結論，應視為在這批未提交檔案尚未被正式收編前成立；**從這輪開始，repo 應以 `ALPHAVANTAGE_MSFT_5M_demo.csv` 與 `TWSE_2330_5M.csv` 作為兩份已存在的 ORB intraday 樣本。**
+
+### 對 previous-day family 的含義
+
+- 這個收編動作**不等於** `prior-day close / gap bias` 已可直接落進 ORB contract。
+- 它只解除了一個較底層的阻塞：之後若要比較 previous-day family，至少不再被「repo 沒有第二份 intraday 樣本」這個說法卡住。
+- 真正還缺的仍然是：
+  1. `prior_day_close_regular_session` 的正面資料來源 contract；
+  2. `unavailable_first_session` 的 artifact / regression 行為；
+  3. phase / entry-edge reporting 對 previous-day metadata 的責任分層。
+
+### 下一步
+
+1. 之後若要再進 previous-day family，不要重複盤點「有沒有第二份 intraday 樣本」；直接進入正面資料 contract 與 reporting boundary 設計。
+2. 若 `TWSE_2330_5M` 後續要被用作 canonical 台股 ORB 樣本，應維持目前 `Asia/Taipei 09:00-13:30` regular-session metadata，不要再把它混回美股預設 market-clock。
+
+## 2026-05-21 分析輪：比較 `EMA inside-range` 主線在 MSFT 與 TSMC 兩份 intraday 樣本上的跨樣本穩定性
+
+這輪直接比較目前 ORB 主線：
+
+- Strategy：
+  - `orb-volume-vwap --orb-reject-ema-inside-range`
+- Sample A：
+  - `data/processed/ALPHAVANTAGE_MSFT_5M_demo.csv`
+- Sample B：
+  - `data/processed/TWSE_2330_5M.csv`
+
+### 產出 artifact
+
+- `reports/generated/msft-orb-ema-box-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-phase-20260521_trace_summary.json`
+- `reports/generated/orb-ema-box-crosssample-20260521.md`
+- `reports/generated/orb-ema-box-crosssample-20260521.json`
+
+### MSFT 5m 結果
+
+- hold 1：
+  - decision：`pass`
+  - PF：`4.452`
+  - Trades：`13`
+  - Win rate：`38.46%`
+  - Avg net PnL：`16.27`
+  - Max DD：`-0.290%`
+- hold 3 / 5 / 10 全部 `fail`
+- phase trace summary：
+  - accepted：`13`
+  - hold：`873`
+  - blocked：`1754`
+  - blocked reasons：
+    - `below_or_high(1480)`
+    - `breakout_volume_blocked(148)`
+    - `ema_inside_opening_range(126)`
+
+### TSMC 2330 5m 結果
+
+- hold 1：
+  - decision：`fail`
+  - PF：`0.083`
+  - Trades：`20`
+  - Win rate：`5.00%`
+  - Avg net PnL：`-10.20`
+  - Max DD：`-2.039%`
+- hold 3：
+  - PF：`0.236`
+- hold 5：
+  - PF：`0.248`
+- hold 10：
+  - PF：`0.927`
+  - Trades：`19`
+  - unclosed：`1`
+- phase trace summary：
+  - accepted：`20`
+  - hold：`396`
+  - blocked：`2017`
+  - blocked reasons：
+    - `below_or_high(1855)`
+    - `ema_inside_opening_range(86)`
+    - `breakout_volume_blocked(69)`
+    - `volume_warmup(7)`
+
+### 交叉判讀
+
+1. `EMA inside-range` 目前不是跨樣本穩定的主線條件。
+   - `MSFT 5m demo` 的 hold 1 是明確 `PASS`。
+   - `TWSE_2330_5M` 的 hold 1 / 3 / 5 / 10 全部 `FAIL`。
+2. 2330 的失敗不是因為 `EMA inside-range` 太嚴。
+   - MSFT 被 `ema_inside_opening_range` 擋掉 `126` 次。
+   - TSMC 只被擋掉 `86` 次。
+   - 也就是說，問題比較像是放行後的突破品質本身較差。
+3. 2330 也不是「沒有訊號」。
+   - accepted 反而比 MSFT 多：`20 > 13`
+   - 但持有期間的報酬品質明顯更差。
+
+### 重要邊界
+
+這輪也暴露出更重要的實驗邊界：`TWSE_2330_5M` 是 `Asia/Taipei 09:00-13:30` regular session，但這次比較仍沿用了目前 ORB 主線既有的 market-clock defaults。這代表：
+
+- 這個比較足以證明「現有 ORB 主線在第二份樣本上不具跨樣本穩定性」。
+- 但它不足以證明「2330 本質上不適合 `EMA inside-range`」。
+- 若要對台股做更公平的下一輪比較，應先把 `orb_session_timezone`、`session start/end` 明確切到 `Asia/Taipei 09:00-13:30`，再比較是否仍然失敗。
+
+### 結論
+
+- `EMA inside-range` 在目前 repo 的兩份 intraday 樣本上，不具普適穩定性。
+- 目前沒有理由把它升格成 market-agnostic 主線 invariant。
+- 也沒有理由在這個時間點就把注意力轉去 `prior-day close / gap bias`；更迫切的下一步，是先做 market-clock 對齊後的跨樣本重跑。
+
+### 下一步
+
+1. 若要再用 `TWSE_2330_5M` 做 ORB 比較，先把 `orb_session_timezone`、`session start/end` 對齊 `Asia/Taipei 09:00-13:30`。
+2. 在 market-clock 沒對齊前，不要用這份失敗結果直接推導新的 previous-day family filter。
+3. `prior_day_close_regular_session` 仍維持 contract-only 狀態；先不要把它擴成 gap-bias runtime filter。
+
+## 2026-05-21 Review 輪：整理 TWSE 2330 market-clock 對齊前的剩餘 contract 缺口
+
+這輪是 review-only，不改 ORB 策略語意；只把 `TWSE_2330_5M` 若要進入下一輪正式比較前，還缺哪些 contract 與測試寫清楚。
+
+### Findings
+
+1. **目前只有「可配置」的 market-clock，還沒有「樣本與 market-clock 必須對齊」的正面 validator。**
+   - `tests/test_strategy_factory.py` 與 `tests/test_cli.py` 已經證明 ORB 可以吃 `Asia/Taipei 09:00-13:30`。
+   - 但目前系統還沒有任何 guard 會在 `TWSE_2330_5M` 這類台股樣本被拿去跑 `America/New_York 09:30-16:00` defaults 時直接提醒或拒絕。
+   - 也就是說，repo 現在有 capability，但還沒有 enforcement。
+
+2. **`TWSE_2330_5M` 已正式收編成第二份 ORB-capable intraday 樣本，但 sample identity 與 market-clock identity 仍是分離的。**
+   - 樣本來源、interval、timezone 已寫在 manifest 與研究筆記。
+   - 但執行點還沒有一個簡單 contract 可以表達：「這份樣本的 canonical ORB regular session 應該是 `Asia/Taipei 09:00-13:30`」。
+   - 因此目前最容易發生的誤讀，不是資料缺失，而是研究者忘了帶對 market-clock 參數。
+
+3. **cross-sample 結論已經足夠，下一步不該再花輪次重複證明 `EMA inside-range` 在 2330 上失敗。**
+   - 我們已經知道它在現有 defaults 下跨樣本不穩定。
+   - 現在真正缺的是「對齊後是否仍然不穩定」。
+   - 所以下一輪若是執行或分析，應直接把焦點放在 `Asia/Taipei 09:00-13:30` 對齊後的 rerun，而不是再做更多 wording、helper-neutrality 或同 defaults 切片。
+
+### 結論
+
+- 目前最關鍵的技術債不是 filter family，而是 **sample-aware market-clock contract 還沒被系統化**。
+- 在這個缺口補起來前，不應把 `TWSE_2330_5M` 的失敗結果拿去推導新的 ORB filter 或 previous-day family。
+
+### 下一步
+
+1. 若進入執行輪，優先做「sample-aware market-clock 提示或 validator」，而不是加新 filter。
+2. 若進入分析輪，直接重跑 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30` 版本，並和目前 defaults 結果做 A/B 對照。
+
+## 2026-05-21 研究輪：公開 ORB 腳本對多市場 session / timezone 的常見排序
+
+這輪不找新的 entry filter，而是回頭確認一個更底層的研究排序：**當同一套 ORB 要搬到不同市場時，公開腳本通常先處理什麼？**
+
+### 研究來源
+
+- TradingView 官方 `Sessions`
+- TradingView 官方 `Other timeframes and data`
+- TradingView 官方 `Repainting`
+- TradingView 公開腳本：
+  - `SessionVWAP + ORB`
+  - `ORB Multi Preset`
+
+### 核心觀察
+
+1. **公開 ORB 腳本通常先把 session/timezone 做成一級設定，再談 breakout filter。**
+   - `SessionVWAP + ORB` 直接把 Sydney / Tokyo / London / New York / US RTH 拆成不同 session，並明講支援完整 timezone flexibility。
+   - `ORB Multi Preset` 更直接：它不是先問哪條 EMA 或哪個 volume filter，而是先替不同 underlying 各自定義 `Pre-ORB`、`ORB`、time 與 timezone。
+   - 這和目前 `TWSE_2330_5M` 暴露出的問題一致：2330 的第一個缺口不是 filter family，而是 market-clock contract 還沒被系統化。
+
+2. **TradingView 官方 session 模型也支持把 session 與 timezone 當成顯式邊界，而不是暗含在資料裡。**
+   - `time(timeframe, session, timezone)` 就是這種設計。
+   - 官方也明講 exchange-defined regular/extended session 與 user-defined session string 是兩回事，這代表 ORB 若要跨市場，不能只靠「這份 CSV 看起來像台股」來推斷邊界。
+
+3. **一旦 previous-day / higher-timeframe family 需要 `request.security()`，複雜度與 repaint 風險會立刻上升。**
+   - 官方文件明確提醒：`request.security()` 在 historical / realtime 行為上可能不同，若沒有 offset 與 `lookahead` 管理，會 repaint。
+   - 因此，在 market-clock contract 還沒先對齊前，直接把 `prior-day close / gap bias / PDH/PDL` 推進 ORB 主線，工程風險高於收益。
+
+### 結論
+
+- 公開腳本與官方文件的共同訊號很一致：**跨市場 ORB 的第一步應該是 session/timezone/market-clock 對齊，而不是先堆 filter。**
+- 這進一步支持目前 repo 的排序：
+  1. 先把 `TWSE_2330_5M` 的 canonical `Asia/Taipei 09:00-13:30` contract 系統化；
+  2. 再做 market-clock 對齊後的 cross-sample rerun；
+  3. 只有在這一步仍顯示不足時，才值得把注意力轉去 previous-day family。
+
+### 下一步
+
+1. 若進入執行輪，優先做 sample-aware market-clock prompt / validator，而不是做新的 ORB filter。
+2. 若進入分析輪，優先跑 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30` 對齊版 A/B 比較。
+
+## 2026-05-21 執行輪：替已知台股樣本補 sample-aware market-clock alignment metadata
+
+這輪不改 ORB 策略語意，也不直接阻擋執行；只做一個聚焦改動：對已知的 `TWSE_2330_5M.csv`，在 ORB artifact 裡直接寫出 canonical market-clock expectation，並標示這次 CLI 設定是 `aligned` 還是 `mismatch`。
+
+### 這輪修改
+
+- `src/signal_forge/cli/strategy_options.py`
+  - 新增 `ORB_KNOWN_SAMPLE_MARKET_CLOCKS`
+  - 新增 `_orb_known_sample_market_clock_metadata(...)`
+  - 在 `strategy_spec_from_args(...)` 補進：
+    - `orb_known_sample_market_clock_name`
+    - `orb_known_sample_market_clock_expected_timezone`
+    - `orb_known_sample_market_clock_expected_session_start`
+    - `orb_known_sample_market_clock_expected_session_end`
+    - `orb_known_sample_market_clock_alignment`
+- `tests/test_cli.py`
+  - 新增 direct unit test，直接驗證 `TWSE_2330_5M.csv` 在：
+    - 既有 defaults 下會標成 `mismatch`
+    - `Asia/Taipei 09:00-13:30` 對齊後會標成 `aligned`
+
+### 為什麼先做 metadata，不直接做 hard reject
+
+- 目前 repo 已經有用美股 defaults 跑出台股比較的歷史 artifact，這些結果雖然不夠公平，但仍有研究價值，因為它們證明了「現有主線不具跨樣本穩定性」。
+- 這一輪若直接改成 hard reject，會把既有比較路徑整個切斷，反而讓 audit trail 變難讀。
+- 先把 `aligned / mismatch` 寫進 artifact，比較符合目前 autoresearch 的可追溯性原則。
+
+### 結論
+
+- repo 現在不只知道 `TWSE_2330_5M` 應該用 `Asia/Taipei 09:00-13:30`，還會在 artifact 層明示這次 run 是否真的對齊。
+- 這讓下一輪的台股 A/B 比較可以直接站在 deterministic metadata 上做，而不用再靠外部筆記補判讀。
+
+### 下一步
+
+1. 若進入分析輪，直接比較 `TWSE_2330_5M` 的 `mismatch` 與 `aligned` 版本。
+2. 若後續發現研究流程仍經常誤用 defaults，再考慮把這個 metadata 升級成更強的 validator。
+
+## 2026-05-21 分析輪：比較 `TWSE_2330_5M` 的 market-clock mismatch vs aligned 結果
+
+這輪不開新 filter，也不動 previous-day family；只做一個更有判斷力的 A/B：同樣的 ORB 主線、同樣的台積電 5m 樣本，只比較 market-clock 是不是對齊。
+
+### 比較對象
+
+- Strategy：
+  - `orb-volume-vwap --orb-reject-ema-inside-range`
+- Sample：
+  - `data/processed/TWSE_2330_5M.csv`
+- Version A（mismatch）：
+  - 沿用既有 defaults
+- Version B（aligned）：
+  - `orb_session_start = 09:00`
+  - `orb_session_end = 13:30`
+  - `orb_session_timezone = Asia/Taipei`
+
+### 產出 artifact
+
+- `reports/generated/tsmc-orb-ema-box-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-phase-20260521_trace_summary.json`
+- `reports/generated/tsmc-orb-ema-box-aligned-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-aligned-phase-20260521_trace_summary.json`
+- `reports/generated/tsmc-orb-ema-box-market-clock-ab-20260521.md`
+- `reports/generated/tsmc-orb-ema-box-market-clock-ab-20260521.json`
+
+### Hold comparison
+
+#### mismatch
+
+- hold 1：PF `0.083` / Trades `20` / Win rate `5.00%` / Avg net PnL `-10.20` / Max DD `-2.039%`
+- hold 3：PF `0.236`
+- hold 5：PF `0.248`
+- hold 10：PF `0.927`
+
+#### aligned
+
+- hold 1：PF `0.513` / Trades `21` / Win rate `23.81%` / Avg net PnL `-7.47` / Max DD `-2.880%`
+- hold 3：PF `0.538`
+- hold 5：PF `0.685`
+- hold 10：PF `0.309`
+
+### Trace summary 對照
+
+#### mismatch
+
+- accepted：`20`
+- hold：`396`
+- blocked：`2017`
+- blocked reasons：
+  - `below_or_high(1855)`
+  - `ema_inside_opening_range(86)`
+  - `breakout_volume_blocked(69)`
+  - `volume_warmup(7)`
+
+#### aligned
+
+- accepted：`21`
+- hold：`500`
+- blocked：`2266`
+- blocked reasons：
+  - `below_or_high(2087)`
+  - `ema_inside_opening_range(86)`
+  - `breakout_volume_blocked(80)`
+  - `volume_warmup(13)`
+
+### 關鍵判讀
+
+1. **market-clock 對齊是有實質影響的。**
+   - hold 1 的 PF 從 `0.083 -> 0.513`
+   - hold 3 的 PF 從 `0.236 -> 0.538`
+   - hold 5 的 PF 從 `0.248 -> 0.685`
+   - 這代表先前 2330 的失敗，確實有一部分來自 session/timezone mismatch。
+
+2. **但 market-clock 對齊後，策略仍然沒有翻成 pass。**
+   - aligned 版本的所有 hold 設定仍是 `FAIL`
+   - 所以 2330 的弱表現不能完全歸咎於 market-clock 錯位；台股樣本本身對這條 ORB 主線的相容性仍然偏弱。
+
+3. **對齊後，訊號分布變得更像「同一個市場真正的 regular session」了。**
+   - session group count 從 `708` 降到 `354`
+   - hold count 從 `396` 升到 `500`
+   - 這說明對齊後，更多 bar 被放進了真正應該分析的 regular session 區段，而不是被錯誤時鐘切碎。
+
+4. **`EMA inside-range` 仍然不是 2330 的主要失敗來源。**
+   - `ema_inside_opening_range` 在 mismatch / aligned 都是 `86`
+   - 也就是說，這條 gate 本身沒有因 market-clock 對齊而成為主因；真正變化最大的是 OR 與 session slicing 本身。
+
+### 結論
+
+- `TWSE_2330_5M` 的 market-clock alignment 是必要修正，不是可有可無的 metadata。
+- 但 alignment 只能把結果從「明顯失真」拉回「較合理但仍偏弱」，還不足以把這條 ORB 主線翻成有效。
+- 因此下一步不該直接跳去 previous-day family；更合理的是承認：
+  1. market-clock mismatch 確實扭曲了 2330 結果；
+  2. 即使修正後，這條主線在台股樣本上仍不夠強。
+
+### 下一步
+
+1. 若要再做台股 ORB 比較，今後應以 `aligned` 版作為 canonical 基線，不再沿用 mismatch defaults。
+2. 在這個基線上，再決定下一步是比較其他 ORB refinement，還是把台股樣本暫時視為「現有主線不適配」。
+3. 目前仍不建議直接把注意力轉去 previous-day / gap bias；先把 same-session 主線在第二份樣本上的表現邊界定清楚。
+
+## 2026-05-21 Review 輪：台股 ORB canonical baseline 改成 aligned 版之後的剩餘工程債
+
+這輪是 review-only，不改策略語意；只整理在 `TWSE_2330_5M` 已明確改用 aligned `Asia/Taipei 09:00-13:30` 作為 canonical baseline 後，還有哪些 guard 與 contract 沒跟上。
+
+### Findings
+
+1. **目前 artifact 已能標示 `aligned / mismatch`，但分析流程尚未要求後續台股比較必須以 aligned 版為主。**
+   - 現在的 metadata 足以幫助人讀 artifact。
+   - 但如果後續有人再沿用 defaults 跑 `TWSE_2330_5M`，系統仍不會阻止它被誤當成主線比較結果。
+   - 也就是說，repo 現在有「描述性 guard」，但還沒有「流程性 guard」。
+
+2. **`TWSE_2330_5M` 的 canonical baseline 已在研究結論裡收斂，但還沒有一個更靠近 CLI / reporting 的固定提示。**
+   - 目前這件事主要寫在 `Autoresearch 實驗記錄` 與策略筆記。
+   - 若未來 artifact 要更自我說明，可能還需要一個更短、固定的 baseline note，避免台股報表只能靠長文脈絡判讀。
+
+3. **這輪 A/B 已足夠回答 market-clock 問題，下一步不該再重複做同題驗證。**
+   - 我們現在已經知道：
+     - mismatch 會扭曲結果；
+     - aligned 是必要修正；
+     - 修正後仍然偏弱。
+   - 所以再做第三次同型 A/B 的價值很低。
+   - 更合理的是把後續分析配額轉去：
+     - 其他 ORB refinement 在 aligned 台股 baseline 上的表現；
+     - 或直接承認台股樣本對這條主線不適配。
+
+### 結論
+
+- `TWSE_2330_5M` 的 ORB 比較現在已經有夠清楚的 canonical baseline：`Asia/Taipei 09:00-13:30 aligned`。
+- 目前剩餘的工程債不是「再多一個比較」，而是如何避免後續流程又把 `mismatch` 版拿回來當主結論。
+
+### 下一步
+
+1. 若進入執行輪，優先考慮補一個更靠近 reporting / CLI 的台股 baseline 提示，而不是做新 filter。
+2. 若進入研究或分析輪，直接站在 aligned 版上比較下一個 refinement，不要再重複 market-clock A/B。
+
 ## 2026-05-21 研究輪：確認 public ORB 常把 active preset / market-clock 顯式化
 
 這輪不研究新 filter，也不往 previous-day family 前進；只確認一件更靠前的工程排序：**public ORB 腳本在跨市場場景下，通常會把 active preset、session 與 timezone 直接顯示給使用者，而不是只把它們藏在 inputs 裡。**
