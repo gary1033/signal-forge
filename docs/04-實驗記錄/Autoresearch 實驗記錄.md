@@ -1508,3 +1508,51 @@ git diff --check
 2. **下一個分析輪**：延續這次 `EMA inside-range` 的比較，確認 `VWAP slope` 是否應降級成次要分支或移出主線 CLI surface。
 3. **後續若再擴 artifact**：優先考慮把 ORB 專屬 reporting 結構收斂成巢狀欄位或策略子區塊，不要無限制增加平面 key。
 4. **若要修測試債**：只在 reporting contract 穩住後，再考慮把一部分 exact-text test 改成「結構 + 關鍵文案」混合驗證，避免每次小字串變更都重刷大段 golden。
+
+## 2026-05-21 研究輪：EMA inside-range 與 VWAP slope 的主次排序
+
+這輪不新增策略，也不補新 filter。研究問題只有一個：在目前的 ORB 主線裡，`EMA inside-range` 與 `VWAP slope` 到底誰比較應該留在主線、誰比較適合降成次要分支。
+
+### 參考來源
+
+- TradingView `ORB with 100 EMA`
+  https://www.tradingview.com/script/JHm0ftM9-ORB-with-100-EMA/
+- TradingView `Opening Range Breakout (ORB)`
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView `ORB Breakout Strategy with VWAP and Volume Filters`
+  https://www.tradingview.com/script/wLSGHPUe-ORB-Breakout-Strategy-with-VWAP-and-Volume-Filters/
+- TradingView Pine Script Sessions 文件
+  https://www.tradingview.com/pine-script-docs/concepts/sessions/
+- TradingView Pine Script Repainting 文件
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+
+### 外部研究重點
+
+- `ORB with 100 EMA` 的更新說明直接把「**EMA 落在 opening range 盒子內就禁訊號**」當成明確規則，代表這不是抽象的均線偏好，而是公開 ORB 社群裡已經存在的**結構 gate**。
+- `Opening Range Breakout (ORB)` 與 `ORB Breakout Strategy with VWAP and Volume Filters` 都把 `VWAP slope` 放在可選的 trend / momentum refinement 位置；它常見，但比較像是「價格在 VWAP 上方之後再加一道方向確認」，不是 ORB 幾何本體的一部分。
+- TradingView 的 Sessions 文件也支持把 session/timezone 顯式化處理，讓 OR 與 market-clock 邊界維持單時間框架定義；這意味著 `EMA inside-range` 這種結構 gate 不需要再引入額外 session complexity。
+- TradingView 的 Repainting 文件明確提醒 `request.security()` 可能造成 historical / realtime 不一致；因此若要在 ORB 主線裡再選一個優先 refinement，應優先選 **不需要多時間框架**、又能提供新增資訊的條件。
+
+### 與目前本地回測結果對照
+
+- 本地 `MSFT 5m demo` 的 attribution 比較已經顯示：
+  - `EMA inside-range` 是唯一把 ORB 從 `FAIL` 拉到 `PASS` 的 refinement。
+  - `VWAP slope` 在這份樣本上沒有新增辨識力，結果與 `base` 完全一致。
+- 這次外部研究與本地結果是一致的：
+  - `EMA inside-range` 更像 **結構性主條件**；
+  - `VWAP slope` 更像 **次要趨勢微調條件**。
+
+### 研究結論
+
+- 目前較合理的主線排序應改成：
+  1. 保留 `EMA inside-range` 在主線研究清單中的高優先級；
+  2. 把 `VWAP slope` 降級成次要、可選、需額外證據才保留的 refinement。
+- 換句話說，下一輪若要消化複雜度，**不應優先再幫 `VWAP slope` 擴 artifact surface**，而應優先：
+  - 穩住 `EMA inside-range` 的 reporting / attribution / compare helper；
+  - 檢查 `VWAP slope` 是否要退居次要參數、比較模式或非預設分支。
+
+### 下一步
+
+1. 若下一輪進入執行輪，優先處理 ORB helper / attribution 邊界，不再擴 `VWAP slope` 的 surface。
+2. 若下一輪進入分析輪，應直接比較「移除 `VWAP slope` 後 artifact 是否更乾淨、資訊量是否實際下降」。
+3. 若之後換第二份 intraday 樣本，重點不是先驗證所有 filter，而是先驗證 `EMA inside-range` 是否仍能提供獨立資訊。
