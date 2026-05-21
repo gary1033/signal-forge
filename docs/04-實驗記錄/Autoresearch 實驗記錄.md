@@ -2200,3 +2200,51 @@ git diff --check
 
 1. 下一輪若進入執行輪，優先把 disabled 狀態下的 `orb_vwap_slope_rule` 改成較中性的靜態描述。
 2. wording cleanup 完成後，再回頭評估 `EMA trend` 是否值得補對稱 contract，並決定那時要走單一 tier 還是 role/family。
+
+## 2026-05-21 研究輪：`disabled rule wording` 應改成靜態規則描述，而不是延續 `when enabled, ...`
+
+這輪不改程式，只研究 `orb_vwap_slope_rule` 這類 artifact wording 應該往哪種 contract 收斂。結論是：**應優先改成靜態規則描述，並把 enabled / disabled 狀態交給既有 state 欄位表達；不建議繼續維持 `when enabled, ...` 這種混合文案。**
+
+### 來源
+
+- TradingView Pine Script docs：Inputs
+  https://www.tradingview.com/pine-script-docs/concepts/inputs/
+- TradingView `Opening Range Breakout + VWAP + Volume [ORB Strategy]`
+  https://www.tradingview.com/script/hapKLoXr-Opening-Range-Breakout-VWAP-Volume-ORB-Strategy/
+- TradingView `Opening Range Breakout`
+  https://www.tradingview.com/script/tZtCD3TM-Opening-Range-Breakout/
+- TradingView `NeuraEdge ORB - Opening Range Breakout Indicator`
+  https://www.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+
+### 外部研究重點
+
+- TradingView 的 `input.*()` 設計把 **設定值本身** 與 **輸入標題/群組** 分開；filter toggle 是獨立 state，不需要把 enabled/disabled 語意混進規則文字裡。
+- `Opening Range Breakout + VWAP + Volume [ORB Strategy]` 直接把 `VWAP filter`、`Volume confirmation`、`timezone`、`trade window` 分開列成 inputs / features，說明「是否啟用」與「規則本身」在外部實務上本來就分離。
+- `Opening Range Breakout` 與 `NeuraEdge ORB` 也都直接描述 filter 規則本體，例如 EMA 趨勢要上升、價格要站在 EMA / VWAP 正確一側；它們不會把 disabled 狀態寫進規則定義句。
+
+### 對目前 repo 的含義
+
+- 現在 `strategy_spec` 已經有：
+  - `orb_vwap_slope_confirmation = enabled|disabled`
+  - `orb_vwap_slope_tier = secondary_refinement`
+  - `orb_vwap_slope_rule = when enabled, ...`
+- 問題不是資訊不夠，而是 `rule` 欄位同時混了：
+  1. 規則本體
+  2. 啟用條件
+- 這讓 disabled 路徑的人類可讀性變差，因為 artifact 會同時說「disabled」又說「when enabled」，語意上是重複而且容易誤讀。
+
+### 研究結論
+
+- 下一個執行輪若做 wording cleanup，較合理的方向是：
+  - 保留 `orb_vwap_slope_confirmation = enabled|disabled`
+  - 將 `orb_vwap_slope_rule` 改成**靜態規則描述**
+    - 例如：`breakout is only valid when session VWAP is rising versus the previous bar in the same session`
+- 這樣可把：
+  - state：交給 `*_confirmation`
+  - rule：交給 `*_rule`
+- 不需要先新增新的 `effective` 欄位，因為目前 state contract 已足夠。
+
+### 下一步
+
+1. 下一輪若進入執行輪，優先把 `orb_vwap_slope_rule` 改成中性靜態描述，先不要擴 schema。
+2. wording cleanup 完成後，再決定 `orb_ema_trend_rule` 是否要用同樣模式對齊。
