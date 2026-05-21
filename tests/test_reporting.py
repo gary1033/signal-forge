@@ -55,6 +55,29 @@ class TinyPositionStrategy(Strategy):
         return [Signal(index, bar.timestamp, tiny_position, "tiny") for index, bar in enumerate(bars)]
 
 
+class OrbAttributionStrategy(Strategy):
+    name = "orb_attribution"
+
+    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        """
+        用途與流程：產生帶有 ORB blocked、accepted、hold 與 session-reset reason 的固定訊號序列，讓 reporting 測試可鎖住 attribution artifact contract。
+        參數：self 表示目前物件實例；bars（list[Bar]）由呼叫端傳入，需與測試預期的 5 根 bar 對齊。
+        回傳與錯誤：回傳 list[Signal]；若 bars 長度改變，仍依 enumerate 產生對應索引，不主動丟錯。
+        """
+        reasons = [
+            "opening_range_building",
+            "breakout_vwap_slope_blocked",
+            "orb_volume_vwap_breakout",
+            "hold_intraday_breakout",
+            "session_reset",
+        ]
+        target_positions = [0.0, 0.0, 1.0, 1.0, 0.0]
+        return [
+            Signal(index, bar.timestamp, target_positions[index], reasons[index])
+            for index, bar in enumerate(bars)
+        ]
+
+
 class ReportingTests(unittest.TestCase):
     def test_signal_digest_csv_validator_matches_trace_summary(self) -> None:
         """
@@ -391,6 +414,78 @@ class ReportingTests(unittest.TestCase):
         ).hexdigest()
         with self.assertRaisesRegex(ValueError, "hold_side mismatch"):
             validate_signal_digest_csv(trace_summary, bad_csv)
+
+    def test_trace_summary_includes_orb_filter_attribution_when_reasons_match_orb_contract(self) -> None:
+        """
+        用途與流程：驗證 ORB trace summary 會輸出 deterministic attribution 區塊，讓後續比較各 filter 阻擋分布時有穩定 artifact 可用。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        bars = [
+            Bar("2026-01-01T09:30:00", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-01T09:31:00", 10, 10.7, 9.8, 10.1, 110),
+            Bar("2026-01-01T09:32:00", 10.1, 10.9, 10.0, 10.8, 130),
+            Bar("2026-01-01T09:33:00", 10.8, 11.0, 10.7, 10.9, 120),
+            Bar("2026-01-02T09:30:00", 10.9, 11.1, 10.8, 10.85, 90),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OrbAttributionStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-orb-attribution")
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+            markdown = paths.markdown.read_text(encoding="utf-8")
+
+        validate_trace_summary(trace_summary)
+
+        orb_filter_attribution = trace_summary["trace_summary"]["orb_filter_attribution"]
+        self.assertEqual(
+            orb_filter_attribution,
+            {
+                "accepted_entry_count": 1,
+                "accepted_reason_counts": [{"count": 1, "reason": "orb_volume_vwap_breakout"}],
+                "blocked_reason_counts": [{"count": 1, "reason": "breakout_vwap_slope_blocked"}],
+                "blocked_signal_count": 1,
+                "group_counts": {
+                    "accepted": 1,
+                    "hold": 1,
+                    "other": 0,
+                    "range": 0,
+                    "retest": 0,
+                    "session": 2,
+                    "structure": 0,
+                    "trend": 1,
+                    "volume": 0,
+                },
+                "hold_count": 1,
+                "hold_reason_counts": [{"count": 1, "reason": "hold_intraday_breakout"}],
+            },
+        )
+        self.assertIn("## ORB Filter Attribution", markdown)
+        self.assertIn("- Accepted breakouts: 1", markdown)
+        self.assertIn("- Blocked reasons: breakout_vwap_slope_blocked(1)", markdown)
+
+    def test_trace_summary_validator_rejects_orb_filter_attribution_group_sum_mismatch(self) -> None:
+        """
+        用途與流程：驗證 ORB attribution 的 group_counts 若無法和 bar_count 對齊，validator 會明確拒絕，避免 reporting artifact drift。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        bars = [
+            Bar("2026-01-01T09:30:00", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-01T09:31:00", 10, 10.7, 9.8, 10.1, 110),
+            Bar("2026-01-01T09:32:00", 10.1, 10.9, 10.0, 10.8, 130),
+            Bar("2026-01-01T09:33:00", 10.8, 11.0, 10.7, 10.9, 120),
+            Bar("2026-01-02T09:30:00", 10.9, 11.1, 10.8, 10.85, 90),
+        ]
+        result = PhaseRunner().run(PhaseConfig(mode="backtest"), OrbAttributionStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_phase_outputs(result, temp_dir, run_name="phase-orb-attribution-invalid")
+            trace_summary = json.loads(paths.trace_summary_json.read_text(encoding="utf-8"))  # type: ignore[union-attr]
+
+        trace_summary["trace_summary"]["orb_filter_attribution"]["group_counts"]["trend"] = 2  # type: ignore[index]
+        with self.assertRaisesRegex(ValueError, "group_counts must be non-negative ints summing to bar_count"):
+            validate_trace_summary(trace_summary)
 
     def test_signal_digest_csv_validator_rejects_position_bucket_mismatch(self) -> None:
         """
@@ -1035,7 +1130,7 @@ class ReportingTests(unittest.TestCase):
                             '    "reasons": [',
                             '      "entry"',
                             "    ],",
-                            '    "schema_version": 9,',
+                            '    "schema_version": 10,',
                             '    "short_entry_count": 0,',
                             '    "signal_digest_sha256": "ec219433008c9685086950c5b27d4ea50aef0c3562be0f2d0adf0826e43ef388",',
                             '    "start_date": "2026-01-01",',
@@ -1104,7 +1199,7 @@ class ReportingTests(unittest.TestCase):
                     "## Backtest Trace Summary",
                     "",
                     "- Bar count: 2",
-                    "- Trace schema version: 9",
+                    "- Trace schema version: 10",
                     "- Entry/Flatten/Hold: 1/1/0",
                     "- Hold long/short: 0/0",
                     "- Open/Close: 1/1",

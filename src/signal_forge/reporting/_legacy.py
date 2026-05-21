@@ -24,6 +24,48 @@ def _round_float(value: float, decimals: int) -> float:
 
 
 _ISO_DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+_ORB_GROUP_KEYS = (
+    "accepted",
+    "hold",
+    "other",
+    "range",
+    "retest",
+    "session",
+    "structure",
+    "trend",
+    "volume",
+)
+_ORB_BLOCKED_GROUP_KEYS = ("range", "retest", "structure", "trend", "volume")
+_ORB_REASON_GROUPS = {
+    "below_or_high": "range",
+    "breakout_bar_reentered_range": "structure",
+    "breakout_below_ema": "trend",
+    "breakout_below_vwap": "trend",
+    "breakout_body_too_small": "structure",
+    "breakout_distance_too_small": "range",
+    "breakout_ema_reference_unavailable": "structure",
+    "breakout_ema_slope_blocked": "trend",
+    "breakout_not_armed": "retest",
+    "breakout_not_fresh_from_or": "structure",
+    "breakout_volume_baseline_unavailable": "volume",
+    "breakout_volume_blocked": "volume",
+    "breakout_vwap_slope_blocked": "trend",
+    "ema_inside_opening_range": "structure",
+    "hold_intraday_breakout": "hold",
+    "opening_range_building": "session",
+    "opening_range_too_narrow": "range",
+    "opening_range_too_wide": "range",
+    "opening_range_unavailable": "session",
+    "orb_retest_vwap_breakout": "accepted",
+    "orb_volume_vwap_breakout": "accepted",
+    "outside_session": "session",
+    "outside_signal_window": "session",
+    "retest_not_touched": "retest",
+    "session_reset": "session",
+    "session_timestamp_required": "session",
+    "volume_warmup": "volume",
+    "waiting_for_retest_confirmation": "retest",
+}
 
 
 def _is_iso8601_timestamp(timestamp: str) -> bool:
@@ -68,6 +110,83 @@ def _extract_iso8601_date(timestamp: str | None) -> str | None:
     except ValueError:
         return None
     return parsed.date().isoformat()
+
+
+def _build_reason_count_items(reason_counts: Counter[str]) -> list[dict[str, int | str]]:
+    """
+    用途與流程：把 reason Counter 轉成 deterministic list[dict] 結構，統一供 trace summary 與 attribution 區塊重用。
+    參數：reason_counts（Counter[str]）由呼叫端傳入，key 為 reason 字串、value 為出現次數。
+    回傳與錯誤：回傳 list[dict[str, int | str]]；若 Counter 為空，回傳空清單，不主動丟錯。
+    """
+    return [
+        {"reason": reason, "count": count}
+        for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def _orb_reason_group_for_digest(digest: SignalDigest) -> str:
+    """
+    用途與流程：依單筆 SignalDigest 的 reason 與部位語意，把 ORB 訊號歸類到 accepted、hold、session、range、structure、trend、volume、retest 或 other。
+    參數：digest（SignalDigest）由呼叫端傳入，需已完成 deterministic normalize，且包含 target_position、position_change、reason 與 entry/flatten flags。
+    回傳與錯誤：回傳 str；若 reason 不在目前 ORB 分類表內，回傳 other，不主動丟錯。
+    """
+    epsilon = 1e-12
+    is_hold = abs(digest.target_position) > epsilon and abs(digest.position_change) <= epsilon
+    if digest.is_long_entry:
+        return "accepted"
+    if is_hold:
+        return "hold"
+    return _ORB_REASON_GROUPS.get(digest.reason, "other")
+
+
+def _build_orb_filter_attribution(
+    digests: list[SignalDigest],
+) -> dict[str, object] | None:
+    """
+    用途與流程：從既有 SignalDigest 序列推導 ORB filter attribution，整理 accepted、hold、blocked 與各 filter group 的 deterministic 統計。
+    參數：digests（list[SignalDigest]）由呼叫端傳入，需為單一 backtest run 的完整訊號摘要序列。
+    回傳與錯誤：回傳 dict[str, object] | None；若這批 reasons 不是 ORB 語意，回傳 None，不主動丟錯。
+    """
+    if not digests:
+        return None
+
+    known_orb_reasons = set(_ORB_REASON_GROUPS.keys())
+    reasons = {digest.reason for digest in digests if digest.reason}
+    if not any(reason in known_orb_reasons or reason.startswith("orb_") for reason in reasons):
+        return None
+
+    group_counts: Counter[str] = Counter()
+    blocked_reason_counts: Counter[str] = Counter()
+    accepted_reason_counts: Counter[str] = Counter()
+    hold_reason_counts: Counter[str] = Counter()
+    epsilon = 1e-12
+
+    for digest in digests:
+        group = _orb_reason_group_for_digest(digest)
+        group_counts[group] += 1
+
+        is_hold = abs(digest.target_position) > epsilon and abs(digest.position_change) <= epsilon
+        if digest.is_long_entry:
+            accepted_reason_counts[digest.reason] += 1
+            continue
+        if is_hold:
+            hold_reason_counts[digest.reason] += 1
+            continue
+        if not digest.is_flatten and group in _ORB_BLOCKED_GROUP_KEYS:
+            blocked_reason_counts[digest.reason] += 1
+
+    deterministic_group_counts = {
+        key: int(group_counts.get(key, 0)) for key in _ORB_GROUP_KEYS
+    }
+    return {
+        "accepted_entry_count": sum(accepted_reason_counts.values()),
+        "blocked_signal_count": sum(blocked_reason_counts.values()),
+        "hold_count": sum(hold_reason_counts.values()),
+        "group_counts": deterministic_group_counts,
+        "accepted_reason_counts": _build_reason_count_items(accepted_reason_counts),
+        "blocked_reason_counts": _build_reason_count_items(blocked_reason_counts),
+        "hold_reason_counts": _build_reason_count_items(hold_reason_counts),
+    }
 
 
 @dataclass(frozen=True)
@@ -988,13 +1107,18 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
         "timestamps_iso8601": bool,
         "unique_reason_count": int,
     }
+    optional_fields: dict[str, object] = {
+        "orb_filter_attribution": dict,
+    }
 
     missing = sorted(field for field in required_fields if field not in trace_summary)
     if missing:
         raise ValueError(f"trace summary trace_summary missing keys: {missing}")
 
-    for field, expected in required_fields.items():
+    for field, expected in {**required_fields, **optional_fields}.items():
         value = trace_summary.get(field)
+        if field in optional_fields and value is None:
+            continue
         if not isinstance(value, expected):
             raise ValueError(f"trace summary trace_summary.{field} has invalid type")
 
@@ -1258,6 +1382,154 @@ def validate_trace_summary(summary: dict[str, object]) -> None:
     if sum(count for _reason, count in parsed_reason_counts) != bar_count:
         raise ValueError("trace summary trace_summary.reason_counts total must equal bar_count")
 
+    orb_filter_attribution = trace_summary.get("orb_filter_attribution")
+    if orb_filter_attribution is not None:
+        _validate_orb_filter_attribution_dict(
+            orb_filter_attribution=orb_filter_attribution,
+            bar_count=bar_count,
+            flatten_count=counts["flatten_count"],
+            hold_count=counts["hold_count"],
+            long_entry_count=counts["long_entry_count"],
+        )
+
+
+def _validate_orb_filter_attribution_dict(
+    *,
+    orb_filter_attribution: dict[str, object],
+    bar_count: int,
+    flatten_count: int,
+    hold_count: int,
+    long_entry_count: int,
+) -> None:
+    """
+    用途與流程：驗證 ORB filter attribution 區塊的 deterministic schema 與統計關係，避免 trace summary 新欄位 drift。
+    參數：orb_filter_attribution 是 trace summary 內的 ORB attribution dict；bar_count、flatten_count、hold_count、long_entry_count 來自同一份 trace summary 主體統計。
+    回傳與錯誤：回傳 None；若 attribution 欄位缺失、型別錯誤或統計關係不一致，拋出 ValueError。
+    """
+    required_keys = {
+        "accepted_entry_count",
+        "accepted_reason_counts",
+        "blocked_reason_counts",
+        "blocked_signal_count",
+        "group_counts",
+        "hold_count",
+        "hold_reason_counts",
+    }
+    if set(orb_filter_attribution.keys()) != required_keys:
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution must have deterministic keys"
+        )
+
+    accepted_entry_count = orb_filter_attribution.get("accepted_entry_count")
+    blocked_signal_count = orb_filter_attribution.get("blocked_signal_count")
+    attributed_hold_count = orb_filter_attribution.get("hold_count")
+    group_counts = orb_filter_attribution.get("group_counts")
+    accepted_reason_counts = orb_filter_attribution.get("accepted_reason_counts")
+    blocked_reason_counts = orb_filter_attribution.get("blocked_reason_counts")
+    hold_reason_counts = orb_filter_attribution.get("hold_reason_counts")
+
+    for label, value in (
+        ("accepted_entry_count", accepted_entry_count),
+        ("blocked_signal_count", blocked_signal_count),
+        ("hold_count", attributed_hold_count),
+    ):
+        if not isinstance(value, int) or value < 0 or value > bar_count:
+            raise ValueError(
+                f"trace summary trace_summary.orb_filter_attribution.{label} must be a non-negative int <= bar_count"
+            )
+
+    if not isinstance(group_counts, dict):
+        raise ValueError("trace summary trace_summary.orb_filter_attribution.group_counts must be a dict")
+
+    if set(group_counts.keys()) != set(_ORB_GROUP_KEYS):
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.group_counts must have deterministic keys"
+        )
+    if sum(
+        value for value in group_counts.values() if isinstance(value, int)
+    ) != bar_count or any(
+        (not isinstance(value, int)) or value < 0 or value > bar_count
+        for value in group_counts.values()
+    ):
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.group_counts must be non-negative ints summing to bar_count"
+        )
+
+    def parse_reason_items(value: object, *, label: str) -> list[tuple[str, int]]:
+        """
+        用途與流程：把 attribution 內的 reason-count list 驗證並轉成 tuple 清單，讓主驗證流程能重用排序與加總檢查。
+        參數：value 是待驗證欄位；label 是錯誤訊息用的欄位名稱。
+        回傳與錯誤：回傳 list[tuple[str, int]]；若格式不是 deterministic reason-count list，拋出 ValueError。
+        """
+        if not isinstance(value, list):
+            raise ValueError(f"trace summary trace_summary.orb_filter_attribution.{label} must be a list")
+        parsed_items: list[tuple[str, int]] = []
+        for index, item in enumerate(value):
+            if not isinstance(item, dict) or set(item.keys()) != {"reason", "count"}:
+                raise ValueError(
+                    f"trace summary trace_summary.orb_filter_attribution.{label}[{index}] must have keys ['reason', 'count']"
+                )
+            reason = item.get("reason")
+            count = item.get("count")
+            if not isinstance(reason, str) or not reason:
+                raise ValueError(
+                    f"trace summary trace_summary.orb_filter_attribution.{label}[{index}].reason must be a non-empty str"
+                )
+            if not isinstance(count, int) or count <= 0:
+                raise ValueError(
+                    f"trace summary trace_summary.orb_filter_attribution.{label}[{index}].count must be a positive int"
+                )
+            parsed_items.append((reason, count))
+        expected_items = sorted(parsed_items, key=lambda item: (-item[1], item[0]))
+        if parsed_items != expected_items:
+            raise ValueError(
+                f"trace summary trace_summary.orb_filter_attribution.{label} must be sorted by (-count, reason)"
+            )
+        if len({reason for reason, _count in parsed_items}) != len(parsed_items):
+            raise ValueError(
+                f"trace summary trace_summary.orb_filter_attribution.{label} reasons must be unique"
+            )
+        return parsed_items
+
+    accepted_items = parse_reason_items(accepted_reason_counts, label="accepted_reason_counts")
+    blocked_items = parse_reason_items(blocked_reason_counts, label="blocked_reason_counts")
+    hold_items = parse_reason_items(hold_reason_counts, label="hold_reason_counts")
+
+    if sum(count for _reason, count in accepted_items) != accepted_entry_count:
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.accepted_reason_counts total must match accepted_entry_count"
+        )
+    if sum(count for _reason, count in blocked_items) != blocked_signal_count:
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.blocked_reason_counts total must match blocked_signal_count"
+        )
+    if sum(count for _reason, count in hold_items) != attributed_hold_count:
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.hold_reason_counts total must match hold_count"
+        )
+    if accepted_entry_count != long_entry_count:
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.accepted_entry_count must match long_entry_count"
+        )
+    if attributed_hold_count != hold_count:
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.hold_count must match hold_count"
+        )
+    if accepted_entry_count != int(group_counts["accepted"]):
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.group_counts.accepted must match accepted_entry_count"
+        )
+    if attributed_hold_count != int(group_counts["hold"]):
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.group_counts.hold must match hold_count"
+        )
+    expected_blocked_signal_count = sum(int(group_counts[key]) for key in _ORB_BLOCKED_GROUP_KEYS)
+    if blocked_signal_count != expected_blocked_signal_count:
+        raise ValueError(
+            "trace summary trace_summary.orb_filter_attribution.blocked_signal_count must match blocked filter group totals"
+        )
+
+
 def _validate_order_intent_dict(intent: dict[str, object], index: int) -> None:
     """
     用途與流程：執行內部 contract 驗證，將格式錯誤、語意不一致或安全邊界破壞轉成明確例外。
@@ -1487,10 +1759,7 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     last_target_position = digests[-1].target_position if digests else 0.0
     reasons = [digest.reason for digest in digests if digest.reason]
     reason_counts = Counter(reasons)
-    reason_count_items = [
-        {"reason": reason, "count": count}
-        for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))
-    ]
+    reason_count_items = _build_reason_count_items(reason_counts)
     unique_reasons = sorted(reason_counts.keys())
     timestamps_iso8601 = all(_is_iso8601_timestamp(digest.timestamp) for digest in digests)
     start_date = _extract_iso8601_date(first_timestamp)
@@ -1498,51 +1767,53 @@ def _signal_trace_summary_dict(digests: list[SignalDigest]) -> dict[str, object]
     flat_bucket_count = sum(1 for digest in digests if abs(digest.target_position) <= epsilon)
     long_bucket_count = sum(1 for digest in digests if digest.target_position > epsilon)
     short_bucket_count = sum(1 for digest in digests if digest.target_position < -epsilon)
-    return {
-        "trace_summary": {
-            "schema_version": 9,
-            "bar_count": len(digests),
-            "close_count": close_count,
-            "end_date": end_date,
-            "entry_count": open_count,
-            "first_index": first_index,
-            "first_previous_target_position": _round_float(first_previous_target_position, 6),
-            "first_reason": first_reason,
-            "first_target_position": _round_float(first_target_position, 6),
-            "long_entry_count": long_entry_count,
-            "flatten_count": flatten_count,
-            "flatten_to_long_count": flatten_to_long_count,
-            "flip_count": flip_count,
-            "flatten_to_short_count": flatten_to_short_count,
-            "flatten_to_zero_count": flatten_to_zero_count,
-            "hold_count": hold_count,
-            "hold_long_count": hold_long_count,
-            "hold_short_count": hold_short_count,
-            "last_index": last_index,
-            "last_previous_target_position": _round_float(last_previous_target_position, 6),
-            "last_reason": last_reason,
-            "nonzero_target_position_count": nonzero_target_position_count,
-            "nonzero_position_change_count": nonzero_position_change_count,
-            "open_count": open_count,
-            "position_bucket_counts": {
-                "flat": flat_bucket_count,
-                "long": long_bucket_count,
-                "short": short_bucket_count,
-            },
-            "first_timestamp": first_timestamp,
-            "last_timestamp": last_timestamp,
-            "last_target_position": _round_float(last_target_position, 6),
-            "max_target_position": _round_float(max_target_position, 6),
-            "min_target_position": _round_float(min_target_position, 6),
-            "short_entry_count": short_entry_count,
-            "start_date": start_date,
-            "timestamps_iso8601": timestamps_iso8601,
-            "unique_reason_count": len(unique_reasons),
-            "reasons": unique_reasons,
-            "reason_counts": reason_count_items,
-            "signal_digest_sha256": hashlib.sha256(_signal_digest_csv(digests).encode("utf-8")).hexdigest(),
-        }
+    orb_filter_attribution = _build_orb_filter_attribution(digests)
+    trace_summary = {
+        "schema_version": 10,
+        "bar_count": len(digests),
+        "close_count": close_count,
+        "end_date": end_date,
+        "entry_count": open_count,
+        "first_index": first_index,
+        "first_previous_target_position": _round_float(first_previous_target_position, 6),
+        "first_reason": first_reason,
+        "first_target_position": _round_float(first_target_position, 6),
+        "long_entry_count": long_entry_count,
+        "flatten_count": flatten_count,
+        "flatten_to_long_count": flatten_to_long_count,
+        "flip_count": flip_count,
+        "flatten_to_short_count": flatten_to_short_count,
+        "flatten_to_zero_count": flatten_to_zero_count,
+        "hold_count": hold_count,
+        "hold_long_count": hold_long_count,
+        "hold_short_count": hold_short_count,
+        "last_index": last_index,
+        "last_previous_target_position": _round_float(last_previous_target_position, 6),
+        "last_reason": last_reason,
+        "nonzero_target_position_count": nonzero_target_position_count,
+        "nonzero_position_change_count": nonzero_position_change_count,
+        "open_count": open_count,
+        "position_bucket_counts": {
+            "flat": flat_bucket_count,
+            "long": long_bucket_count,
+            "short": short_bucket_count,
+        },
+        "first_timestamp": first_timestamp,
+        "last_timestamp": last_timestamp,
+        "last_target_position": _round_float(last_target_position, 6),
+        "max_target_position": _round_float(max_target_position, 6),
+        "min_target_position": _round_float(min_target_position, 6),
+        "short_entry_count": short_entry_count,
+        "start_date": start_date,
+        "timestamps_iso8601": timestamps_iso8601,
+        "unique_reason_count": len(unique_reasons),
+        "reasons": unique_reasons,
+        "reason_counts": reason_count_items,
+        "signal_digest_sha256": hashlib.sha256(_signal_digest_csv(digests).encode("utf-8")).hexdigest(),
     }
+    if orb_filter_attribution is not None:
+        trace_summary["orb_filter_attribution"] = orb_filter_attribution
+    return {"trace_summary": trace_summary}
 
 
 def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, object]:
@@ -1710,6 +1981,42 @@ def _phase_markdown_report(
                         f"- Unique reasons: {trace.get('unique_reason_count')}",
                     ]
                 )
+                orb_filter_attribution = trace.get("orb_filter_attribution")
+                if isinstance(orb_filter_attribution, dict):
+                    group_counts = orb_filter_attribution.get("group_counts")
+                    blocked_reason_counts = orb_filter_attribution.get("blocked_reason_counts")
+                    blocked_reason_text = "n/a"
+                    if isinstance(blocked_reason_counts, list) and blocked_reason_counts:
+                        blocked_reason_text = ", ".join(
+                            f"{item.get('reason')}({item.get('count')})"
+                            for item in blocked_reason_counts
+                            if isinstance(item, dict)
+                        )
+                    accepted_group = hold_group = other_group = range_group = retest_group = None
+                    session_group = structure_group = trend_group = volume_group = None
+                    if isinstance(group_counts, dict):
+                        accepted_group = group_counts.get("accepted")
+                        hold_group = group_counts.get("hold")
+                        other_group = group_counts.get("other")
+                        range_group = group_counts.get("range")
+                        retest_group = group_counts.get("retest")
+                        session_group = group_counts.get("session")
+                        structure_group = group_counts.get("structure")
+                        trend_group = group_counts.get("trend")
+                        volume_group = group_counts.get("volume")
+                    lines.extend(
+                        [
+                            "",
+                            "## ORB Filter Attribution",
+                            "",
+                            f"- Accepted breakouts: {orb_filter_attribution.get('accepted_entry_count')}",
+                            f"- Blocked non-entry bars: {orb_filter_attribution.get('blocked_signal_count')}",
+                            f"- Hold bars: {orb_filter_attribution.get('hold_count')}",
+                            "- Groups (accepted/hold/session/range/structure/trend/volume/retest/other): "
+                            f"{accepted_group}/{hold_group}/{session_group}/{range_group}/{structure_group}/{trend_group}/{volume_group}/{retest_group}/{other_group}",
+                            f"- Blocked reasons: {blocked_reason_text}",
+                        ]
+                    )
 
     if result.order_intents is not None:
         lines.extend(["", "## Live Dry-Run Intents", ""])

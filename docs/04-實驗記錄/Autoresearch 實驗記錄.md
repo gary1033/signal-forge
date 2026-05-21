@@ -1357,3 +1357,43 @@ git diff --check
 2. 再用現有 MSFT 5m demo CSV 比較幾組 ORB filter 組合，確認各 filter 是否擋掉不同類型的弱突破。
 3. `stop loss / take profit / session close exit` 暫時留在 Phase 2 候選，等 entry-side attribution 清楚後，再一起設計 execution 與 reporting contract。
 4. `wick/high-low trigger mode` 仍放後面，避免把 close-confirmed 研究邊界推向 intrabar 語意。
+
+## 2026-05-21 執行輪：ORB trace summary 新增 filter attribution / rejection summary
+
+這輪依照上一輪研究結論，不再新增 stop / target / session close exit，也不再擴 ORB 訊號邏輯，而是把改動收斂在 **deterministic artifact attribution**。目標是讓 `*_trace_summary.json` 與 Phase markdown 能直接說清楚：目前這次 ORB run 到底有多少 accepted breakout、多少 hold、哪些 filter 真正擋下了候選訊號，以及這些拒絕大致落在哪一類。
+
+### 修改內容
+
+- `trace_summary.schema_version` 升級到 `10`。
+- 若這批 signal digests 屬於 ORB 語意，`*_trace_summary.json` 會新增 `orb_filter_attribution`：
+  - `accepted_entry_count`
+  - `blocked_signal_count`
+  - `hold_count`
+  - `group_counts`
+  - `accepted_reason_counts`
+  - `blocked_reason_counts`
+  - `hold_reason_counts`
+- `group_counts` 目前固定分成：
+  - `accepted`
+  - `hold`
+  - `session`
+  - `range`
+  - `structure`
+  - `trend`
+  - `volume`
+  - `retest`
+  - `other`
+- `blocked_reason_counts` 只統計真正屬於 filter rejection 的 reason，不把 `opening_range_building` 這類 session bootstrap 狀態混進去；這樣下一輪做 filter overlap / attribution comparison 時，數字比較有判讀價值。
+- Phase markdown 若偵測到 `orb_filter_attribution`，會多出 `## ORB Filter Attribution` 區段，直接摘要 accepted / blocked / hold 數量、group 分布與 blocked reasons。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> 待本輪整體 guard 一起確認
+- `python -m unittest discover -s tests -p test_reporting.py` -> `29 tests OK`
+- `git diff --check` -> 待本輪整體 guard 一起確認
+
+### 決策
+
+- keep
+- 這次改動的價值不是再疊一個新 filter，而是把 ORB 目前已經存在的 filter stack 變成更容易比較、歸因與 audit 的 artifact contract。
+- 下一輪較合理的方向是進入 **第 3 輪分析比較**：拿既有資料與 artifacts 比較不同 ORB filter 組合，確認 `EMA inside-range`、`EMA trend`、`VWAP slope`、`OR volume baseline` 等條件，到底是在補不同資訊，還是只是重複擋掉同一批弱突破。
