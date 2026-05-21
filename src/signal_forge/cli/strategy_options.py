@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+from pathlib import Path
 
 from signal_forge.core.market_data import Bar
 from signal_forge.strategies import STRATEGY_PARAMETER_DEFAULTS, build_phase1_strategy
@@ -19,6 +20,13 @@ ORB_FORBIDDEN_PREVIOUS_DAY_PREFIXES = (
     "orb_gap_",
     "orb_overnight_",
 )
+ORB_KNOWN_SAMPLE_MARKET_CLOCKS = {
+    "TWSE_2330_5M.csv": {
+        "timezone": "Asia/Taipei",
+        "session_start": "09:00",
+        "session_end": "13:30",
+    }
+}
 
 
 def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
@@ -330,6 +338,7 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         "orb_volume_baseline_rule": "when enabled, breakout volume is compared against the average volume observed during the opening range instead of the rolling volume SMA baseline",
     }
     if getattr(args, "strategy", "") == "orb-volume-vwap":
+        spec.update(_orb_known_sample_market_clock_metadata(args, spec))
         _validate_orb_same_session_contract(spec)
     return spec
 
@@ -472,6 +481,49 @@ def _validate_orb_prior_day_close_contract(contract: dict[str, str]) -> None:
         raise ValueError(
             "prior-day close contract must mark first-session values as unavailable"
         )
+
+
+def _orb_known_sample_market_clock_metadata(
+    args: argparse.Namespace,
+    spec: dict[str, str],
+) -> dict[str, str]:
+    """
+    用途與流程：針對已知的 ORB intraday 樣本，補上 sample-aware market-clock metadata，讓 artifact 能直接顯示該樣本的 canonical session/timezone 與目前 CLI 設定是否對齊，而不必先閱讀外部研究筆記才知道這次比較是否沿用錯誤市場時鐘。
+    參數：args 是 CLI 命名空間，需包含 csv 路徑；spec 是 strategy_spec_from_args 已建立的 ORB metadata，至少需含 orb_session_start_hour、orb_session_start_minute、orb_session_end_hour、orb_session_end_minute 與 orb_session_timezone。
+    回傳與錯誤：回傳 dict[str, str]；若 CSV 路徑不存在、不是已知樣本，或目前不是 ORB 策略，則回傳空 dict，不主動拋錯。
+    """
+    csv_path = getattr(args, "csv", None)
+    if not csv_path:
+        return {}
+    sample_name = Path(csv_path).name
+    expected = ORB_KNOWN_SAMPLE_MARKET_CLOCKS.get(sample_name)
+    if expected is None:
+        return {}
+
+    observed_start = (
+        f"{int(spec['orb_session_start_hour']):02d}:{int(spec['orb_session_start_minute']):02d}"
+    )
+    observed_end = (
+        f"{int(spec['orb_session_end_hour']):02d}:{int(spec['orb_session_end_minute']):02d}"
+    )
+    observed_timezone = spec["orb_session_timezone"]
+    aligned = (
+        observed_start == expected["session_start"]
+        and observed_end == expected["session_end"]
+        and observed_timezone == expected["timezone"]
+    )
+    return {
+        "orb_known_sample_market_clock_name": sample_name,
+        "orb_known_sample_market_clock_expected_timezone": expected["timezone"],
+        "orb_known_sample_market_clock_expected_session_start": expected[
+            "session_start"
+        ],
+        "orb_known_sample_market_clock_expected_session_end": expected["session_end"],
+        "orb_known_sample_market_clock_alignment": "aligned"
+        if aligned
+        else "mismatch",
+        "orb_known_sample_market_clock_rule": "known ORB intraday samples may declare a canonical market-clock expectation; compare orb_session_* metadata with that expectation before interpreting cross-sample results",
+    }
 
 
 def _arg_or_default(

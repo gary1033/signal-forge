@@ -3558,3 +3558,39 @@ git diff --check
 
 1. 若進入執行輪，優先做 sample-aware market-clock prompt / validator，而不是做新的 ORB filter。
 2. 若進入分析輪，優先跑 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30` 對齊版 A/B 比較。
+
+## 2026-05-21 執行輪：替已知台股樣本補 sample-aware market-clock alignment metadata
+
+這輪不改 ORB 策略語意，也不直接阻擋執行；只做一個聚焦改動：對已知的 `TWSE_2330_5M.csv`，在 ORB artifact 裡直接寫出 canonical market-clock expectation，並標示這次 CLI 設定是 `aligned` 還是 `mismatch`。
+
+### 這輪修改
+
+- `src/signal_forge/cli/strategy_options.py`
+  - 新增 `ORB_KNOWN_SAMPLE_MARKET_CLOCKS`
+  - 新增 `_orb_known_sample_market_clock_metadata(...)`
+  - 在 `strategy_spec_from_args(...)` 補進：
+    - `orb_known_sample_market_clock_name`
+    - `orb_known_sample_market_clock_expected_timezone`
+    - `orb_known_sample_market_clock_expected_session_start`
+    - `orb_known_sample_market_clock_expected_session_end`
+    - `orb_known_sample_market_clock_alignment`
+- `tests/test_cli.py`
+  - 新增 direct unit test，直接驗證 `TWSE_2330_5M.csv` 在：
+    - 既有 defaults 下會標成 `mismatch`
+    - `Asia/Taipei 09:00-13:30` 對齊後會標成 `aligned`
+
+### 為什麼先做 metadata，不直接做 hard reject
+
+- 目前 repo 已經有用美股 defaults 跑出台股比較的歷史 artifact，這些結果雖然不夠公平，但仍有研究價值，因為它們證明了「現有主線不具跨樣本穩定性」。
+- 這一輪若直接改成 hard reject，會把既有比較路徑整個切斷，反而讓 audit trail 變難讀。
+- 先把 `aligned / mismatch` 寫進 artifact，比較符合目前 autoresearch 的可追溯性原則。
+
+### 結論
+
+- repo 現在不只知道 `TWSE_2330_5M` 應該用 `Asia/Taipei 09:00-13:30`，還會在 artifact 層明示這次 run 是否真的對齊。
+- 這讓下一輪的台股 A/B 比較可以直接站在 deterministic metadata 上做，而不用再靠外部筆記補判讀。
+
+### 下一步
+
+1. 若進入分析輪，直接比較 `TWSE_2330_5M` 的 `mismatch` 與 `aligned` 版本。
+2. 若後續發現研究流程仍經常誤用 defaults，再考慮把這個 metadata 升級成更強的 validator。

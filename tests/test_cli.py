@@ -123,6 +123,72 @@ class CliTests(unittest.TestCase):
                 f"unexpected previous-day family surface leaked into ORB contract: {forbidden_prefix}",
             )
 
+    def test_strategy_spec_from_args_marks_known_twse_sample_market_clock_alignment(
+        self,
+    ) -> None:
+        """
+        用途與流程：直接驗證已知的 `TWSE_2330_5M.csv` 樣本會在 ORB strategy spec 中寫出 canonical market-clock 預期，以及目前 CLI 設定是 aligned 還是 mismatch，避免後續跨樣本比較必須靠外部研究筆記才能判讀是否沿用了錯誤市場時鐘。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        mismatched_args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "data/processed/TWSE_2330_5M.csv",
+                "--strategy",
+                "orb-volume-vwap",
+            ]
+        )
+        mismatched_strategy = build_strategy_from_args(mismatched_args)
+        mismatched_spec = strategy_spec_from_args(
+            mismatched_args, mismatched_strategy
+        )
+
+        aligned_args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "data/processed/TWSE_2330_5M.csv",
+                "--strategy",
+                "orb-volume-vwap",
+                "--orb-session-start-hour",
+                "9",
+                "--orb-session-start-minute",
+                "0",
+                "--orb-session-end-hour",
+                "13",
+                "--orb-session-end-minute",
+                "30",
+                "--orb-session-timezone",
+                "Asia/Taipei",
+            ]
+        )
+        aligned_strategy = build_strategy_from_args(aligned_args)
+        aligned_spec = strategy_spec_from_args(aligned_args, aligned_strategy)
+
+        self.assertEqual(
+            mismatched_spec["orb_known_sample_market_clock_name"], "TWSE_2330_5M.csv"
+        )
+        self.assertEqual(
+            mismatched_spec["orb_known_sample_market_clock_expected_timezone"],
+            "Asia/Taipei",
+        )
+        self.assertEqual(
+            mismatched_spec["orb_known_sample_market_clock_expected_session_start"],
+            "09:00",
+        )
+        self.assertEqual(
+            mismatched_spec["orb_known_sample_market_clock_expected_session_end"],
+            "13:30",
+        )
+        self.assertEqual(
+            mismatched_spec["orb_known_sample_market_clock_alignment"], "mismatch"
+        )
+        self.assertEqual(
+            aligned_spec["orb_known_sample_market_clock_alignment"], "aligned"
+        )
+
     def test_validate_orb_same_session_contract_rejects_previous_day_surface(self) -> None:
         """
         用途與流程：直接驗證 ORB same-session contract validator 會拒絕 previous-day family key，避免只有外層 CLI regression 發現 metadata drift，讓失敗可以更靠近 strategy spec 建構點。
