@@ -4385,3 +4385,51 @@ git diff --check
    - `aligned baseline`
    - `full bar above range`
    - `OR average volume baseline`
+
+## 2026-05-21 Code Review：台股 full bar above range 與現有 benchmark 的優先級收斂
+
+### Review 範圍
+
+- `TWSE_2330_5M aligned baseline`
+- `ORB + EMA inside-range`
+- `ORB + EMA inside-range + full bar above range`
+- `ORB + EMA inside-range + OR average volume baseline`
+- 最近幾輪新增的 benchmark / baseline hint 與 comparison 報表
+
+### Findings
+
+1. **`full bar above range` 已經超過「只是另一個 compare-only 候選」的門檻。**
+   - 它不只在 hold 1 翻成 `PASS`，還讓 hold 5 / 10 明顯優於目前 baseline 與 `OR average volume baseline`。
+   - 這代表它的角色已經不該再和 `OR retest` 放在同一個層級討論。
+
+2. **目前 repo 的台股 benchmark 提示仍偏描述性，還沒有把新優先級寫進 machine-readable contract。**
+   - `TWSE Refinement Benchmark` 區塊目前仍把 `OR average volume baseline` 當成主要 benchmark。
+   - 但最新比較已顯示，若後續還沿用舊 hint，會低估 `full bar above range` 的研究優先級。
+
+3. **`OR average volume baseline` 的角色需要降級成次層 benchmark，而不是主 benchmark。**
+   - 它仍有資訊價值，因為 hold 1 的品質改善與 trade-compression tradeoff 很清楚。
+   - 但在 `full bar above range` 已出現後，它更適合當成「量能壓縮型對照組」，而不是台股主 benchmark。
+
+4. **`OR retest` 的定位現在更清楚了。**
+   - `VWAP slope`：zero-increment
+   - `OR retest`：non-zero-increment，但仍是 compare-only style
+   - `OR average volume baseline`：次層 trade-compression benchmark
+   - `full bar above range`：目前最強的台股結構 refinement 候選
+
+### 結論
+
+- 這輪 review 的主要結論是：**`full bar above range` 應該升成新的台股 refinement benchmark 候選第一順位**。
+- 但因為這牽涉 benchmark hint / reporting 文案與後續比較流程，這輪先只記錄，不在 review 輪順手改 artifact contract。
+- 下一輪若進入執行，最合理的是更新 comparison / reporting hint，讓台股 refinement 的解讀順序變成：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `OR average volume baseline`
+  4. `OR retest`
+
+### 下一步
+
+1. 若進入執行輪，優先更新台股 benchmark hint，把 `full bar above range` 提升成主要 benchmark。
+2. 若進入研究或分析輪，新的台股 refinement 應直接同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `OR average volume baseline`
