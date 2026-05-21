@@ -3486,3 +3486,34 @@ git diff --check
 1. 若要再用 `TWSE_2330_5M` 做 ORB 比較，先把 `orb_session_timezone`、`session start/end` 對齊 `Asia/Taipei 09:00-13:30`。
 2. 在 market-clock 沒對齊前，不要用這份失敗結果直接推導新的 previous-day family filter。
 3. `prior_day_close_regular_session` 仍維持 contract-only 狀態；先不要把它擴成 gap-bias runtime filter。
+
+## 2026-05-21 Review 輪：整理 TWSE 2330 market-clock 對齊前的剩餘 contract 缺口
+
+這輪是 review-only，不改 ORB 策略語意；只把 `TWSE_2330_5M` 若要進入下一輪正式比較前，還缺哪些 contract 與測試寫清楚。
+
+### Findings
+
+1. **目前只有「可配置」的 market-clock，還沒有「樣本與 market-clock 必須對齊」的正面 validator。**
+   - `tests/test_strategy_factory.py` 與 `tests/test_cli.py` 已經證明 ORB 可以吃 `Asia/Taipei 09:00-13:30`。
+   - 但目前系統還沒有任何 guard 會在 `TWSE_2330_5M` 這類台股樣本被拿去跑 `America/New_York 09:30-16:00` defaults 時直接提醒或拒絕。
+   - 也就是說，repo 現在有 capability，但還沒有 enforcement。
+
+2. **`TWSE_2330_5M` 已正式收編成第二份 ORB-capable intraday 樣本，但 sample identity 與 market-clock identity 仍是分離的。**
+   - 樣本來源、interval、timezone 已寫在 manifest 與研究筆記。
+   - 但執行點還沒有一個簡單 contract 可以表達：「這份樣本的 canonical ORB regular session 應該是 `Asia/Taipei 09:00-13:30`」。
+   - 因此目前最容易發生的誤讀，不是資料缺失，而是研究者忘了帶對 market-clock 參數。
+
+3. **cross-sample 結論已經足夠，下一步不該再花輪次重複證明 `EMA inside-range` 在 2330 上失敗。**
+   - 我們已經知道它在現有 defaults 下跨樣本不穩定。
+   - 現在真正缺的是「對齊後是否仍然不穩定」。
+   - 所以下一輪若是執行或分析，應直接把焦點放在 `Asia/Taipei 09:00-13:30` 對齊後的 rerun，而不是再做更多 wording、helper-neutrality 或同 defaults 切片。
+
+### 結論
+
+- 目前最關鍵的技術債不是 filter family，而是 **sample-aware market-clock contract 還沒被系統化**。
+- 在這個缺口補起來前，不應把 `TWSE_2330_5M` 的失敗結果拿去推導新的 ORB filter 或 previous-day family。
+
+### 下一步
+
+1. 若進入執行輪，優先做「sample-aware market-clock 提示或 validator」，而不是加新 filter。
+2. 若進入分析輪，直接重跑 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30` 版本，並和目前 defaults 結果做 A/B 對照。
