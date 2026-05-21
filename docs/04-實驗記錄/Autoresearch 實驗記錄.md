@@ -1588,3 +1588,52 @@ git diff --check
 - keep
 - 這輪沒有改變 ORB 的交易語意、artifact schema 或 Phase 報表內容；它只整理 reporting 的程式邊界。
 - 下一輪較合理的方向是進入 **第 3 輪分析比較**，直接比較「保留 / 移除 `VWAP slope`」後的 artifact 與指標差異，確認它是否真的值得留在主線 surface。
+
+## 2026-05-21 分析輪：`VWAP slope` 在 `EMA inside-range` 主線上的增量
+
+這輪直接回答上一輪留下的問題：如果 `EMA inside-range` 已經啟用，`VWAP slope` 還有沒有額外資訊價值。這次沿用既有 `MSFT 5m demo` 資料，另外重跑兩組配置：
+
+1. `EMA inside-range`
+2. `EMA inside-range + VWAP slope`
+
+產出報表放在：
+
+- `reports\generated\msft-orb-vslope-on-ema-box-20260521.md`
+- `reports\generated\msft-orb-vslope-on-ema-box-20260521.json`
+
+### 比較摘要
+
+| Config | Decision | PF | Trades | Win rate | Avg net PnL | Max DD | Overlap | Blocked | Accepted | Hold |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ema-inside-range | PASS | 4.452 | 13 | 38.46% | 16.27 | -0.29% | 0 | 1754 | 13 | 873 |
+| ema-inside-range + vwap-slope | PASS | 4.546 | 13 | 38.46% | 16.37 | -0.29% | 0 | 1762 | 13 | 865 |
+
+### attribution 解讀
+
+- `VWAP slope` 在 `EMA inside-range` 主線上**不是完全零資訊**：
+  - 多了 `2` 根 `breakout_vwap_slope_blocked`
+  - `blocked_signal_count` 從 `1754` 增加到 `1762`
+  - `hold_count` 從 `873` 降到 `865`
+- 但它的增量仍然**很小**：
+  - 交易數沒有變
+  - 勝率沒有變
+  - 最大回撤沒有變
+  - PF 只從 `4.452` 小幅升到 `4.546`
+  - 平均淨損益只從 `16.27` 小幅升到 `16.37`
+
+### 研究結論
+
+- `VWAP slope` 在 `EMA inside-range` 主線上有**微弱的增量資訊**，所以不能再說它是完全冗餘。
+- 但從影響幅度來看，它仍然更適合被視為：
+  - **次要 refinement**
+  - **可比較分支**
+  - 而不是 ORB 主線的核心結構條件
+- 因此目前排序應該是：
+  1. `EMA inside-range` 保持主線高優先級
+  2. `VWAP slope` 保持可選，但不升回核心 surface
+
+### 下一步
+
+1. 下一輪若回到 code review，應檢查 `VWAP slope` 是否值得繼續佔用目前主線 CLI / strategy name surface。
+2. 若下一輪回到執行輪，較合理的改動不是再擴 `VWAP slope`，而是讓 compare / reporting 更容易直接看出「微弱增量但非零」這種情況。
+3. 若之後換第二份 intraday 樣本，優先驗證這個微弱增量是否可重現；若不可重現，`VWAP slope` 更適合降到實驗分支。
