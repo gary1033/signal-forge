@@ -5457,3 +5457,44 @@ phase hold 1 attribution 也維持原狀：
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
 3. review 與 reporting 不應把 contract-only 中性結果寫成策略有效性證據。
+
+## 2026-05-21 Review：`one-and-done` 近期 contract / reporting / 筆記邊界
+
+### Findings
+
+1. **Severity: medium — `one-and-done` metadata 已接近可啟用狀態，但 runtime state 仍只靠語意描述，不靠明確欄位。**
+   - 目前 `strategy_spec` 已經固定輸出：
+     - `orb_one_and_done_mode`
+     - `orb_one_and_done_scope`
+     - `orb_one_and_done_guard_scope`
+     - `orb_one_and_done_position_effect`
+   - 這讓 contract 已經相當完整，但 downstream 若只看 key 名稱，很容易把它誤讀成「已經生效的交易控制」，而不是「尚未接進 runtime 的 research contract」。
+   - **受影響檔案：** `src/signal_forge/cli/strategy_options.py`、`tests/test_cli.py`
+   - **建議修法：** 等真正進入語意實作輪時，不要直接偷換這批 metadata 的解讀；要嘛維持 `research_candidate_only` 並另外補 runtime-enabled 狀態，要嘛新增一個明確的 execution-state 欄位，避免 contract-only 與 semantics-enabled 被混用。
+
+2. **Severity: medium — 台股 reporting hint 目前已能說清 benchmark 與 stacked profile，但還沒有 session-family 的落點。**
+   - 這不是 bug，因為 `one-and-done` 現在本來就不該升成 benchmark。
+   - 但它意味著：等未來真的啟用 `one-and-done` entry-count-control 時，現有 exact-text regression 不會主動提醒這條 session family 應該被讀成 compare-only、還是新的 active profile。
+   - **受影響檔案：** `src/signal_forge/reporting/_legacy.py`、`tests/test_reporting.py`
+   - **建議修法：** 現在先不要擴 hint；等 `one-and-done` 真正接進 runtime，再補一個窄範圍 exact-text regression，避免現在為 contract-only 候選長出過早的 reporting schema。
+
+3. **Severity: medium — `ORB + Volume + VWAP` 策略筆記已混入大量實驗時序，和 repo 明訂的筆記分工不一致。**
+   - `AGENTS.md` 已明確要求策略筆記只保留術語、假設、進出場條件、主要參數、圖解、風險與下一步；`策略狀態`、`目前結果`、`變更紀錄` 應放在實驗紀錄或回測報告。
+   - 但目前 `docs/策略筆記/ORB + Volume + VWAP.md` 已累積大量 benchmark 排序、輪次結論與 session-family 時序，和 `Autoresearch 實驗記錄` 形成重複記錄來源。
+   - **受影響檔案：** `docs/策略筆記/ORB + Volume + VWAP.md`
+   - **建議修法：** 下一個適合的文件輪，應把策略筆記收斂回「策略定義與風險」，把輪次比較、benchmark 排序、contract-ready / compare-only 這些時序性內容留在 `Autoresearch 實驗記錄`。
+
+### 結論
+
+- `one-and-done` 現在仍應固定定性為 **contract-ready but semantics-not-enabled**。
+- 在真正接進 entry-count-control 前，不應為它提前長出 benchmark 等級的 reporting schema。
+- 目前較明顯的文件債，不在程式，而在 `ORB + Volume + VWAP` 策略筆記已逐漸承擔實驗紀錄職責，和既定分工開始重疊。
+
+### 下一步
+
+1. 若進入執行輪，優先做真正的 `one-and-done` entry-count-control 語意，不再停留在 metadata。
+2. 若進入文件輪，優先把 `ORB + Volume + VWAP` 策略筆記去時序化，讓它回到策略筆記框架。
+3. 在那之前，台股 canonical comparison anchors 維持：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
