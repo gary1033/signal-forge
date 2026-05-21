@@ -2511,3 +2511,83 @@ git diff --check
 
 1. 若後續還要補 ORB reporting readability，優先考慮更小的 phase 解讀提示，而不是再擴平面 schema。
 2. `EMA trend` 是否需要對稱 contract，仍留在研究題，不在這輪一併處理。
+
+## 2026-05-21 分析輪：`EMA trend` 與 `EMA inside-range` 同屬 EMA family，但資訊價值明顯不同
+
+這輪把分析配額從 `VWAP slope wording` 移開，直接用同一份 `MSFT 5m demo` 比較三組 ORB 變體：
+
+1. `EMA trend only`
+2. `EMA inside-range only`
+3. `EMA trend + EMA inside-range`
+
+目標不是再爭論 wording，而是回答一個更實際的問題：**`EMA trend` 是否真的值得被視為和 `EMA inside-range` 同層、甚至進一步擴成對稱 contract。**
+
+### 比較設定
+
+- 資料來源：`data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+- 新產物：
+  - `reports\generated\msft-orb-ema-family-comparison-20260521.md`
+  - `reports\generated\msft-orb-ema-family-comparison-20260521.json`
+
+### 結果摘要
+
+- `EMA trend only`
+  - Decision：`FAIL`
+  - PF：`0.264`
+  - Trades：`14`
+  - Win rate：`50.00%`
+  - Avg net PnL：`-26.20`
+  - Max DD：`-4.626%`
+  - blocked：`1483`
+  - accepted：`14`
+  - hold：`1143`
+  - 主要 blocked reasons：
+    - `below_or_high(1403)`
+    - `breakout_volume_blocked(73)`
+    - `breakout_below_ema(7)`
+
+- `EMA inside-range only`
+  - Decision：`PASS`
+  - PF：`4.452`
+  - Trades：`13`
+  - Win rate：`38.46%`
+  - Avg net PnL：`16.27`
+  - Max DD：`-0.290%`
+  - blocked：`1754`
+  - accepted：`13`
+  - hold：`873`
+  - 主要 blocked reasons：
+    - `below_or_high(1480)`
+    - `breakout_volume_blocked(148)`
+    - `ema_inside_opening_range(126)`
+
+- `EMA trend + EMA inside-range`
+  - Decision：`PASS`
+  - PF：`1.494`
+  - Trades：`13`
+  - Win rate：`15.38%`
+  - Avg net PnL：`6.08`
+  - Max DD：`-1.165%`
+  - blocked：`1626`
+  - accepted：`13`
+  - hold：`1001`
+  - 主要 blocked reasons：
+    - `below_or_high(1480)`
+    - `ema_inside_opening_range(69)`
+    - `breakout_volume_blocked(62)`
+    - `breakout_below_ema(15)`
+
+### 分析結論
+
+- `EMA inside-range` 仍是這份樣本上最強的 ORB 結構 gate。
+- `EMA trend` 單獨使用時不只沒有帶來主線價值，反而仍是明確 `FAIL`。
+- 更重要的是，把 `EMA trend` 疊到 `EMA inside-range` 上後，**PF 從 `4.452` 掉到 `1.494`**，最大回撤也從 `-0.290%` 變成 `-1.165%`；這代表它在這份資料上不是單純的弱增量，而是會破壞 `EMA inside-range` 已經篩出的強突破集合。
+- 因此目前較合理的工程判斷是：
+  1. 不要為了表面對稱而擴 `EMA trend` contract。
+  2. `EMA inside-range` 繼續保留為 ORB 的高優先級結構 gate。
+  3. 後續若還要投入分析輪，應轉向新的 filter family 或更廣樣本，而不是繼續在 `EMA trend` 的 contract 對稱性上消耗配額。
+
+### 下一步
+
+1. `EMA trend` 暫時不應補成和 `VWAP slope` 對稱的 tier/role surface。
+2. 若要再做 ORB 比較，優先考慮新的 filter family 或第二份 intraday 樣本，而不是繼續疊加 `EMA trend`。
