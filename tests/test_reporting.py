@@ -949,6 +949,104 @@ class ReportingTests(unittest.TestCase):
             ),
         )
 
+    def test_entry_edge_markdown_promotes_known_sample_baseline_hint(self) -> None:
+        """
+        用途與流程：驗證 entry-edge markdown 在 strategy spec 帶有已知樣本 market-clock metadata 時，會在 Strategy Spec 之前補出更顯眼的 baseline 提示，避免台股 canonical session 只能從平面欄位反推。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = EntryEdgeEvaluator(
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0)
+        ).run(OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_entry_edge_outputs(
+                result,
+                temp_dir,
+                run_name="entry-edge-known-sample-baseline",
+                data_validation=validate_bars(bars),
+                strategy_spec={
+                    "entry_side": "long_only",
+                    "orb_known_sample_market_clock_alignment": "aligned",
+                    "orb_known_sample_market_clock_expected_timezone": "Asia/Taipei",
+                    "orb_known_sample_market_clock_expected_session_start": "09:00",
+                    "orb_known_sample_market_clock_expected_session_end": "13:30",
+                    "orb_known_sample_market_clock_rule": "Use the aligned Asia/Taipei 09:00-13:30 baseline when reading TWSE_2330_5M conclusions.",
+                    "orb_known_sample_market_clock_baseline_note": "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
+                },
+            )
+            markdown_text = paths.markdown.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "\n".join(
+                [
+                    "## Known Sample Baseline",
+                    "",
+                    "- TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
+                    "- Current alignment: aligned",
+                    "- Expected market clock: Asia/Taipei 09:00-13:30",
+                    "- Interpretation: Use the aligned Asia/Taipei 09:00-13:30 baseline when reading TWSE_2330_5M conclusions.",
+                ]
+            ),
+            markdown_text,
+        )
+
+    def test_entry_edge_hold_comparison_markdown_promotes_known_sample_baseline_hint(
+        self,
+    ) -> None:
+        """
+        用途與流程：驗證 entry-edge hold comparison markdown 在 strategy spec 帶有已知樣本 market-clock metadata 時，也會補出相同的 baseline 提示，確保 comparison artifact 與單次報表的可讀性邊界一致。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 12.5, 9.5, 12, 100),
+            Bar("2026-01-03", 12, 15.5, 11.5, 15, 100),
+        ]
+        comparison = run_entry_edge_hold_comparison(
+            OneTradeStrategy(),
+            bars,
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0),
+            [2, 1],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_entry_edge_comparison_outputs(
+                comparison,
+                temp_dir,
+                run_name="entry-edge-comparison-known-sample-baseline",
+                data_validation=validate_bars(bars),
+                strategy_spec={
+                    "entry_side": "long_only",
+                    "orb_known_sample_market_clock_alignment": "mismatch",
+                    "orb_known_sample_market_clock_expected_timezone": "Asia/Taipei",
+                    "orb_known_sample_market_clock_expected_session_start": "09:00",
+                    "orb_known_sample_market_clock_expected_session_end": "13:30",
+                    "orb_known_sample_market_clock_rule": "Prefer the aligned Asia/Taipei 09:00-13:30 baseline before treating TWSE_2330_5M mismatch results as canonical.",
+                    "orb_known_sample_market_clock_baseline_note": "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is mismatch.",
+                },
+            )
+            markdown_text = paths.markdown.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "\n".join(
+                [
+                    "## Known Sample Baseline",
+                    "",
+                    "- TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is mismatch.",
+                    "- Current alignment: mismatch",
+                    "- Expected market clock: Asia/Taipei 09:00-13:30",
+                    "- Interpretation: Prefer the aligned Asia/Taipei 09:00-13:30 baseline before treating TWSE_2330_5M mismatch results as canonical.",
+                ]
+            ),
+            markdown_text,
+        )
+
     def test_entry_edge_hold_comparison_outputs_have_stable_contract(self) -> None:
         """
         用途與流程：驗證 entry edge hold comparison outputs have stable contract 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。

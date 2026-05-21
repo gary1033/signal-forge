@@ -208,6 +208,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 因此目前更合理的做法是：把 `Asia/Taipei 09:00-13:30` 視為台股 ORB 的 canonical 基線，之後若還要比較 `EMA inside-range` 或其他 refinement，都應建立在這個 aligned 版本之上；不要再拿 `mismatch` 版結果去推導新的 previous-day family。
 - 從公開 ORB 腳本的 UI 慣例來看，跨市場版本通常不只允許設定 session / timezone，還會把 **active preset / active market-clock** 直接顯示給使用者看。這表示對 SignalForge 而言，下一個較合理的小改動不是再堆 filter，而是讓 artifact / reporting 更明白地提示：`TWSE_2330_5M` 的 canonical baseline 是 `Asia/Taipei 09:00-13:30 aligned`。
 - repo 現在已把這個提示往前推進到 artifact：對已知的 `TWSE_2330_5M.csv`，`strategy_spec` 會固定補一行 `orb_known_sample_market_clock_baseline_note`，直接說明台股 ORB 的 canonical baseline 與本次 run 的 aligned / mismatch 狀態。
+- 目前這個 baseline 提示又再往前推進一層：只要 entry-edge 報表帶有這組 known-sample metadata，markdown 會在 `Strategy Spec (Distilled)` 之前先輸出 `## Known Sample Baseline` 區塊，直接列出 canonical baseline note、當前 aligned / mismatch 狀態，以及預期的 `Asia/Taipei 09:00-13:30` market clock。這樣台股樣本的主結論不必再靠後段 spec key 才能讀懂。
 
 ## 台股 aligned baseline 上的次要 refinement 結論
 

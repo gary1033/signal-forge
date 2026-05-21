@@ -3904,3 +3904,40 @@ git diff --check
 
 1. 若進入執行輪，應優先補一個 **更顯眼但不阻斷流程** 的 aligned baseline 提示。
 2. 若未來台股 ORB artifact 仍反覆被誤讀，再考慮把這個提示升級成更強的 validator 或 warning contract。
+
+## 2026-05-21 執行輪：entry-edge markdown 補上 Known Sample Baseline 提示區塊
+
+這輪不改 ORB trade logic，也不把 `mismatch` 升級成 hard reject；只做一個更靠近報表閱讀面的 contract 補強：**當 `strategy_spec` 帶有已知樣本的 market-clock metadata 時，entry-edge 單次報表與 hold comparison 報表都會在 `Strategy Spec (Distilled)` 之前先輸出 `## Known Sample Baseline` 區塊。**
+
+### 本輪修改
+
+1. `src/signal_forge/reporting/_legacy.py`
+   - 新增 `_build_known_sample_baseline_lines(...)`
+   - 在 `_markdown_report(...)` 與 `_entry_edge_comparison_markdown(...)` 內插入共用 baseline 提示
+   - 提示內容固定優先顯示：
+     - `orb_known_sample_market_clock_baseline_note`
+     - `Current alignment`
+     - `Expected market clock`
+     - `Interpretation`
+
+2. `tests/test_reporting.py`
+   - 新增單次 entry-edge 報表的 known-sample baseline regression
+   - 新增 hold comparison 報表的 known-sample baseline regression
+   - 既有 exact-text stable contract 測試保持不變，因為 baseline 區塊只在 metadata 存在時才出現
+
+### 驗證結論
+
+- 這次改動只提升 artifact 可讀性，不改變策略語意或回測結果。
+- `test_reporting.py` 全部通過，表示：
+  - 一般樣本不會被強制插入新區塊
+  - `TWSE_2330_5M` 這類已知樣本則能在報表前段直接看見 canonical baseline 提示
+
+### 結論
+
+- 台股 baseline 提示現在不只存在於 `strategy_spec` 的平面 key，也會提升成 entry-edge markdown 的顯式區塊。
+- 這讓後續閱讀 `TWSE_2330_5M` 報表時，不必先往下翻到所有 spec key 才知道本次 run 是否對齊 canonical `Asia/Taipei 09:00-13:30`。
+
+### 下一步
+
+1. 若進入分析輪，直接站在 `TWSE_2330_5M aligned` baseline 上比較下一個台股 refinement。
+2. 若進入 review 輪，優先檢查是否還需要更強的 flow hint；不要再重跑同題 market-clock 或 `VWAP slope` 驗證。

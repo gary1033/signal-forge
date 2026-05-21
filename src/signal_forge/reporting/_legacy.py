@@ -1864,6 +1864,7 @@ def _markdown_report(
     else:
         lines.append("- Data validation was not provided.")
 
+    lines.extend(_build_known_sample_baseline_lines(strategy_spec))
     lines.extend(["", "## Strategy Spec (Distilled)", ""])
     if strategy_spec:
         for key, value in strategy_spec.items():
@@ -1963,6 +1964,7 @@ def _entry_edge_comparison_markdown(
     else:
         lines.append("- Data validation was not provided.")
 
+    lines.extend(_build_known_sample_baseline_lines(strategy_spec))
     lines.extend(["", "## Strategy Spec (Distilled)", ""])
     if strategy_spec:
         for key, value in strategy_spec.items():
@@ -1972,6 +1974,43 @@ def _entry_edge_comparison_markdown(
 
     lines.append("")
     return "\n".join(lines)
+
+
+def _build_known_sample_baseline_lines(
+    strategy_spec: dict[str, str] | None,
+) -> list[str]:
+    """
+    用途與流程：根據 strategy spec 中的已知樣本 market-clock metadata，建立 entry-edge 類報表的 baseline 提示區塊，讓讀者在摘要層就能看見 canonical sample 的預期時區與 session，避免只能從後面的平面 spec key 反推 baseline 對齊狀態。
+    參數：strategy_spec（dict[str, str] | None）為策略 artifact 的 distilled metadata；可為 None。若包含 orb_known_sample_market_clock_* 欄位，函式會組出對應提示文字。
+    回傳與錯誤：回傳 list[str]，可直接插入 markdown lines；若 strategy_spec 缺少 baseline note，回傳空 list，不主動拋出例外。
+    """
+    if not strategy_spec:
+        return []
+    baseline_note = strategy_spec.get("orb_known_sample_market_clock_baseline_note")
+    if not baseline_note:
+        return []
+
+    lines = ["", "## Known Sample Baseline", "", f"- {baseline_note}"]
+    alignment = strategy_spec.get("orb_known_sample_market_clock_alignment")
+    if alignment:
+        lines.append(f"- Current alignment: {alignment}")
+
+    expected_timezone = strategy_spec.get(
+        "orb_known_sample_market_clock_expected_timezone"
+    )
+    expected_start = strategy_spec.get(
+        "orb_known_sample_market_clock_expected_session_start"
+    )
+    expected_end = strategy_spec.get("orb_known_sample_market_clock_expected_session_end")
+    if expected_timezone and expected_start and expected_end:
+        lines.append(
+            f"- Expected market clock: {expected_timezone} {expected_start}-{expected_end}"
+        )
+
+    rule = strategy_spec.get("orb_known_sample_market_clock_rule")
+    if rule:
+        lines.append(f"- Interpretation: {rule}")
+    return lines
 
 
 def _format_profit_factor(result: EntryEdgeResult) -> str:
