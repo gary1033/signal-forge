@@ -4433,3 +4433,52 @@ git diff --check
    - `aligned baseline`
    - `full bar above range`
    - `OR average volume baseline`
+
+## 2026-05-21 研究：公開 ORB 腳本如何定位 full bar / close-confirmation breakout
+
+### 研究問題
+
+在 `TWSE_2330_5M aligned` 上，`full bar above range` 已經是目前最強的台股 ORB refinement 候選。這輪要回答的不是它在本地回測有沒有 edge，而是另一個更根本的定位問題：
+
+- 公開 ORB 腳本通常把這種 **full bar / close-confirmation breakout** 放在哪個層級？
+- 它比較像：
+  - 和 volume baseline 同類的附加 filter
+  - 還是更接近 breakout qualification / confirmation mode？
+
+### 外部依據
+
+- TradingView `[CT] ORB Suite` 明確把 breakout qualification 做成可切換規則，包含 `body cross`、`close cross`、以及 `close above or below the range boundary`，重點是用更嚴格的 breakout confirmation 取代單純 touch logic。
+- TradingView `ORB 15min: Break & Confirm` 則要求：先有 breakout，再由另一根 K 棒 **收在 breakout candle 高點上方** 才算確認，並且可再疊加 VWAP / EMA。
+- TradingView 官方 `Repainting` 文件明講：若要避免 repaint，就必須接受 **只用 confirmed values** 的延遲成本。
+- TradingView 官方 `Sessions` 文件也支持把 session / timezone 當成顯式 contract，讓 breakout qualification 建立在先定義好的 market-clock 上，而不是先跳去 higher-timeframe 或 previous-day data。
+
+### 研究結論
+
+1. **公開 ORB 腳本通常把 full bar / close-confirmation 視為 breakout qualification 或 confirmation mode。**
+   - 它的核心工作是提高 breakout 本身的成立門檻。
+   - 它不是單純以 volume 壓縮交易數的替代方案。
+
+2. **這和目前台股樣本的表現是對齊的。**
+   - `full bar above range` 新增的關鍵 blocked reason 是 `breakout_bar_reentered_range`，表示它主要在處理「突破 K 棒又掉回 OR 盒子內」的弱 follow-through。
+   - 這種行為邏輯比 `OR average volume baseline` 更接近結構確認，而不是量能 compression。
+
+3. **因此它現在升成台股 benchmark 第一順位，是有外部邏輯支撐的。**
+   - `OR average volume baseline` 仍有資訊價值，但較像次層 trade-compression benchmark。
+   - `OR retest` 則更像保守的 compare-only entry style。
+
+### 對目前主線的影響
+
+- 台股 ORB 的較合理排序目前可固定為：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `OR average volume baseline`
+  4. `OR retest`
+- 下一步若要補工程提示，應優先補 **benchmark / mode hint**，幫使用者看懂 `full bar above range` 是高優先級 breakout qualification，而不是再回頭重跑 volume / retest 類舊題。
+
+### 下一步
+
+1. 若進入執行輪，可考慮把台股 comparison / reporting hint 改成以 `full bar above range` 為主要 benchmark。
+2. 若進入後續分析輪，新的台股 refinement 應同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `OR average volume baseline`

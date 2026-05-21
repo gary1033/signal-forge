@@ -379,3 +379,31 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 4. `OR retest` 作為 compare-only entry style 候選
 
 這個排序仍然不表示 `full bar above range` 已經足夠升成所有台股 ORB 的正式主線；它只是目前在既有同 session refinement 裡，給出最好 hold 1 結果、且對較長 hold 也沒有明顯崩掉的候選。
+
+## 公開 ORB 腳本對 full bar / close-confirmation 的常見定位
+
+從公開 ORB 腳本的設計來看，`full bar above range` 這類條件更常被放在：
+
+- breakout qualification
+- 或 breakout confirmation mode
+
+而不是單純的 volume 替代 filter。
+
+這類腳本常見的共同點是：
+
+1. 不再接受單純 touch OR high / low 就算突破。
+2. 改要求 `body cross`、`close cross`、或整根 K 棒明確站在 breakout 邊界外。
+3. 若採更嚴格確認，通常是為了減少假突破，而不是單純把交易數壓少。
+
+這和 `TWSE_2330_5M aligned` 的觀察一致：
+
+- `full bar above range` 的關鍵 blocked reason 是 `breakout_bar_reentered_range`
+- 它主要在過濾突破後又掉回 OR 盒子內的弱 follow-through
+- 因此它比較像結構確認，不像 `OR average volume baseline` 那樣更偏 trade compression
+
+所以目前較合理的台股 ORB 解讀順序應是：
+
+1. `aligned baseline`
+2. `full bar above range` 作為高優先級 breakout qualification / benchmark
+3. `OR average volume baseline` 作為次層 trade-compression benchmark
+4. `OR retest` 作為 compare-only entry style
