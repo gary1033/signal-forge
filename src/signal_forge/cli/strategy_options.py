@@ -272,7 +272,7 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         if getattr(args, "orb_vwap_slope_confirmation", False)
         else "disabled",
         "orb_vwap_slope_tier": "secondary_refinement",
-        "orb_vwap_slope_rule": "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+        "orb_vwap_slope_rule": "this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         "orb_ema_trend_confirmation": "enabled"
         if getattr(args, "orb_ema_trend_confirmation", False)
         else "disabled",

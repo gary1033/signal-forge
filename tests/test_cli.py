@@ -76,13 +76,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(disabled_spec["orb_vwap_slope_tier"], "secondary_refinement")
         self.assertEqual(
             disabled_spec["orb_vwap_slope_rule"],
-            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+            "this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         )
         self.assertEqual(enabled_spec["orb_vwap_slope_confirmation"], "enabled")
         self.assertEqual(enabled_spec["orb_vwap_slope_tier"], "secondary_refinement")
         self.assertEqual(
             enabled_spec["orb_vwap_slope_rule"],
-            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+            "this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         )
 
     def test_phase_command_accepts_minimal_strategy_invocation(self) -> None:
@@ -555,7 +555,7 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(
             summary["strategy_spec"]["orb_vwap_slope_rule"],
-            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+            "this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         )
 
     def test_entry_edge_command_keeps_orb_vwap_slope_tier_when_disabled(self) -> None:
@@ -598,7 +598,7 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(
             summary["strategy_spec"]["orb_vwap_slope_rule"],
-            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+            "this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         )
 
     def test_entry_edge_command_accepts_orb_ema_trend_confirmation(self) -> None:

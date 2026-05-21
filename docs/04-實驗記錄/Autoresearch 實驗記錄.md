@@ -2248,3 +2248,32 @@ git diff --check
 
 1. 下一輪若進入執行輪，優先把 `orb_vwap_slope_rule` 改成中性靜態描述，先不要擴 schema。
 2. wording cleanup 完成後，再決定 `orb_ema_trend_rule` 是否要用同樣模式對齊。
+
+## 2026-05-21 執行輪：將 `orb_vwap_slope_rule` 改成中性靜態描述
+
+這輪不改 ORB 策略語意，也不擴 artifact schema；只做一個聚焦修補：把 `orb_vwap_slope_rule` 從 `when enabled, ...` 改成靜態規則描述，讓 rule 與 state 分工更清楚。
+
+### 修改內容
+
+- `src\signal_forge\cli\strategy_options.py`
+  - `orb_vwap_slope_rule` 由：
+    - `when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session`
+  - 改為：
+    - `this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session`
+- `tests\test_cli.py`
+  - 同步更新 `strategy_spec_from_args(...)` 與 CLI artifact regression 的 4 個 exact-text assertion。
+
+### 這輪解決的風險
+
+- 先前 disabled 路徑會同時出現：
+  - `orb_vwap_slope_confirmation=disabled`
+  - `orb_vwap_slope_rule=when enabled, ...`
+- 這在機器層面沒有問題，但在人類閱讀 phase / entry-edge artifact 時，容易誤讀成規則仍在生效。
+- 現在 state 與 rule 已明確分工：
+  - state：`orb_vwap_slope_confirmation`
+  - rule：`orb_vwap_slope_rule`
+
+### 下一步
+
+1. 下一輪若進入分析輪，可確認 wording cleanup 後，artifact 的 disabled/enabled 可讀性是否已足夠，不需要再擴新欄位。
+2. 若之後仍要對齊其他 rule wording，優先看 `orb_ema_trend_rule` 是否也值得改成同樣的靜態描述風格。
