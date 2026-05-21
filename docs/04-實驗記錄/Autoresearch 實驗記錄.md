@@ -5054,3 +5054,46 @@ phase hold 1 blocked reasons：
 
 1. 若進入分析輪，再用 `TWSE_2330_5M aligned` 比較 signal window 候選和目前三層 canonical anchors。
 2. 若進入 review 輪，優先檢查這個 contract 是否已足夠穩定，不需要再把它擴成更重的 schema。
+
+## 2026-05-21 Review：台股 signal window 60 的位階與 session refinement 拆分
+
+### Findings
+
+1. **Severity: medium — `signal window 60` 應固定為 over-compressive session refinement，而不是下一個主 benchmark。**
+   - 它不是零增量條件，因為確實新增了 `outside_signal_window(500)` 這個新的 session blocked family。
+   - 但它對目前最強 stacked profile 的作用不是「保留較少但更好的交易」，而是直接把 `8` 筆交易壓成 `0`。
+   - **受影響檔案：** `docs/04-實驗記錄/Autoresearch 實驗記錄.md`、`docs/策略筆記/ORB + Volume + VWAP.md`
+   - **建議修法：** 後續不要再把 `signal window 60` 和 `full bar above range` / `full bar + OR average volume baseline` 放在同一級 benchmark 候選裡。
+
+2. **Severity: medium — session 類 refinement 現在需要拆成兩條線，而不是繼續混成同一題。**
+   - 目前至少要拆開：
+     - `signal window`：研究 cutoff 對有效 breakout 的殺傷程度
+     - `one-and-done`：研究同 session 只取第一筆 breakout 是否能保留品質
+   - 若不拆開，後續很容易把 `signal window 60` 的失敗，錯誤投射成整個 session family 都沒有價值。
+   - **受影響檔案：** `docs/04-實驗記錄/Autoresearch 實驗記錄.md`、後續比較報表
+   - **建議修法：** 下一輪若回到研究或執行，優先定義 `one-and-done` 的 same-session、confirmed-bar-only contract；不要沿用 60 分鐘 cutoff 直接代表整個 session family。
+
+3. **Severity: low — 目前 reporting hint 不需要立刻再擴，但比較敘事要固定避開 `signal window 60`。**
+   - 現有台股 benchmark / stacked profile hint 的主責任是解釋：
+     - `aligned baseline`
+     - `full bar above range`
+     - `full bar above range + OR average volume baseline`
+   - `signal window 60` 目前還不值得升成報表中的正式 benchmark 層。
+   - **受影響檔案：** `src/signal_forge/reporting/_legacy.py`、`tests/test_reporting.py`
+   - **建議修法：** 暫時不要再為 `signal window 60` 擴 hint；先等 `one-and-done` 有比較結果後，再決定 session family 是否需要獨立提示層。
+
+### 結論
+
+- `signal window 60` 現在可明確定性為 **over-compressive session refinement**。
+- 台股後續若還要研究 session family，應先分流成：
+  1. `signal window`
+  2. `one-and-done`
+- 在新的證據出來前，台股 canonical comparison anchors 仍維持：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+
+### 下一步
+
+1. 若進入研究輪，優先整理 `one-and-done` 的外部模式與最小 contract。
+2. 若進入執行輪，優先把 `one-and-done` 收斂成 machine-readable contract，而不是再調整 `signal window 60` 數值。
