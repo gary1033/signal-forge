@@ -4915,3 +4915,50 @@ phase hold 1 blocked reasons：
 
 1. 若進入執行輪，優先檢查 reporting / comparison hint 是否已完整反映這三層基準。
 2. 若進入分析輪，新的台股 refinement 不再和 `breakout body strength 0.60` 爭 benchmark 位階，而是直接對照上述三層 canonical anchors。
+
+## 2026-05-21 研究：台股下一個較值得測的 refinement 應先看 signal window / one-and-done
+
+### 研究問題
+
+在 `TWSE_2330_5M aligned` 上，`full bar above range + OR average volume baseline` 已經成為目前最強的已測 stacked profile。這時如果還要找下一個台股 market-specific refinement，較合理的優先順序是什麼？
+
+### 外部依據
+
+- 多個公開 ORB 腳本都把 **signal window / only first breakout / one trade per session** 放在和 breakout qualification 並列的一級設定，而不是額外的高階資料家族：
+  - `Opening Range Breakout (ORB)`：明確有 **time window** 與 OR 大小 filter。
+  - `Session Opening Range Breakout (ORBO)`：明確有 **time filters**，只在某些時段內允許 breakout。
+  - `ORB (Opening Range Breakout)`：有 **one-signal-per-side-per-day guard** 與 optional retest filter。
+  - `ORB Opening Range Breakout LliterH`：明確有 **signal window**，限制在 OR 結束後的一段時間內才接受 breakout。
+  - `ORB SESSIONS`：有 **max trades/session**、cooldown 與 `bars inside ORB` 類似 re-arm 條件。
+
+### 研究結論
+
+1. **台股下一個較值得測的 refinement，不是先跳去 previous-day family，而是先看 signal window / one-and-done。**
+   - 這個方向仍在 same-session 範圍內。
+   - 不需要引入 `request.security()`、prior-day scalar、premarket 定義或 higher-timeframe context。
+
+2. **這個候選和目前台股樣本的問題更貼近。**
+   - 現在最強的台股 stacked profile 已經能把 hold `1 / 3 / 5` 翻成 `PASS`，但它仍可能保留過晚 breakout 或同 session 後段的弱 follow-through。
+   - signal window / one-and-done 比較像在處理「何時不該再追」的 session 內風險，而不是再對單根 breakout bar 疊更重的結構門檻。
+
+3. **repaint / lookahead 風險相對低。**
+   - 若規則只依賴 OR 結束後的已確認 bar、session clock 與既有 same-session rails，則主要是 deterministic session gating。
+   - 目前看不到一定要引入 `request.security`、intrabar 或 higher-timeframe lookahead 的必要。
+
+### 對目前主線的影響
+
+- 台股後續新的 refinement，較合理的比較順序現在是：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+  4. `signal window / one-and-done` 候選
+- `breakout body strength 0.60` 與 `OR retest` 仍維持 compare-only，不往前提。
+
+### 下一步
+
+1. 若進入執行輪，優先把 `signal window / one-and-done` 先收斂成 same-session、confirmed-bar-only 的研究 contract。
+2. 若進入分析輪，新的台股比較應直接對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+   - `signal window / one-and-done` 候選

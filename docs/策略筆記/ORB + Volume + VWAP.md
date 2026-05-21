@@ -560,3 +560,42 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 4. `OR average volume baseline`
 5. `OR retest`
 6. `breakout body strength 0.60`
+
+## 台股下一步較值得測的 session 內 refinement：signal window / one-and-done
+
+在 `TWSE_2330_5M aligned` 上，現在最強的已測組合已經是：
+
+1. `full bar above range`
+2. `full bar above range + OR average volume baseline`
+
+如果還要再找下一個台股 market-specific refinement，較合理的方向不是立刻跳到 previous-day family，而是先看 **signal window / one-and-done**。
+
+### 這個方向在做什麼
+
+- `signal window`：只允許 OR 結束後一段固定時間內的 breakout 成立。
+- `one-and-done`：每個 session 只接受第一個有效 breakout，或限制每個方向只取一次。
+
+它們的共通點是：都在處理 **session 內何時不該再追 breakout**，而不是再把 breakout candle 本身變得更嚴。
+
+### 為什麼它比 previous-day family 更適合現在
+
+- 它仍在 **same-session、confirmed-bar-only** 邊界內。
+- 不需要引入 `request.security()`、higher-timeframe bias、prior-day scalar 或 premarket 定義。
+- 公開 ORB 腳本也常把這種條件放在 active profile / confirmation mode，而不是當成高階資料家族。
+
+### 目前較合理的優先順序
+
+因此台股這條線目前較合理的閱讀順序可先整理成：
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `signal window / one-and-done` 候選
+5. `OR average volume baseline`
+6. `OR retest`
+7. `breakout body strength 0.60`
+
+### 風險邊界
+
+- 若規則只依賴 OR 結束後的已確認 K 棒與 session clock，則 repaint / lookahead 風險相對低。
+- 但它可能會和 `one trade per session`、`re-arm after close`、`late breakout suppression` 混在一起，所以實作前要先把 contract 定義清楚。
