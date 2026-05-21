@@ -5349,3 +5349,56 @@ phase hold 1 blocked reasons：
    其中一種，不要兩種一起做。
 2. 對目前台股主線，建議優先從 **long-only / per-direction first-entry guard** 開始。
 3. 在 guard 範圍沒先定清楚前，不要直接把 `one-and-done` 接進 runtime 再拿結果做大結論。
+
+## 2026-05-21 執行：把 `one-and-done` contract 精化成 long-only / per-direction first-entry guard
+
+### 這輪修改
+
+這輪沒有啟用新的交易語意，只把 `one-and-done` 的 machine-readable contract 從較模糊的 `entry-count-control` 候選，再往前收斂一層：
+
+- 新增 `orb_one_and_done_guard_scope = long_only_per_direction_first_entry`
+- validator 現在會直接拒絕：
+  - `entire_session_one_trade`
+  - 其他未定義的 guard scope drift
+
+### 為什麼先做這件事
+
+前一輪研究已經確認，公開 ORB 的 `one-and-done` 常見至少有兩種不同 guard：
+
+1. `per-direction / per-side`
+2. `entire-session one-trade`
+
+如果不先把 contract 鎖進其中一種，後續即使真的把 `one-and-done` 接進 runtime，分析結果也會同時混入：
+
+- long-only first-entry 限制
+- 整個 session 全關閉後續 entry
+
+兩種完全不同的 session control 語意。
+
+### 目前正式定義
+
+在現在的台股 ORB 主線上，`one-and-done` 的 contract 應解讀成：
+
+- 只處理 long-only 主線
+- 只在同一個 session 內生效
+- 只接受 confirmed-bar close breakout
+- 第一個有效 long breakout 成立後，不再接受同 session 的第二個 long breakout
+- 不強制平倉
+- 下一個 session 才 reset
+
+### 結論
+
+- `one-and-done` 現在仍是 **contract-ready but semantics-not-enabled**。
+- 但相較前一輪，這個 contract 已不再只是抽象的 `entry-count-control`，而是更明確地固定成：
+
+  `long_only_per_direction_first_entry`
+
+- 這讓後續若真的要做語意實作，目標已經更清楚，不必再同時處理 `entire_session one-trade` 版本。
+
+### 下一步
+
+1. 若進入分析輪，這輪不需要額外重跑 runtime；因為目前仍是 contract-only 變更。
+2. 若進入 review 輪，應檢查：
+   - reporting / strategy note 是否仍把 `one-and-done` 寫得太模糊
+   - 是否還有地方把它描述成 generic one-trade-per-day
+3. 若之後真的要進策略語意實作，應直接把這個 guard scope 接進 long breakout 的 entry-count-control，而不是先回頭討論 `entire_session` 版本。

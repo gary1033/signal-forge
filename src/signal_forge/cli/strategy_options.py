@@ -222,7 +222,8 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
     - 回傳 `dict[str, str]`，其中每個欄位都必須可穩定寫入 artifact，避免同一設定在不
       同報表中被解讀成不同語意。
     - 若當前策略是 ORB，函式最後會觸發 ORB contract validator；若 same-session、
-      retest 或 known-sample metadata 發生 drift，會拋出 `ValueError`。
+      retest、signal window、one-and-done 或 known-sample metadata 發生 drift，
+      會拋出 `ValueError`。
     """
     defaults = STRATEGY_PARAMETER_DEFAULTS[args.strategy]
     volume_window, volume_multiplier = _strategy_level_volume_reporting_defaults(args)
@@ -332,6 +333,7 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         "orb_one_and_done_mode": "research_candidate_only",
         "orb_one_and_done_rule": "when enabled in future research, only the first close-confirmed long breakout accepted within the current session should remain eligible; later same-session breakout attempts stay blocked until the next session reset",
         "orb_one_and_done_scope": "same_session_only",
+        "orb_one_and_done_guard_scope": "long_only_per_direction_first_entry",
         "orb_one_and_done_signal_basis": "confirmed_bar_close_only",
         "orb_one_and_done_position_effect": "first_entry_only_no_force_flatten",
         "orb_one_and_done_reset_rule": "reset_on_next_session_start",
@@ -590,12 +592,13 @@ def _validate_orb_signal_window_contract(contract: dict[str, str]) -> None:
 def _validate_orb_one_and_done_contract(contract: dict[str, str]) -> None:
     """
     用途與流程：驗證 ORB one-and-done 候選目前仍被限制在同 session、confirmed-bar-only 的
-    entry-count-control 邊界，避免後續在沒有正式產品決策時，把 cross-session cooldown、
+    entry-count-control 邊界，並把 guard 範圍固定在 long-only / per-direction first-entry。
+    這能避免後續在沒有正式產品決策時，把 cross-session cooldown、entire-session lockout、
     intrabar probe、force-flatten 或 previous-day / higher-timeframe 語意混進 strategy spec。
 
     參數：
     - `contract`：ORB `strategy_spec` 的 metadata dict，至少需包含 one-and-done 的 mode、
-      scope、signal basis、position effect、reset rule 與 data family 欄位。
+      scope、guard scope、signal basis、position effect、reset rule 與 data family 欄位。
 
     回傳與錯誤：
     - 回傳 `None`。
@@ -605,6 +608,7 @@ def _validate_orb_one_and_done_contract(contract: dict[str, str]) -> None:
     required = (
         "orb_one_and_done_mode",
         "orb_one_and_done_scope",
+        "orb_one_and_done_guard_scope",
         "orb_one_and_done_signal_basis",
         "orb_one_and_done_position_effect",
         "orb_one_and_done_reset_rule",
@@ -621,6 +625,13 @@ def _validate_orb_one_and_done_contract(contract: dict[str, str]) -> None:
         )
     if contract["orb_one_and_done_scope"] != "same_session_only":
         raise ValueError("ORB one-and-done contract must stay within same_session_only")
+    if (
+        contract["orb_one_and_done_guard_scope"]
+        != "long_only_per_direction_first_entry"
+    ):
+        raise ValueError(
+            "ORB one-and-done contract must stay as long_only_per_direction_first_entry"
+        )
     if contract["orb_one_and_done_signal_basis"] != "confirmed_bar_close_only":
         raise ValueError(
             "ORB one-and-done contract must use confirmed_bar_close_only signal basis"

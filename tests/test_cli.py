@@ -349,6 +349,10 @@ class CliTests(unittest.TestCase):
         self.assertEqual(spec["orb_one_and_done_mode"], "research_candidate_only")
         self.assertEqual(spec["orb_one_and_done_scope"], "same_session_only")
         self.assertEqual(
+            spec["orb_one_and_done_guard_scope"],
+            "long_only_per_direction_first_entry",
+        )
+        self.assertEqual(
             spec["orb_one_and_done_signal_basis"], "confirmed_bar_close_only"
         )
         self.assertEqual(
@@ -367,15 +371,17 @@ class CliTests(unittest.TestCase):
         self,
     ) -> None:
         """
-        用途與流程：直接驗證 ORB one-and-done contract validator 會拒絕 scope、position
-        effect、reset rule 或 data family 漂移，避免 session family 尚未正式實作前，就把
-        cross-session cooldown、force-flatten 或 higher-timeframe 語意偷偷帶進 metadata。
+        用途與流程：直接驗證 ORB one-and-done contract validator 會拒絕 scope、guard
+        scope、position effect、reset rule 或 data family 漂移，避免 session family 尚未
+        正式實作前，就把 cross-session cooldown、entire-session lockout、force-flatten
+        或 higher-timeframe 語意偷偷帶進 metadata。
         參數：self 表示目前 unittest 測試案例。
         回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
         """
         contract = {
             "orb_one_and_done_mode": "research_candidate_only",
             "orb_one_and_done_scope": "same_session_only",
+            "orb_one_and_done_guard_scope": "long_only_per_direction_first_entry",
             "orb_one_and_done_signal_basis": "confirmed_bar_close_only",
             "orb_one_and_done_position_effect": "first_entry_only_no_force_flatten",
             "orb_one_and_done_reset_rule": "reset_on_next_session_start",
@@ -385,6 +391,8 @@ class CliTests(unittest.TestCase):
 
         bad_scope = dict(contract)
         bad_scope["orb_one_and_done_scope"] = "cross_session_cooldown"
+        bad_guard_scope = dict(contract)
+        bad_guard_scope["orb_one_and_done_guard_scope"] = "entire_session_one_trade"
         bad_reset = dict(contract)
         bad_reset["orb_one_and_done_reset_rule"] = "manual_rearm_required"
         bad_effect = dict(contract)
@@ -392,6 +400,10 @@ class CliTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "same_session_only"):
             _validate_orb_one_and_done_contract(bad_scope)
+        with self.assertRaisesRegex(
+            ValueError, "long_only_per_direction_first_entry"
+        ):
+            _validate_orb_one_and_done_contract(bad_guard_scope)
         with self.assertRaisesRegex(ValueError, "reset_on_next_session_start"):
             _validate_orb_one_and_done_contract(bad_reset)
         with self.assertRaisesRegex(ValueError, "first_entry_only_no_force_flatten"):

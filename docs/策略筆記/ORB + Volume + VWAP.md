@@ -805,6 +805,10 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - `per-direction first-entry guard`
 - 或 `entire-session one-trade guard`
 
+目前 SignalForge 已經先把 contract 固定在前者，也就是：
+
+- `long_only_per_direction_first_entry`
+
 在這個 guard 範圍沒先定清楚前，不應直接把 `one-and-done` 的後續回測結果拿來和：
 
 1. `aligned baseline`
@@ -812,3 +816,21 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 3. `full bar above range + OR average volume baseline`
 
 做同層級結論。
+
+### 目前 repo 內已鎖住的 contract 解讀
+
+`one-and-done` 現在在 repo 內的正式解讀是：
+
+- `same_session_only`
+- `long_only_per_direction_first_entry`
+- `confirmed_bar_close_only`
+- `first_entry_only_no_force_flatten`
+- `reset_on_next_session_start`
+
+也就是：
+
+- 第一個有效 long breakout 可以成立
+- 之後同 session 的第二個 long breakout 不能再成立
+- 但它不會因此把既有持倉強制平掉
+
+所以現在若有人只用 `one trade per day` 來描述這條線，會太粗，因為那會把 `entire-session one-trade guard` 也混進來。
