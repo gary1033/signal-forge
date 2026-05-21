@@ -1867,3 +1867,48 @@ git diff --check
 
 1. 下一輪若進入研究輪，可先整理 ORB 現有 optional filters 的真正分層，避免憑感覺擴 tier。
 2. 下一輪若進入執行輪，最合理的單點修復是補 `orb_vwap_slope_tier` 的 disabled/default regression test。
+
+## 2026-05-21 研究輪：哪些 ORB optional filters 真的適合同一套 tier/role contract
+
+這輪不新增策略，也不改 artifact schema。研究問題只有一個：如果下一輪要把 `tier/role` contract 從 `VWAP slope` 擴出去，哪些 ORB optional filters 真的是同層，哪些其實只是「都可選」但角色不同，不應硬塞同一個 tier。
+
+### 來源
+
+- TradingView `Opening Range Breakout`
+  https://www.tradingview.com/script/tZtCD3TM-Opening-Range-Breakout/
+- TradingView `Opening Range Breakout (ORB)`
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView `ORB + Volume + VWAP Breakout`
+  https://www.tradingview.com/script/7khuDtm8-ORB-Volume-VWAP-Breakout/
+- TradingView `NeuraEdge ORB - Opening Range Breakout Indicator`
+  https://www.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+- TradingView `ORB - Opening Range Breakout Backtest`
+  https://www.tradingview.com/script/DOhV0uXT/
+
+### 外部研究重點
+
+- `Opening Range Breakout` 與 `ORB - Opening Range Breakout Backtest` 都把 **EMA trend** 放在和 `VWAP slope` 很接近的位置：它不是 OR 幾何本體，而是 breakout 後再加一道趨勢對齊。
+- `Opening Range Breakout (ORB)` 明確把 **ORB size filter** 視為 optional filter，語意上更像「session shape gate」；它不是 trend refinement，而是在 breakout 發生前先判斷這天的 OR 結構是否值得交易。
+- `ORB + Volume + VWAP Breakout` 與 `NeuraEdge ORB` 都把 volume confirmation 當成核心確認之一；但如果 volume baseline 換成 **opening-range average volume**，它比較像「confirmation baseline variant」，不是和 `VWAP slope` 同層的方向 refinement。
+
+### 研究結論
+
+- 若要擴 `tier/role` contract，**最適合先和 `VWAP slope` 對齊的是 `EMA trend`**，因為兩者都屬：
+  - breakout 後才判斷；
+  - 單時間框架；
+  - trend / direction refinement。
+- `OR size filter` 雖然也是 optional，但比較像 **session-shape gate**，角色不同。
+- `OR volume baseline` 雖然也是 optional，但比較像 **confirmation baseline choice**，不是單純層級高低問題。
+
+### 對下一輪的含義
+
+- 不要把目前 ORB 所有 optional keys 都塞進同一個 `secondary_refinement` bucket。
+- 若下一輪真的要把 contract 往前推，較合理的做法是：
+  1. 先補 `VWAP slope` 的 disabled/default regression；
+  2. 若還要擴 role/tier，先從 `EMA trend` 這種真正同層的條件開始；
+  3. 對 `OR size`、`OR volume baseline` 這類角色不同的 filter，應考慮用 **role/family**，而不是只用單一 tier。
+
+### 下一步
+
+1. 下一輪若進入執行輪，先補 `orb_vwap_slope_tier` 的 disabled/default regression test。
+2. 若之後要擴充層級 contract，優先研究 `orb_ema_trend_*` 是否應補成和 `VWAP slope` 對稱的 role/tier 欄位。
