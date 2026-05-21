@@ -2780,3 +2780,67 @@ git diff --check
 
 1. 分析輪配額應轉回新的 filter family、第二份 intraday 樣本，或 previous-day family 真正落地前需要的資料邊界題。
 2. 若未來再碰 previous-day family，應優先驗證資料與 validator contract，而不是先擴 phase markdown 或 strategy spec 欄位。
+
+## 2026-05-21 Code Review：previous-day family 若要落地，現在還缺資料邊界與 contract 層
+
+這輪是 review-only，不改 ORB 策略語意。重點是把前幾輪已收斂出的 previous-day / higher-timeframe family 風險，轉成明確的工程待辦，避免之後直接在 ORB 主線上零散加欄位。
+
+### Finding 1：previous-day family 目前只存在於研究筆記與 phase prose，還不是 validator / schema contract
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\reporting\_legacy.py`
+  - `src\signal_forge\cli\strategy_options.py`
+- 現況：
+  - phase markdown 已明講 previous-day / higher-timeframe context 不在目前 ORB contract 內。
+  - 但這個邊界目前仍主要靠人類可讀文字維持，還沒有對應 validator 或正式 schema。
+- 風險：
+  - 若後續有人直接把 `previous day high/low`、gap 或 overnight range 接進策略內部，artifact reader 可能誤以為既有 `strategy_spec` 已足以描述資料邊界。
+- 建議：
+  - 在任何 previous-day family 真正落地前，先定義明確 contract：
+    1. `previous day` 是 regular session 還是 full session；
+    2. gap 與前收是否屬同一個 family；
+    3. 需要哪些欄位才能讓 validator 判斷資料邊界一致。
+
+### Finding 2：phase / entry-edge 的 ORB metadata 仍刻意不對稱，若引入 previous-day family 必須先決定是否維持這個設計
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\reporting\_legacy.py`
+  - `tests\test_reporting.py`
+- 現況：
+  - entry-edge artifact 保留完整 `strategy_spec`。
+  - phase markdown 只保留 compact blocked / accepted summary 與 interpretation。
+- 風險：
+  - 若未來 previous-day family 真正進入 ORB，phase report 可能又被期待承載更多資料邊界資訊。
+- 建議：
+  - 在做 previous-day family 前，先決定 phase report 是否維持 summary-only。
+  - 若要補充，也應只加最小的 data-boundary summary，不要複製 entry-edge 的完整 metadata surface。
+
+### Finding 3：平面 `strategy_spec` 不適合直接吸收一整組 previous-day / gap family 欄位
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\cli\strategy_options.py`
+  - `tests\test_cli.py`
+- 現況：
+  - 目前 ORB 已有大量平面欄位，例如 session、VWAP slope、EMA、range size、body strength 等。
+- 風險：
+  - 若再直接新增 `orb_previous_day_*`、`orb_gap_*`、`orb_overnight_*` 這種平面 key，schema 會更難讀，也更難維護 exact-text regression。
+- 建議：
+  - previous-day family 若真的要落地，應先定義 `role/family`，而不是直接堆更多平面 key。
+  - 現階段先維持研究題定位，不在夜間 automation 內自行擴 schema。
+
+### Review 結論
+
+- 目前 previous-day / gap context 已有足夠研究價值，但還沒有足夠的資料邊界與 contract 準備度，不能直接進入 ORB 主線執行輪。
+- 下一步若真的要推進，優先順序應是：
+  1. 第二份 intraday 樣本或更完整 previous-day 假設；
+  2. 資料邊界定義；
+  3. validator / artifact contract；
+  4. 最後才是策略欄位與報表 surface。
+
+### 下一步
+
+1. 研究輪優先轉向 previous-day family 的資料邊界定義，而不是直接討論新 CLI 參數。
+2. 執行輪若還要做 ORB，先留給 reporting / validator 題或其他更成熟的 filter family，不要提前把 previous-day family 推進主線。
