@@ -5498,3 +5498,46 @@ phase hold 1 attribution 也維持原狀：
    - `aligned baseline`
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
+
+## 2026-05-21 研究：`one-and-done` 較合理的計數基準應是 confirmed / traded breakout，不是第一次觸碰
+
+### 外部參照
+
+- TradingView `ORB Breakout`：`Fires once per day per direction, independently.` 並把 breakout 定義在 close / VWAP / volume / signal window 全部成立之後。
+  https://www.tradingview.com/script/KWfBq6HU-ORB-Breakout/
+- TradingView `ORB Strategy [LuciTech]`：`Only the first confirmed breakout per day is traded`，明確把計數點放在 **confirmed breakout**。
+  https://www.tradingview.com/script/10yYqaY7-ORB-Strategy-LuciTech/
+- TradingView `RPFXBYDAN - ORB`：在 optional retest filter 存在時，仍描述成 `one-signal-per-side-per-day guard`，而 retest 模式下 `the first break only arms the signal`。
+  https://www.tradingview.com/script/23PYvshx-RPFXBYDAN-ORB-Opening-Range-Breakout/
+
+### 主要研究結論
+
+1. 公開 ORB 的 `one-and-done`，較常限制的是 **真正成立的 signal / trade**，不是第一個 raw touch。
+2. 若策略存在 retest / re-break flow，第一個突破很多時候只是 `arm` 狀態；真正被計入 one-and-done 的，通常是後面的 confirmed signal。
+3. 因此對目前 SignalForge 的 long-only / per-direction first-entry guard，較低風險的第一個語意版本應是：
+   - 先讓 breakout 完成目前所有 entry qualification
+   - 只有 **accepted long entry** 才消耗當前 session 的 one-and-done quota
+   - 不是第一個碰到 OR high、第一個突破嘗試、或第一個 retest arm 就直接鎖死同 session
+
+### 對 SignalForge 的含義
+
+- 這個結論會直接影響未來 `one-and-done` 真正接進 runtime 的位置。
+- 較合理的接法不是在 breakout state machine 最前面就提前封鎖，而是：
+  1. 先完成目前既有的 ORB qualification
+  2. 在 signal 被接受、準備產生 long entry 的那一刻
+  3. 才把 `same-session long quota` 從可用翻成不可用
+
+### 為什麼這樣比較穩
+
+- 能避免把失敗的 breakout 嘗試也算進 quota。
+- 和目前 `full bar above range`、`OR average volume baseline` 這些已存在的 qualification 邏輯比較一致。
+- 若未來 `retest confirmation` 重新回到台股主線，也不需要重做一套新的 one-and-done 解讀。
+
+### 下一步
+
+1. 若進入執行輪，應先做 **accepted-entry-based** 的 one-and-done 語意，而不是 first-touch-based 版本。
+2. 真正的第一輪比較，仍固定對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+3. 在那之前，不要把 `one-and-done` 寫成「第一碰就鎖死」；那和目前公開 ORB 常見模式並不一致。

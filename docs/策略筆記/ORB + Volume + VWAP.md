@@ -874,3 +874,31 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - first-entry guard
 
 的實際 entry-count-control，再拿結果和台股 canonical anchors 比較。
+
+## `one-and-done` 較合理的第一版語意：accepted entry 才消耗 quota
+
+公開 ORB 常見的 `one-and-done`，較常限制的是 **confirmed / traded breakout**，不是第一次觸碰 OR high 或第一次 breakout 嘗試。
+
+這對目前 SignalForge 的意義是：
+
+- `one-and-done` 不應該在 state machine 最前面就因為第一個 raw touch 而鎖死
+- 較合理的第一版應該是：
+  - 先完成目前所有 entry qualification
+  - 只有真正被接受的 long entry
+  - 才消耗當前 session 的 one-and-done quota
+
+### 為什麼這樣比較合理
+
+- 它和 `full bar above range`、`OR average volume baseline` 這些已存在的 qualification 比較一致。
+- 能避免把失敗的 breakout 嘗試算成已用額度。
+- 如果未來 retest / re-break confirmation 回到主線，也比較容易和同一套 one-and-done 解讀相容。
+
+### 目前較不建議的版本
+
+下列版本都比較容易過早壓縮交易：
+
+- 第一個碰到 OR high 就鎖死
+- 第一個 breakout arm 出現就鎖死
+- 第一個 retest 嘗試就鎖死
+
+這些都比公開 ORB 常見的 `first confirmed breakout` 更嚴，也更容易把 `one-and-done` 做成不必要的過度壓縮條件。
