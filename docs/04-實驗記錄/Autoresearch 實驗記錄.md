@@ -4033,3 +4033,42 @@ git diff --check
 
 1. 若進入 review 輪，應正式整理這個 refinement 的定位：它比 `VWAP slope` 有資訊，但更像短持有期品質優化，不是普適主線。
 2. 若進入後續分析輪，新的台股 refinement 應拿來對照它的 tradeoff：`hold 1 quality up` vs `multi-hold robustness down`。
+
+## 2026-05-21 Code Review：台股 OR average volume baseline 後續工程債
+
+### Review 範圍
+
+- 依據上一輪 `TWSE_2330_5M aligned` baseline 比較：
+  - `orb-volume-vwap --orb-reject-ema-inside-range`
+  - `orb-volume-vwap --orb-reject-ema-inside-range --orb-use-opening-range-volume-baseline`
+- 不改策略語意，只整理目前已經回答完的結論應如何落在工程邊界上。
+
+### Findings
+
+1. **`OR average volume baseline` 已有明確非零增量證據，但仍停留在研究結論層。**
+   - 它不是像 `VWAP slope` 那樣的零增量 refinement。
+   - 目前已知 tradeoff 很清楚：`hold 1 quality up`，但 `hold 3/5/10 robustness down`。
+   - 這個定位已經寫進研究紀錄與策略筆記，但還沒有任何 machine-readable artifact contract 去表達它是「台股短持有期品質優化候選」，不是主線改善。
+
+2. **目前只有描述性 baseline / refinement guard，沒有流程性 guard。**
+   - `TWSE_2330_5M` 現在已有 aligned baseline note，也已知 `VWAP slope` 是 zero-increment。
+   - 但系統仍不會阻止後續分析把 `mismatch` 版或不適當的 refinement 當成台股主結論。
+   - 這代表現階段真正穩定的是研究判斷，不是流程約束。
+
+3. **台股後續 refinement 評估標準應該固定化。**
+   - 這輪比較後，較合理的 benchmark 已經不是「能不能比 MSFT 好」，而是：
+     - 是否優於 `TWSE_2330_5M aligned` baseline
+     - 是否優於 `OR average volume baseline` 這個已知的 trade-compression 候選
+     - 是否只是用更少交易數換取短 hold 改善
+   - 若不先固定這個 benchmark，後面每個台股 refinement 都會重新解釋一次 tradeoff，維護成本偏高。
+
+### 結論
+
+- `OR average volume baseline` 在台股 aligned baseline 上，應暫定為 **market-specific trade-compression refinement candidate**。
+- 它目前值得保留在研究比較集合裡，但還不值得升成台股 ORB 主線改善。
+- 下一步若要做小修補，應優先補 closer-to-reporting 的 flow hint 或 benchmark note，而不是再回頭做第三次 volume-baseline / market-clock 類驗證。
+
+### 下一步
+
+1. 若進入執行輪，可考慮在 entry-edge / comparison 報表補一個更明確的 benchmark hint，說明台股後續 refinement 應對照 `aligned baseline` 與 `OR average volume baseline`。
+2. 若進入研究輪，應轉向新的台股 market-specific refinement，而不是再圍繞 `VWAP slope` 或 market-clock 做重複驗證。
