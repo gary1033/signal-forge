@@ -4134,3 +4134,72 @@ git diff --check
 
 - OR retest 現在已經從「研究想法」升級成 **可測的 artifact / validator contract**。
 - 但它仍不是正式策略績效結論；下一輪若要比較，應站在 `TWSE_2330_5M aligned baseline` 上，直接拿它對照 `aligned baseline` 與 `OR average volume baseline`。
+
+## 2026-05-21 分析：台股 aligned baseline 上的 OR retest / re-break confirmation
+
+這輪直接把 `OR retest / re-break confirmation` 放到 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 上，比較三組：
+
+1. `ORB + EMA inside-range`
+2. `ORB + EMA inside-range + OR average volume baseline`
+3. `ORB + EMA inside-range + OR retest / re-break confirmation`
+
+### 報表
+
+- `reports/generated/twse-orb-aligned-emabox_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-orvol_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-retest_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-phase_trace_summary.json`
+- `reports/generated/twse-orb-aligned-emabox-orvol-phase_trace_summary.json`
+- `reports/generated/twse-orb-aligned-emabox-retest-phase_trace_summary.json`
+- `reports/generated/twse-orb-aligned-emabox-retest-comparison-20260521.md`
+- `reports/generated/twse-orb-aligned-emabox-retest-comparison-20260521.json`
+
+### 結果摘要
+
+#### OR retest / re-break confirmation
+
+- hold 1：PF `0.282` / Trades `10` / Avg net PnL `-10.02` / Max DD `-1.36%`
+- hold 3：PF `0.542` / Trades `9` / Avg net PnL `-7.89` / Max DD `-1.31%`
+- hold 5：PF `0.198`
+- hold 10：PF `0.151`
+
+### Phase trace summary 對照
+
+#### OR retest / re-break confirmation
+
+- accepted：`10`
+- blocked：`2652`
+- hold：`125`
+- blocked reasons：
+  - `below_or_high(2236)`
+  - `breakout_volume_blocked(240)`
+  - `ema_inside_opening_range(102)`
+  - `retest_not_touched(29)`
+  - `waiting_for_retest_confirmation(29)`
+  - `volume_warmup(13)`
+  - `breakout_below_vwap(3)`
+
+### 關鍵判讀
+
+1. **OR retest 不是零增量 refinement。**
+   - 它明顯新增了 retest-specific blocked states，也把 trades 從 baseline 的 `21` 壓到 `10`。
+   - 所以它不像 `VWAP slope`，不是零資訊條件。
+
+2. **它只在 hold 3 勉強貼近 baseline，整體仍偏弱。**
+   - hold 1 PF：`0.513 -> 0.282`，更差。
+   - hold 3 PF：`0.538 -> 0.542`，只有很小的持平改善，但 trades `21 -> 9`。
+   - hold 5 PF：`0.685 -> 0.198`，更差。
+   - hold 10 PF：`0.309 -> 0.151`，更差。
+
+3. **它目前也弱於 OR average volume baseline。**
+   - hold 1：`0.948 > 0.282`
+   - hold 3：雖然 retest 的 PF `0.542` 高於 OR volume baseline 的 `0.369`，但 retest 仍未達 pass，且交易數更少。
+   - hold 5 / 10：retest 顯著更差。
+
+### 結論
+
+- 在 `TWSE_2330_5M aligned` baseline 上，`OR retest / re-break confirmation` 比 `VWAP slope` 更有資訊，但目前整體仍弱於 `OR average volume baseline`。
+- 它較合理的定位是：**台股過度壓縮型的 compare-only structure refinement 候選**。
+- 因此下一步不應把它升成主線改善，而應把後續台股 refinement 的比較基準固定在：
+  - `aligned baseline`
+  - `OR average volume baseline`

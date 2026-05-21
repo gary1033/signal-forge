@@ -306,3 +306,23 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 目前不混入 previous-day / higher-timeframe data
 
 這個邊界的意義是：後續若真的把它拿去和 `TWSE_2330_5M aligned baseline` 比較，我們先能保證測的不是一個混了 premarket、prior-day 或 intrabar probe 的模糊版本，而是一個比較乾淨、可重複的 OR 結構確認假設。
+
+## 台股樣本上的 OR retest / re-break confirmation
+
+把 `OR retest / re-break confirmation` 放到 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 後，可以先固定一個很直接的結論：
+
+- 它**不是零增量 refinement**，因為它會新增 `retest_not_touched`、`waiting_for_retest_confirmation` 這類結構性 blocked reason。
+- 但它目前整體表現仍弱於 `OR average volume baseline`。
+
+具體來說：
+
+- hold 1 PF：`0.513 -> 0.282`，比 baseline 更差。
+- hold 3 PF：`0.538 -> 0.542`，只有很小的持平改善，但 trades 從 `21` 壓到 `9`。
+- hold 5 / 10：都比 baseline 更差。
+
+這代表 `OR retest / re-break confirmation` 在台股樣本上的角色，比較像：
+
+- 有資訊的價格結構確認；
+- 但目前偏向**過度壓縮**，還不足以成為比 `OR average volume baseline` 更合理的下一個主線改善方向。
+
+因此目前較合理的定位是：**台股 compare-only structure refinement 候選**。後續若要測新的台股 refinement，應優先拿它對照 `aligned baseline` 與 `OR average volume baseline`，而不是把 retest 本身再升成主要研究軸。
