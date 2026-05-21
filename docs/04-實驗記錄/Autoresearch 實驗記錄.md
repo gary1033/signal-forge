@@ -1984,3 +1984,55 @@ git diff --check
 
 1. 若之後還要擴 tier/role contract，應優先看 `EMA trend` 這種真正同層的 refinement，而不是先碰 `OR size` 或 `OR volume baseline`。
 2. 下一輪若進入 review，可檢查是否需要把這種「disabled 也固定存在的 tier 欄位」推成通用規則。
+
+## 2026-05-21 Code Review：`VWAP slope tier` contract 補齊後的殘餘技術債
+
+這輪是 review-only，不改 ORB 策略語意。重點不是質疑 `orb_vwap_slope_tier` 本身，而是檢查最近幾輪把 tier contract、disabled/default regression 與 readability analysis 串起來之後，還剩下哪些具體債務。
+
+### Finding 1：disabled 路徑仍會顯示「when enabled」規則文案，語意容易誤讀
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\cli\strategy_options.py`、`reports\generated\msft-orb-default-tier-contract-20260521-ema-box-entry.md`
+- 現況：`orb_vwap_slope_confirmation=disabled` 時，artifact 仍固定輸出 `orb_vwap_slope_rule: when enabled, this secondary refinement ...`。
+- 風險：這在機器層面是 deterministic contract，但在人類閱讀層面會讓 disabled 路徑看起來像「規則仍在生效，只是前面多了一句 when enabled」。
+- 建議修法：若下一輪要再碰 artifact surface，可考慮把 `rule` 與 `state` 再拆開，例如保留固定規則描述，同時增加更短的 `orb_vwap_slope_effective=disabled/enabled`，或把文案改成較中性的靜態描述。
+
+### Finding 2：`tier` 語意目前只在 entry-edge artifact 明確可見，phase 路徑仍不對稱
+
+- 嚴重度：中
+- 受影響檔案：`reports\generated\msft-orb-default-tier-contract-20260521-ema-box-entry.md`、`reports\generated\msft-orb-default-tier-contract-20260521-ema-box-phase.md`
+- 現況：entry-edge report 會完整列出 `strategy_spec`，所以能看到 `orb_vwap_slope_tier=secondary_refinement`；但 phase markdown 主體目前沒有把同一層策略語意帶進人類可讀報表。
+- 風險：若使用者或未來 automation 主要從 phase report 回看結果，就無法直接看出 `VWAP slope` 是主線條件還是次要 refinement，必須再跳回 entry-edge report 或 JSON。
+- 建議修法：若未來要把 role/tier contract 當成正式 surface，應決定 phase markdown 是否也要帶出最小必要的 strategy layer 信息，而不是只讓 entry-edge 看得到。
+
+### Finding 3：`VWAP slope` 已有 tier，但同層候選 `EMA trend` 仍沒有對稱 contract
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\cli\strategy_options.py`
+- 現況：根據前兩輪研究，`EMA trend` 才是最接近 `VWAP slope` 的同層 refinement；但目前只有 `VWAP slope` 有 `orb_vwap_slope_tier=secondary_refinement`，`EMA trend` 仍只有 enabled/disabled + rule。
+- 風險：contract 會傳遞不一致訊號：不是因為兩者層級真的不同，而是因為目前只先補了一個欄位。
+- 建議修法：若決定繼續保留 tier/role 方向，下一個最合理的對象應是 `EMA trend`；若不打算繼續擴，則應避免再把 `VWAP slope` 的特例表達擴散成更多單點欄位。
+
+### Finding 4：目前沒有窄範圍 unit test 直接鎖 `strategy_spec_from_args(...)` 的 contract
+
+- 嚴重度：低
+- 受影響檔案：`tests\test_cli.py`
+- 現況：最近幾輪關於 `orb_vwap_slope_tier` 的驗證全部透過 CLI end-to-end regression 進行，沒有更窄的 `strategy_spec_from_args(...)` 單元測試。
+- 風險：CLI regression 當然有效，但 failure localization 較差；未來若只是 `strategy_spec` 文案或 key drift，測試會在較外層爆掉，不容易第一時間定位是 parser、strategy builder 還是 spec 組裝器出問題。
+- 建議修法：若下一輪要消化小型測試債，可以補一個直接調 `strategy_spec_from_args(...)` 的 unit-level contract test，讓 `tier/rule/state` 這類 metadata drift 更容易定位。
+
+### Review 結論
+
+- `orb_vwap_slope_tier` 現在已經有足夠的 deterministic coverage，這部分不再是主要風險。
+- 真正剩下的問題是 **surface 對稱性與閱讀語意**：
+  1. disabled 狀態下的 rule 文案仍容易誤讀；
+  2. phase / entry-edge artifact 對 tier 的暴露程度不對稱；
+  3. `EMA trend` 是否也要進入同一層 contract 還沒有定案；
+  4. 測試仍偏重 CLI E2E，缺少窄範圍 contract 測試。
+
+### 下一步
+
+1. 若下一輪進入研究輪，可先決定 `tier/role` 是否真的要推成通用規則，還是停在 `VWAP slope` 這個特例。
+2. 若下一輪進入執行輪，最合理的單點修復是二選一：
+   - 補 `strategy_spec_from_args(...)` 的窄範圍 contract test；
+   - 或把 disabled 狀態下的 `orb_vwap_slope_rule` 文案改成較中性的靜態描述。
