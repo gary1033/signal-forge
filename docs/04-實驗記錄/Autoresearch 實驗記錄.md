@@ -4963,6 +4963,64 @@ phase hold 1 blocked reasons：
    - `full bar above range + OR average volume baseline`
    - `signal window / one-and-done` 候選
 
+## 2026-05-21 分析：台股 aligned baseline 上的 signal window 60 分鐘 cutoff
+
+### 比較對象
+
+這輪固定比較 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 上兩組：
+
+1. `ORB + EMA inside-range + full bar above range + OR average volume baseline`
+2. 同一組再加 `signal window 60`
+
+### 主要結果
+
+- `signal window 60` 不是小幅 trade-compression，而是 **直接把目前最強 stacked profile 壓成零交易**：
+  - hold 1 PF：`6.525 -> undefined`
+  - hold 3 PF：`2.259 -> undefined`
+  - hold 5 PF：`1.374 -> undefined`
+  - hold 10 PF：`1.099 -> undefined`
+  - trades：`8 -> 0`
+
+### phase attribution
+
+- 原本最強的 stacked profile：
+  - accepted `8`
+  - blocked `2668`
+  - hold `111`
+  - top blocked reasons：`below_or_high(2251)`、`breakout_volume_blocked(228)`、`breakout_bar_reentered_range(141)`
+
+- 加上 `signal window 60` 後：
+  - accepted `0`
+  - blocked `2287`
+  - hold `0`
+  - 新增主要 reason：`outside_signal_window(500)`
+
+### 解讀
+
+1. **目前不是 signal window family 沒價值，而是 60 分鐘 cutoff 太早。**
+   - 現在最強的台股 stacked profile 在不加 cutoff 時有 `8` 筆交易。
+   - 加上 `signal window 60` 之後，所有可成交 breakout 都被 `outside_signal_window` 擋掉，代表 cutoff 把有效 breakout 一起清掉了。
+
+2. **這條線暫時不該升成下一個主 benchmark。**
+   - 它和 `full bar above range`、`OR average volume baseline` 不同，這輪沒有展現出「更乾淨但仍保留可交易樣本」的增量，而是直接把樣本數壓到零。
+
+3. **後續若繼續研究，應把「signal window」和「one-and-done」拆開。**
+   - `signal window 60` 現在已可先定性為過度壓縮。
+   - 但 `one-and-done` 仍可能是另一種不同的 session 內風險控制，不應因為這輪 60 分鐘 cutoff 失敗就一起否決。
+
+### 結論
+
+- `signal window 60` 在 `TWSE_2330_5M aligned` 上屬於 **over-compressive session refinement**。
+- 它目前弱於：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+
+### 下一步
+
+1. 若再研究 session 類 refinement，優先把 `one-and-done` 和 `signal window` 分開，不要再直接沿用 60 分鐘 cutoff。
+2. 若要重測 signal window，應把 cutoff 視為獨立參數假設，而不是直接假設它能和目前最強 stacked profile 共存。
+
 ## 2026-05-21 執行：把台股 signal window 候選收斂成 machine-readable contract
 
 ### 本輪修改

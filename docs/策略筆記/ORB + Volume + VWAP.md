@@ -621,3 +621,43 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 2. `full bar above range`
 3. `full bar above range + OR average volume baseline`
 4. `signal window / one-and-done`
+
+## 台股 signal window 60 的目前定位
+
+把 `signal window 60` 疊到目前最強的台股 stacked profile：
+
+- `full bar above range`
+- `OR average volume baseline`
+
+之後，結果不是小幅 trade-compression，而是直接把交易數壓到 `0`。
+
+### 這代表什麼
+
+- 這條線目前**不是沒有資訊**，而是 60 分鐘 cutoff 太早。
+- 它新增的主 blocked family 是 `outside_signal_window`，表示真正被切掉的是 session 後段才成立的 breakout。
+
+### 目前較合理的解讀
+
+因此在台股這條線上，`signal window 60` 目前較合理的定位是：
+
+- **over-compressive session refinement**
+- 不適合升成主 benchmark
+- 也不適合直接和 `full bar above range + OR average volume baseline` 並列為主線候選
+
+### 目前較合理的排序
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `signal window / one-and-done` 候選
+5. `OR average volume baseline`
+6. `OR retest`
+7. `breakout body strength 0.60`
+
+### 下一步
+
+- 若要繼續研究 session 類 refinement，應優先把：
+  - `signal window`
+  - `one-and-done`
+
+  分開看，不要先假設 60 分鐘 cutoff 就是正確的台股版本。
