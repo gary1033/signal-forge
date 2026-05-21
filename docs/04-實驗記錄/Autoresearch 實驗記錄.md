@@ -3695,3 +3695,38 @@ git diff --check
 1. 若要再做台股 ORB 比較，今後應以 `aligned` 版作為 canonical 基線，不再沿用 mismatch defaults。
 2. 在這個基線上，再決定下一步是比較其他 ORB refinement，還是把台股樣本暫時視為「現有主線不適配」。
 3. 目前仍不建議直接把注意力轉去 previous-day / gap bias；先把 same-session 主線在第二份樣本上的表現邊界定清楚。
+
+## 2026-05-21 Review 輪：台股 ORB canonical baseline 改成 aligned 版之後的剩餘工程債
+
+這輪是 review-only，不改策略語意；只整理在 `TWSE_2330_5M` 已明確改用 aligned `Asia/Taipei 09:00-13:30` 作為 canonical baseline 後，還有哪些 guard 與 contract 沒跟上。
+
+### Findings
+
+1. **目前 artifact 已能標示 `aligned / mismatch`，但分析流程尚未要求後續台股比較必須以 aligned 版為主。**
+   - 現在的 metadata 足以幫助人讀 artifact。
+   - 但如果後續有人再沿用 defaults 跑 `TWSE_2330_5M`，系統仍不會阻止它被誤當成主線比較結果。
+   - 也就是說，repo 現在有「描述性 guard」，但還沒有「流程性 guard」。
+
+2. **`TWSE_2330_5M` 的 canonical baseline 已在研究結論裡收斂，但還沒有一個更靠近 CLI / reporting 的固定提示。**
+   - 目前這件事主要寫在 `Autoresearch 實驗記錄` 與策略筆記。
+   - 若未來 artifact 要更自我說明，可能還需要一個更短、固定的 baseline note，避免台股報表只能靠長文脈絡判讀。
+
+3. **這輪 A/B 已足夠回答 market-clock 問題，下一步不該再重複做同題驗證。**
+   - 我們現在已經知道：
+     - mismatch 會扭曲結果；
+     - aligned 是必要修正；
+     - 修正後仍然偏弱。
+   - 所以再做第三次同型 A/B 的價值很低。
+   - 更合理的是把後續分析配額轉去：
+     - 其他 ORB refinement 在 aligned 台股 baseline 上的表現；
+     - 或直接承認台股樣本對這條主線不適配。
+
+### 結論
+
+- `TWSE_2330_5M` 的 ORB 比較現在已經有夠清楚的 canonical baseline：`Asia/Taipei 09:00-13:30 aligned`。
+- 目前剩餘的工程債不是「再多一個比較」，而是如何避免後續流程又把 `mismatch` 版拿回來當主結論。
+
+### 下一步
+
+1. 若進入執行輪，優先考慮補一個更靠近 reporting / CLI 的台股 baseline 提示，而不是做新 filter。
+2. 若進入研究或分析輪，直接站在 aligned 版上比較下一個 refinement，不要再重複 market-clock A/B。
