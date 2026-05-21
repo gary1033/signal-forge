@@ -3388,3 +3388,101 @@ git diff --check
 
 1. 之後若要再進 previous-day family，不要重複盤點「有沒有第二份 intraday 樣本」；直接進入正面資料 contract 與 reporting boundary 設計。
 2. 若 `TWSE_2330_5M` 後續要被用作 canonical 台股 ORB 樣本，應維持目前 `Asia/Taipei 09:00-13:30` regular-session metadata，不要再把它混回美股預設 market-clock。
+
+## 2026-05-21 分析輪：比較 `EMA inside-range` 主線在 MSFT 與 TSMC 兩份 intraday 樣本上的跨樣本穩定性
+
+這輪直接比較目前 ORB 主線：
+
+- Strategy：
+  - `orb-volume-vwap --orb-reject-ema-inside-range`
+- Sample A：
+  - `data/processed/ALPHAVANTAGE_MSFT_5M_demo.csv`
+- Sample B：
+  - `data/processed/TWSE_2330_5M.csv`
+
+### 產出 artifact
+
+- `reports/generated/msft-orb-ema-box-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-phase-20260521_trace_summary.json`
+- `reports/generated/orb-ema-box-crosssample-20260521.md`
+- `reports/generated/orb-ema-box-crosssample-20260521.json`
+
+### MSFT 5m 結果
+
+- hold 1：
+  - decision：`pass`
+  - PF：`4.452`
+  - Trades：`13`
+  - Win rate：`38.46%`
+  - Avg net PnL：`16.27`
+  - Max DD：`-0.290%`
+- hold 3 / 5 / 10 全部 `fail`
+- phase trace summary：
+  - accepted：`13`
+  - hold：`873`
+  - blocked：`1754`
+  - blocked reasons：
+    - `below_or_high(1480)`
+    - `breakout_volume_blocked(148)`
+    - `ema_inside_opening_range(126)`
+
+### TSMC 2330 5m 結果
+
+- hold 1：
+  - decision：`fail`
+  - PF：`0.083`
+  - Trades：`20`
+  - Win rate：`5.00%`
+  - Avg net PnL：`-10.20`
+  - Max DD：`-2.039%`
+- hold 3：
+  - PF：`0.236`
+- hold 5：
+  - PF：`0.248`
+- hold 10：
+  - PF：`0.927`
+  - Trades：`19`
+  - unclosed：`1`
+- phase trace summary：
+  - accepted：`20`
+  - hold：`396`
+  - blocked：`2017`
+  - blocked reasons：
+    - `below_or_high(1855)`
+    - `ema_inside_opening_range(86)`
+    - `breakout_volume_blocked(69)`
+    - `volume_warmup(7)`
+
+### 交叉判讀
+
+1. `EMA inside-range` 目前不是跨樣本穩定的主線條件。
+   - `MSFT 5m demo` 的 hold 1 是明確 `PASS`。
+   - `TWSE_2330_5M` 的 hold 1 / 3 / 5 / 10 全部 `FAIL`。
+2. 2330 的失敗不是因為 `EMA inside-range` 太嚴。
+   - MSFT 被 `ema_inside_opening_range` 擋掉 `126` 次。
+   - TSMC 只被擋掉 `86` 次。
+   - 也就是說，問題比較像是放行後的突破品質本身較差。
+3. 2330 也不是「沒有訊號」。
+   - accepted 反而比 MSFT 多：`20 > 13`
+   - 但持有期間的報酬品質明顯更差。
+
+### 重要邊界
+
+這輪也暴露出更重要的實驗邊界：`TWSE_2330_5M` 是 `Asia/Taipei 09:00-13:30` regular session，但這次比較仍沿用了目前 ORB 主線既有的 market-clock defaults。這代表：
+
+- 這個比較足以證明「現有 ORB 主線在第二份樣本上不具跨樣本穩定性」。
+- 但它不足以證明「2330 本質上不適合 `EMA inside-range`」。
+- 若要對台股做更公平的下一輪比較，應先把 `orb_session_timezone`、`session start/end` 明確切到 `Asia/Taipei 09:00-13:30`，再比較是否仍然失敗。
+
+### 結論
+
+- `EMA inside-range` 在目前 repo 的兩份 intraday 樣本上，不具普適穩定性。
+- 目前沒有理由把它升格成 market-agnostic 主線 invariant。
+- 也沒有理由在這個時間點就把注意力轉去 `prior-day close / gap bias`；更迫切的下一步，是先做 market-clock 對齊後的跨樣本重跑。
+
+### 下一步
+
+1. 若要再用 `TWSE_2330_5M` 做 ORB 比較，先把 `orb_session_timezone`、`session start/end` 對齊 `Asia/Taipei 09:00-13:30`。
+2. 在 market-clock 沒對齊前，不要用這份失敗結果直接推導新的 previous-day family filter。
+3. `prior_day_close_regular_session` 仍維持 contract-only 狀態；先不要把它擴成 gap-bias runtime filter。
