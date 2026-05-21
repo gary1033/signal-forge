@@ -4707,6 +4707,42 @@ phase hold 1 的主要 blocked reasons：
    - `OR average volume baseline`
 2. 若進入 review 輪，應檢查這個 benchmark hint 是否已經足夠穩定，不必再擴 machine-readable schema。
 
+## 2026-05-21 執行：把台股 refinement hint 升級成 benchmark + stacked profile
+
+### 本輪修改
+
+- `TWSE Refinement Benchmark` 區塊不再只停在單一 benchmark 排序，而是明確拆成兩層：
+  - `full bar above range`：standalone primary structural benchmark
+  - `full bar above range + OR average volume baseline`：目前最強的 stacked profile
+- 若本次 run 已同時啟用 `full bar above range` 與 `OR average volume baseline`，報表會直接提示這是目前最強的台股已測組合，並要求先對照 `aligned baseline`，再對照單獨的 `full bar above range`。
+- 這輪只改 reporting contract 與 exact-text regression，不改策略 trade logic。
+
+### 為什麼要改
+
+- 前一輪研究已經收斂出：公開 ORB 腳本在多個 confirmation filter 疊加時，更常把它們呈現成 **active confirmation profile**，而不是只保留一個單點 benchmark 名稱。
+- 本地結果也已經證明：
+  - `full bar above range` 是高優先級 structural benchmark
+  - `full bar above range + OR average volume baseline` 又進一步成為目前最強的台股已測組合
+- 如果 hint 仍只保留單層 benchmark，後續讀報表的人會看不出 stacked profile 已經有獨立的解讀地位。
+
+### 結論
+
+- 台股 ORB 的 comparison / reporting hint 現在應固定用以下順序理解：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+  4. `OR average volume baseline`
+  5. `OR retest`
+- 這是 **報表解讀順序** 的升級，不是 machine-readable schema 擴張，也不是策略語意變更。
+
+### 下一步
+
+1. 若進入分析輪，新的台股 refinement 應至少同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+2. 若進入 review 輪，應檢查這個雙層 hint 是否已足夠穩定，暫時不必再擴成更重的 schema。
+
 ## 2026-05-21 研究：公開 ORB 腳本如何定位 full bar / close-confirmation breakout
 
 ### 研究問題

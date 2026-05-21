@@ -1002,8 +1002,9 @@ class ReportingTests(unittest.TestCase):
                     "## TWSE Refinement Benchmark",
                     "",
                     "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
-                    "- Primary benchmark refinement: full bar above range is the current structural reference for Taiwan ORB comparisons.",
-                    "- Current run uses the secondary OR average volume baseline benchmark; treat it as the trade-compression reference against the stronger full-bar benchmark.",
+                    "- Primary structural benchmark: full bar above range remains the standalone structure reference for Taiwan ORB comparisons.",
+                    "- Strongest stacked profile so far: full bar above range + OR average volume baseline.",
+                    "- Current run uses the standalone OR average volume baseline benchmark; treat it as the trade-compression reference below the stronger full-bar and stacked profiles.",
                     "- OR retest / re-break confirmation remains a compare-only entry style candidate, not a higher-priority baseline upgrade.",
                 ]
             ),
@@ -1069,8 +1070,9 @@ class ReportingTests(unittest.TestCase):
                     "## TWSE Refinement Benchmark",
                     "",
                     "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
-                    "- Primary benchmark refinement: full bar above range is the current structural reference for Taiwan ORB comparisons.",
-                    "- Current run uses the compare-only OR retest / re-break style; read it against the aligned baseline, the full-bar benchmark, and the OR average volume baseline.",
+                    "- Primary structural benchmark: full bar above range remains the standalone structure reference for Taiwan ORB comparisons.",
+                    "- Strongest stacked profile so far: full bar above range + OR average volume baseline.",
+                    "- Current run uses the compare-only OR retest / re-break style; read it against the aligned baseline, the standalone full-bar benchmark, and the stacked full-bar-plus-volume profile.",
                     "- OR retest / re-break confirmation remains a compare-only entry style candidate, not a higher-priority baseline upgrade.",
                 ]
             ),
@@ -1118,8 +1120,62 @@ class ReportingTests(unittest.TestCase):
                     "## TWSE Refinement Benchmark",
                     "",
                     "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
-                    "- Current run uses the primary structural benchmark: full bar above range.",
-                    "- OR average volume baseline is now the secondary trade-compression benchmark for Taiwan refinements.",
+                    "- Primary structural benchmark: full bar above range remains the standalone structure reference for Taiwan ORB comparisons.",
+                    "- Strongest stacked profile so far: full bar above range + OR average volume baseline.",
+                    "- Current run uses the standalone primary structural benchmark: full bar above range.",
+                    "- OR average volume baseline remains the secondary trade-compression benchmark unless it is stacked with full bar above range.",
+                ]
+            ),
+            markdown_text,
+        )
+
+    def test_entry_edge_markdown_promotes_twse_stacked_profile_when_fullbar_and_orvol_are_enabled(
+        self,
+    ) -> None:
+        """
+        用途與流程：驗證當 strategy spec 同時啟用 full bar above range 與 OR average volume baseline 時，entry-edge markdown 會把它標成目前最強的台股 stacked profile，避免 hint 仍只停在單一 full-bar benchmark。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        bars = [
+            Bar("2026-01-01", 10, 10.5, 9.5, 10, 100),
+            Bar("2026-01-02", 10, 11.5, 9.5, 11, 100),
+        ]
+        result = EntryEdgeEvaluator(
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0)
+        ).run(OneTradeStrategy(), bars)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = write_entry_edge_outputs(
+                result,
+                temp_dir,
+                run_name="entry-edge-twse-stacked-profile",
+                data_validation=validate_bars(bars),
+                strategy_spec={
+                    "entry_side": "long_only",
+                    "orb_known_sample_market_clock_alignment": "aligned",
+                    "orb_known_sample_market_clock_expected_timezone": "Asia/Taipei",
+                    "orb_known_sample_market_clock_expected_session_start": "09:00",
+                    "orb_known_sample_market_clock_expected_session_end": "13:30",
+                    "orb_known_sample_market_clock_rule": "Use the aligned Asia/Taipei 09:00-13:30 baseline when reading TWSE_2330_5M conclusions.",
+                    "orb_known_sample_market_clock_baseline_note": "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
+                    "orb_full_bar_above_range": "enabled",
+                    "orb_use_opening_range_volume_baseline": "enabled",
+                    "orb_retest_confirmation": "disabled",
+                },
+            )
+            markdown_text = paths.markdown.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "\n".join(
+                [
+                    "## TWSE Refinement Benchmark",
+                    "",
+                    "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
+                    "- Primary structural benchmark: full bar above range remains the standalone structure reference for Taiwan ORB comparisons.",
+                    "- Strongest stacked profile so far: full bar above range + OR average volume baseline.",
+                    "- Current run uses the strongest stacked profile: full bar above range + OR average volume baseline.",
+                    "- Read this run first against the aligned baseline, then against the standalone full-bar benchmark.",
                 ]
             ),
             markdown_text,

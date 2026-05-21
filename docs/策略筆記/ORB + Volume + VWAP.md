@@ -489,3 +489,30 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 5. `OR retest`
 
 後續若報表要更貼近研究脈絡，應該優先讓 reading hint 先把這個 stacked profile 顯式說清楚，而不是急著把它再壓成單一欄位或單一 tier。
+
+## 台股報表提示：benchmark 與 stacked profile 要分開讀
+
+對 `TWSE_2330_5M` 這種已知 market-clock 的台股樣本，報表提示現在不應只說「目前 benchmark 是誰」，還要把 **單一 benchmark** 和 **疊加 profile** 分開看。
+
+### 目前較合理的解讀順序
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `OR average volume baseline`
+5. `OR retest`
+
+### 這個排序代表什麼
+
+- `full bar above range` 是目前最重要的單一結構 benchmark。
+- `OR average volume baseline` 單獨使用時，仍較像次層的量能壓縮 benchmark。
+- 但當 `full bar above range` 已開啟時，`OR average volume baseline` 會和它形成一個新的 stacked profile，而且這個 profile 目前是台股已測條件中最強的一組。
+
+### 報表閱讀方式
+
+- 若看到 `full bar above range` 與 `OR average volume baseline` 同時啟用，應先把它視為 **目前最強 stacked profile**。
+- 接著再回頭比較：
+  1. 它比 `aligned baseline` 好多少
+  2. 它比單獨的 `full bar above range` 又多了多少增量
+
+這樣比較能看清楚：台股這條線現在不是只有「單一 refinement 誰最強」，而是已經出現了值得單獨追蹤的 confirmation profile。
