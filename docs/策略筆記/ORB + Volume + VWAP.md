@@ -202,3 +202,4 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 進一步把 `EMA inside-range` 主線拿去對照 repo 目前兩份 intraday 樣本後，可以看到它不是跨樣本穩定的普適條件：在 `MSFT 5m demo` 上，hold 1 版本是明確 `PASS`（PF `4.452`）；但在 `TWSE_2330_5M` 上，hold 1 / 3 / 5 / 10 全部 `FAIL`，最佳的 hold 10 也只有 PF `0.927`。
 - 這個結果也不能被誤讀成「`EMA inside-range` 沒用」。從 trace summary 看，`TWSE_2330_5M` 被 `ema_inside_opening_range` 擋掉的次數只有 `86`，比 `MSFT 5m demo` 的 `126` 還少；也就是說，2330 的失敗不是因為這條 gate 太嚴，而是放行後的突破品質本身較差。
 - 因此目前更合理的結論是：`EMA inside-range` 對現有美股 sample 有主線價值，但不能直接升格成 market-agnostic invariant；若要對台股樣本做更公平的比較，下一步應先把 ORB 的 market-clock 明確切到 `Asia/Taipei 09:00-13:30`，而不是直接堆更多 filter 或把 attention 轉去 previous-day family。
+- 進一步回頭看公開 ORB 腳本，這個排序其實很合理：像 `SessionVWAP + ORB`、`ORB Multi Preset` 這類多市場腳本，第一步通常不是先增加 breakout refinement，而是先把各市場自己的 session、open time 與 timezone 拉成顯式設定。這代表對目前 SignalForge 來說，`TWSE_2330_5M` 的下一步也應優先是 market-clock 對齊，而不是直接往 previous-day family 或更多 filter 擴張。

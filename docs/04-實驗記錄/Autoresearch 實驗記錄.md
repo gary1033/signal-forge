@@ -3517,3 +3517,44 @@ git diff --check
 
 1. 若進入執行輪，優先做「sample-aware market-clock 提示或 validator」，而不是加新 filter。
 2. 若進入分析輪，直接重跑 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30` 版本，並和目前 defaults 結果做 A/B 對照。
+
+## 2026-05-21 研究輪：公開 ORB 腳本對多市場 session / timezone 的常見排序
+
+這輪不找新的 entry filter，而是回頭確認一個更底層的研究排序：**當同一套 ORB 要搬到不同市場時，公開腳本通常先處理什麼？**
+
+### 研究來源
+
+- TradingView 官方 `Sessions`
+- TradingView 官方 `Other timeframes and data`
+- TradingView 官方 `Repainting`
+- TradingView 公開腳本：
+  - `SessionVWAP + ORB`
+  - `ORB Multi Preset`
+
+### 核心觀察
+
+1. **公開 ORB 腳本通常先把 session/timezone 做成一級設定，再談 breakout filter。**
+   - `SessionVWAP + ORB` 直接把 Sydney / Tokyo / London / New York / US RTH 拆成不同 session，並明講支援完整 timezone flexibility。
+   - `ORB Multi Preset` 更直接：它不是先問哪條 EMA 或哪個 volume filter，而是先替不同 underlying 各自定義 `Pre-ORB`、`ORB`、time 與 timezone。
+   - 這和目前 `TWSE_2330_5M` 暴露出的問題一致：2330 的第一個缺口不是 filter family，而是 market-clock contract 還沒被系統化。
+
+2. **TradingView 官方 session 模型也支持把 session 與 timezone 當成顯式邊界，而不是暗含在資料裡。**
+   - `time(timeframe, session, timezone)` 就是這種設計。
+   - 官方也明講 exchange-defined regular/extended session 與 user-defined session string 是兩回事，這代表 ORB 若要跨市場，不能只靠「這份 CSV 看起來像台股」來推斷邊界。
+
+3. **一旦 previous-day / higher-timeframe family 需要 `request.security()`，複雜度與 repaint 風險會立刻上升。**
+   - 官方文件明確提醒：`request.security()` 在 historical / realtime 行為上可能不同，若沒有 offset 與 `lookahead` 管理，會 repaint。
+   - 因此，在 market-clock contract 還沒先對齊前，直接把 `prior-day close / gap bias / PDH/PDL` 推進 ORB 主線，工程風險高於收益。
+
+### 結論
+
+- 公開腳本與官方文件的共同訊號很一致：**跨市場 ORB 的第一步應該是 session/timezone/market-clock 對齊，而不是先堆 filter。**
+- 這進一步支持目前 repo 的排序：
+  1. 先把 `TWSE_2330_5M` 的 canonical `Asia/Taipei 09:00-13:30` contract 系統化；
+  2. 再做 market-clock 對齊後的 cross-sample rerun；
+  3. 只有在這一步仍顯示不足時，才值得把注意力轉去 previous-day family。
+
+### 下一步
+
+1. 若進入執行輪，優先做 sample-aware market-clock prompt / validator，而不是做新的 ORB filter。
+2. 若進入分析輪，優先跑 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30` 對齊版 A/B 比較。
