@@ -430,6 +430,50 @@ def _validate_orb_same_session_contract(spec: dict[str, str]) -> None:
             )
 
 
+def _validate_orb_prior_day_close_contract(contract: dict[str, str]) -> None:
+    """
+    用途與流程：驗證未來 ORB 若要落第一個 previous-day scalar 時，最小的 prior-day close 正面資料契約是否自洽；這裡只檢查 research note 已收斂出的來源 session、時區對齊、availability 與 fill policy，不把它接進目前 same-session only 的 ORB strategy surface。
+    參數：contract 是 prior-day close metadata dict；預期至少包含 prior_day_close_regular_session、prior_day_close_source_session、prior_day_close_timezone、prior_day_close_availability 與 prior_day_close_fill_policy。
+    回傳與錯誤：回傳 None；若缺少必要欄位、來源不是 regular session、時區沒有對齊 ORB market clock、availability 非 available/unavailable_first_session，或 fill policy 不是 no_forward_fill，會拋出 ValueError。
+    """
+    required_keys = (
+        "prior_day_close_regular_session",
+        "prior_day_close_source_session",
+        "prior_day_close_timezone",
+        "prior_day_close_availability",
+        "prior_day_close_fill_policy",
+    )
+    missing = [key for key in required_keys if key not in contract]
+    if missing:
+        raise ValueError(
+            f"prior-day close contract is missing required keys: {', '.join(missing)}"
+        )
+    if contract["prior_day_close_source_session"] != "regular_session":
+        raise ValueError("prior-day close contract must use regular_session source")
+    if contract["prior_day_close_timezone"] != "orb_session_timezone":
+        raise ValueError(
+            "prior-day close contract must align timezone with orb_session_timezone"
+        )
+    if contract["prior_day_close_availability"] not in (
+        "available",
+        "unavailable_first_session",
+    ):
+        raise ValueError(
+            "prior-day close contract must declare available or unavailable_first_session"
+        )
+    if contract["prior_day_close_fill_policy"] != "no_forward_fill":
+        raise ValueError(
+            "prior-day close contract must keep no_forward_fill policy"
+        )
+    if (
+        contract["prior_day_close_availability"] == "unavailable_first_session"
+        and contract["prior_day_close_regular_session"] != "unavailable"
+    ):
+        raise ValueError(
+            "prior-day close contract must mark first-session values as unavailable"
+        )
+
+
 def _arg_or_default(
     args: argparse.Namespace,
     field_name: str,

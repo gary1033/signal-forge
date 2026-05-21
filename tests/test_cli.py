@@ -15,7 +15,10 @@ from signal_forge.cli import (
     main,
     strategy_spec_from_args,
 )
-from signal_forge.cli.strategy_options import _validate_orb_same_session_contract
+from signal_forge.cli.strategy_options import (
+    _validate_orb_prior_day_close_contract,
+    _validate_orb_same_session_contract,
+)
 from signal_forge.data_fetch import FetchDataResult
 from signal_forge.strategies import ConfluenceScoreStrategy
 
@@ -141,6 +144,60 @@ class CliTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "previous-day family surface"):
             _validate_orb_same_session_contract(spec)
+
+    def test_validate_orb_prior_day_close_contract_accepts_first_session_unavailable(
+        self,
+    ) -> None:
+        """
+        用途與流程：直接驗證 prior-day close 的最小正面 contract 允許第一個 session 明確標示 unavailable，讓 previous-day family 未來若要落地時，先有可重複使用的 validator 邊界而不是只停在研究文字。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        unavailable_contract = {
+            "prior_day_close_regular_session": "unavailable",
+            "prior_day_close_source_session": "regular_session",
+            "prior_day_close_timezone": "orb_session_timezone",
+            "prior_day_close_availability": "unavailable_first_session",
+            "prior_day_close_fill_policy": "no_forward_fill",
+        }
+        available_contract = {
+            "prior_day_close_regular_session": "431.25",
+            "prior_day_close_source_session": "regular_session",
+            "prior_day_close_timezone": "orb_session_timezone",
+            "prior_day_close_availability": "available",
+            "prior_day_close_fill_policy": "no_forward_fill",
+        }
+
+        _validate_orb_prior_day_close_contract(unavailable_contract)
+        _validate_orb_prior_day_close_contract(available_contract)
+
+    def test_validate_orb_prior_day_close_contract_rejects_fill_policy_drift(
+        self,
+    ) -> None:
+        """
+        用途與流程：直接驗證 prior-day close 的正面 contract 會拒絕 fill policy 或 first-session unavailable 表示法漂移，避免日後 previous-day family 還沒正式進 ORB surface 前，就把補值或模糊 unavailable 語意悄悄帶進 validator。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        bad_fill_policy = {
+            "prior_day_close_regular_session": "431.25",
+            "prior_day_close_source_session": "regular_session",
+            "prior_day_close_timezone": "orb_session_timezone",
+            "prior_day_close_availability": "available",
+            "prior_day_close_fill_policy": "forward_fill",
+        }
+        bad_unavailable_marker = {
+            "prior_day_close_regular_session": "431.25",
+            "prior_day_close_source_session": "regular_session",
+            "prior_day_close_timezone": "orb_session_timezone",
+            "prior_day_close_availability": "unavailable_first_session",
+            "prior_day_close_fill_policy": "no_forward_fill",
+        }
+
+        with self.assertRaisesRegex(ValueError, "no_forward_fill"):
+            _validate_orb_prior_day_close_contract(bad_fill_policy)
+        with self.assertRaisesRegex(ValueError, "unavailable"):
+            _validate_orb_prior_day_close_contract(bad_unavailable_marker)
 
     def test_phase_command_accepts_minimal_strategy_invocation(self) -> None:
         """

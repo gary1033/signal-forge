@@ -3254,3 +3254,37 @@ git diff --check
 
 1. 若進入執行輪，優先補 `unavailable_first_session` regression 或 dedicated validator helper。
 2. 在這個最小資料 contract 沒有變成測試前，不要直接新增 `orb_previous_day_close` 或 `orb_gap_bias` CLI surface。
+
+## 2026-05-21 執行輪：補 `prior_day_close_regular_session` 的 first-session unavailable validator contract
+
+這輪不改 ORB 策略語意，也不把 previous-day family 接進目前的 ORB `strategy_spec` surface；只先把上一輪研究整理出的最小正面 contract，縮成一個可測試的 helper 邊界。
+
+### 這輪實作
+
+- 在 `strategy_options.py` 新增 `_validate_orb_prior_day_close_contract(...)`。
+- 這個 helper 只驗證研究已經收斂出的最小欄位：
+  - `prior_day_close_regular_session`
+  - `prior_day_close_source_session = regular_session`
+  - `prior_day_close_timezone = orb_session_timezone`
+  - `prior_day_close_availability = available | unavailable_first_session`
+  - `prior_day_close_fill_policy = no_forward_fill`
+- 若 `prior_day_close_availability = unavailable_first_session`，則 `prior_day_close_regular_session` 必須明確寫成 `unavailable`，不能再偷放數值。
+
+### 為什麼先做 helper，不直接接進 ORB surface
+
+- 目前 repo 還沒有第二份 ORB-capable intraday 樣本。
+- previous-day family 也還沒有 phase / entry-edge 的正面 metadata 分工。
+- 因此這輪的合理邊界是：先把「未來要遵守什麼資料 contract」變成 validator 與測試，而不是把 `orb_previous_day_*` 長成正式 schema。
+
+### 驗證
+
+- 新增 direct unit tests：
+  - 接受 `available`
+  - 接受 `unavailable_first_session`
+  - 拒絕 `forward_fill`
+  - 拒絕 `unavailable_first_session` 但仍塞數值
+
+### 下一步
+
+1. 若後續還要推 previous-day family，先補第二份獨立 intraday 樣本。
+2. 在 phase / entry-edge reporting 分工沒有先定義前，不要讓這個 helper 直接外溢成 ORB artifact surface。
