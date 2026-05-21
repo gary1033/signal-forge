@@ -4561,6 +4561,73 @@ phase hold 1 的主要 blocked reasons：
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
 
+## 2026-05-21 研究：公開 ORB 腳本如何呈現 stacked filter 組合
+
+### 研究問題
+
+台股這條線目前已經出現一個新的情況：
+
+- `full bar above range` 單獨使用時，已是高優先級 structural benchmark
+- `full bar above range + OR average volume baseline` 疊加後，又成為目前最強的已測組合
+
+這輪要回答的問題不是「哪個回測數字比較好」，而是更接近報表設計：
+
+- 公開 ORB 腳本通常怎麼呈現這種 **多個 confirmation filter 疊加** 的狀態？
+- 它們是只保留一個主 benchmark 名稱，
+- 還是會直接把目前啟用的 filter 組合視為一個 active profile / max-filter mode？
+
+### 外部依據
+
+1. TradingView `ORB Breakout Strategy with VWAP and Volume Filters`
+   - 明確寫出這些 filters 是「designed to work together as a unified entry system」。
+   - inputs 也把 filter 視為可 individually enabled / disabled 的組合，而不是只保留單一主條件。
+
+2. TradingView `ORB Breakout`
+   - 直接把 breakout signal 定義成多條件同時成立：
+     - body closes above OR high
+     - volume ≥ OR average volume
+     - price above VWAP
+     - within signal window
+   - 這類寫法本質上就是把結構、量能、VWAP 視為一個 active entry profile。
+
+3. TradingView `Opening Range Breakout + VWAP + Volume [ORB Strategy]`
+   - 直接列出 `FILTER COMBINATIONS`：
+     - ORB only
+     - ORB + VWAP
+     - ORB + Volume
+     - ORB + VWAP + Volume
+   - 並明示 `ORB + VWAP + Volume` 是 `maximum filter (recommended)`。
+   - 同時提供 dashboard 顯示 filter status 與 session state。
+
+4. TradingView 官方 `Repainting`
+   - 再次支持：若要把 confirmation profile 做成可研究、可重跑的組合，應優先建立在 confirmed-bar-only 的邊界上，而不是偷混未確認資料或 higher-timeframe context。
+
+### 研究結論
+
+1. **公開 ORB 腳本更常把 stacked filters 視為 active confirmation profile，而不是只保留一個單點 benchmark 名稱。**
+   - 也就是說，使用者看到的不是「volume 是主 benchmark、full bar 是次要條件」，
+   - 而是「目前啟用了哪幾個 filters」。
+
+2. **這和台股目前的本地結果一致。**
+   - `full bar above range` 已經有獨立資訊量；
+   - `OR average volume baseline` 疊在它上面時，又產生新的增量；
+   - 因此 reporting 更合理的做法，不是只替換掉舊 benchmark，而是把 `full bar + OR volume baseline` 明確視為一個新的 active refinement profile。
+
+3. **對 SignalForge 的較合理下一步，不是再擴 schema，而是先讓 hint 文案升級成「benchmark + stacked profile」雙層解讀。**
+   - `aligned baseline`
+   - `full bar above range`：primary structural benchmark
+   - `full bar above range + OR average volume baseline`：current strongest stacked profile
+   - `OR average volume baseline`：standalone trade-compression benchmark
+   - `OR retest`：compare-only style
+
+### 下一步
+
+1. 若進入執行輪，優先更新 `TWSE Refinement Benchmark` 或相關 reporting hint，讓 stacked profile 被明確標成目前最強的 active Taiwan refinement 組合。
+2. 若進入分析輪，新的台股 refinement 應至少同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+
 ## 2026-05-21 Code Review：台股 full bar above range 與現有 benchmark 的優先級收斂
 
 ### Review 範圍

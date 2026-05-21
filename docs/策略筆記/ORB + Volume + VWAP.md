@@ -462,3 +462,30 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - `aligned baseline`
 - `full bar above range`
 - `full bar above range + OR average volume baseline`
+
+## 組合型 confirmation profile 的解讀方式
+
+從公開 ORB 腳本的做法來看，當 breakout 條件開始疊加：
+
+- breakout 結構確認
+- volume confirmation
+- VWAP alignment
+- session / signal window
+
+它們更常被呈現成 **目前啟用的 confirmation profile**，而不是只留下一個單點 benchmark 名稱。
+
+這對目前台股樣本的意義是：
+
+- `full bar above range` 可以視為主要的結構 benchmark。
+- `OR average volume baseline` 單獨看時仍是次層 benchmark。
+- 但當兩者疊加後，較合理的閱讀方式不再是「誰取代誰」，而是把它視為一個新的 **stacked refinement profile**。
+
+也就是說，台股這條線目前更合理的解讀順序是：
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `OR average volume baseline`
+5. `OR retest`
+
+後續若報表要更貼近研究脈絡，應該優先讓 reading hint 先把這個 stacked profile 顯式說清楚，而不是急著把它再壓成單一欄位或單一 tier。
