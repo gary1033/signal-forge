@@ -465,7 +465,7 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("- Accepted breakouts: 1", markdown)
         self.assertIn("- Blocked reasons: breakout_vwap_slope_blocked(1)", markdown)
         self.assertIn(
-            "- Interpretation: this phase report keeps ORB attribution as a compact blocked/accepted summary; state, tier, and rule metadata remain in entry-edge strategy_spec artifacts.",
+            "- Interpretation: this phase report keeps ORB attribution as a compact blocked/accepted summary; state, tier, and rule metadata remain in entry-edge strategy_spec artifacts, and previous-day / higher-timeframe context is outside the current ORB contract until that family is defined explicitly.",
             markdown,
         )
 

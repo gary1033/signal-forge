@@ -2702,3 +2702,38 @@ git diff --check
    - previous-day 邊界定義；
    - artifact / validator 對 higher-timeframe context 的說明；
    - 至少第二份 intraday 樣本。
+
+## 2026-05-21 執行輪：phase markdown 明講前日 / higher-timeframe context 目前不在 ORB contract 內
+
+這輪不改 ORB 策略語意，也不擴 artifact schema；只做一個 reporting readability 修補：在 phase markdown 的 `ORB Filter Attribution` 區塊，把先前研究出的邊界直接寫成人類可讀解讀，避免使用者把目前 ORB 主線和 `previous day high/low`、gap、overnight range 這類新 family 混讀。
+
+### 修改內容
+
+- `src\signal_forge\reporting\_legacy.py`
+  - 更新 `_build_phase_orb_filter_attribution_lines(...)` 的 interpretation 行：
+    - 保留原本「這裡只是 compact blocked/accepted summary」
+    - 額外明講：`previous-day / higher-timeframe context is outside the current ORB contract until that family is defined explicitly`
+- `tests\test_reporting.py`
+  - 同步更新 exact-text assertion，鎖住 phase markdown 這行新的 contract。
+
+### 為什麼做這個修補
+
+- 上一輪研究已收斂：`前日高低點 / gap context` 是合理的新 family，但目前不該直接混進 ORB 主線。
+- 若 phase markdown 不把這個邊界說清楚，後續回看報表時，容易誤以為 phase report 已經隱含 previous-day / higher-timeframe 結構判斷。
+- 這輪只補說明，不新增任何 strategy spec 欄位，也不把 phase markdown 擴成第二套完整 schema。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `131 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動把 ORB 目前 contract 和下一個研究 family 的邊界寫進人類可讀報表，但不提前把 previous-day family 變成正式策略欄位。
+
+### 下一步
+
+1. 下一輪若進入分析輪，不需要再為這個 wording 單獨重跑 runtime 比較；較合理的是把分析配額用在新的 filter family 或第二份 intraday 樣本。
+2. 若未來真的要落地 previous-day family，應先補資料邊界與 validator，再決定是否新增 artifact 欄位。

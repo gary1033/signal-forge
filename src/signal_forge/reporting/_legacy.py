@@ -1680,7 +1680,7 @@ def _build_phase_orb_filter_attribution_lines(
         "- Groups (accepted/hold/session/range/structure/trend/volume/retest/other): "
         f"{accepted_group}/{hold_group}/{session_group}/{range_group}/{structure_group}/{trend_group}/{volume_group}/{retest_group}/{other_group}",
         f"- Blocked reasons: {blocked_reason_text}",
-        "- Interpretation: this phase report keeps ORB attribution as a compact blocked/accepted summary; state, tier, and rule metadata remain in entry-edge strategy_spec artifacts.",
+        "- Interpretation: this phase report keeps ORB attribution as a compact blocked/accepted summary; state, tier, and rule metadata remain in entry-edge strategy_spec artifacts, and previous-day / higher-timeframe context is outside the current ORB contract until that family is defined explicitly.",
     ]
 
 
