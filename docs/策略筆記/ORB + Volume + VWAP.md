@@ -834,3 +834,43 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 但它不會因此把既有持倉強制平掉
 
 所以現在若有人只用 `one trade per day` 來描述這條線，會太粗，因為那會把 `entire-session one-trade guard` 也混進來。
+
+## `one-and-done guard scope` 精化後仍不改目前台股主線 runtime
+
+在目前的台股 strongest stacked profile：
+
+- `EMA inside-range`
+- `full bar above range`
+- `OR average volume baseline`
+
+之上，把 `one-and-done` contract 從 generic entry-count-control 再精化成：
+
+- `long_only_per_direction_first_entry`
+
+之後，runtime 指標仍完全不變。
+
+### 這代表什麼
+
+- 目前 repo 內新增的是 **guard scope metadata**
+- 不是已啟用的 session entry-count-control 規則
+
+因此現在的 `one-and-done` 仍應解讀成：
+
+- contract-ready
+- semantics-not-enabled
+
+### 對策略筆記的意義
+
+這條線目前不能當作已驗證有效的策略 refinement，也不能因為這輪結果中性，就說它已被否決。較準確的說法是：
+
+- guard 範圍已定清楚
+- 但交易語意尚未真正接進 ORB 主線
+
+所以後續若真的要比較 `one-and-done`，必須先把它接成：
+
+- same-session
+- long-only
+- per-direction
+- first-entry guard
+
+的實際 entry-count-control，再拿結果和台股 canonical anchors 比較。

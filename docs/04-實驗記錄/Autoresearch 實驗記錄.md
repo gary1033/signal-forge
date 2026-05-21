@@ -5402,3 +5402,58 @@ phase hold 1 blocked reasons：
    - reporting / strategy note 是否仍把 `one-and-done` 寫得太模糊
    - 是否還有地方把它描述成 generic one-trade-per-day
 3. 若之後真的要進策略語意實作，應直接把這個 guard scope 接進 long breakout 的 entry-count-control，而不是先回頭討論 `entire_session` 版本。
+
+## 2026-05-21 分析：精化後的 `one-and-done guard scope` 仍是 contract-only
+
+### 比較對象
+
+這輪比較的不是新的交易規則，而是上一輪把 `one-and-done` contract 從 generic entry-count-control 再收斂成：
+
+- `long_only_per_direction_first_entry`
+
+之後，是否會意外改到目前最強台股 stacked profile 的 runtime。
+
+比較主線維持：
+
+- `TWSE_2330_5M`
+- `Asia/Taipei 09:00-13:30 aligned`
+- `ORB + EMA inside-range + full bar above range + OR average volume baseline`
+
+### 結果
+
+結果完全不變，表示這輪仍然只是 **contract 精化**，不是新的交易控制：
+
+- hold 1：PF `6.525`、Trades `8`
+- hold 3：PF `2.259`、Trades `8`
+- hold 5：PF `1.374`、Trades `8`
+- hold 10：PF `1.099`、Trades `8`
+
+phase hold 1 attribution 也維持原狀：
+
+- accepted `8`
+- blocked `2668`
+- hold `111`
+- top blocked reasons：
+  - `below_or_high(2251)`
+  - `breakout_volume_blocked(228)`
+  - `breakout_bar_reentered_range(141)`
+  - `ema_inside_opening_range(44)`
+
+### 解讀
+
+1. `one-and-done` 現在仍是 **contract-ready but semantics-not-enabled**。
+2. 這輪的價值在於減少 guard scope 的語意模糊，不在於提供新的策略績效證據。
+3. 因此不能把這輪的中性結果誤讀成：
+   - `one-and-done` 已經有效
+   - 或 `one-and-done` 已經不值得做
+
+它只證明：目前 repo 內新增的是更清楚的 contract metadata，而不是 entry-count-control runtime。
+
+### 下一步
+
+1. 若之後真的要比較 `one-and-done`，應先進執行輪，把它正式接進 long breakout 的 entry-count-control 語意。
+2. 在那之前，台股 canonical comparison anchors 仍維持：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+3. review 與 reporting 不應把 contract-only 中性結果寫成策略有效性證據。
