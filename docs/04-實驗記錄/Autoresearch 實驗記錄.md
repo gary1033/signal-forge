@@ -1732,3 +1732,38 @@ git diff --check
 1. 下一輪若進入執行輪，較合理的是把 `VWAP slope` 在 reporting / CLI 中重新標示成 secondary refinement，而不是新增更多相依欄位。
 2. 若之後再做分析輪，可直接比較「保留主線 surface」與「降級為 compare-only 記錄」兩種 artifact 可讀性差異。
 3. 若第二份 intraday 樣本仍只看到微弱增量，`VWAP slope` 就更適合正式降成 compare-only 分支。
+
+## 2026-05-21 執行輪：把 `VWAP slope` 明確標成 secondary refinement
+
+這輪不改 ORB 交易判斷，也不調整任何 filter 門檻。唯一的聚焦改動是把 `VWAP slope` 在 CLI / artifact contract 內的定位寫清楚，避免它繼續看起來像 ORB 主線核心條件。
+
+### 修改內容
+
+- `src\signal_forge\cli\strategy_options.py`
+  - `--orb-vwap-slope-confirmation` 的 help 改成明確說明它是 **secondary refinement**。
+  - `strategy_spec_from_args(...)` 新增 `orb_vwap_slope_tier=secondary_refinement`。
+  - `orb_vwap_slope_rule` 改成明寫「this secondary refinement」。
+- `tests\test_cli.py`
+  - 補 assertion，直接鎖 `orb_vwap_slope_tier`
+  - 同步更新 `orb_vwap_slope_rule` 的 exact text
+
+### 這輪解決的問題
+
+- 研究上雖然已經知道 `VWAP slope` 應降級成次要 refinement，但如果 artifact 還只寫 `enabled/disabled + rule`，後續閱讀者仍可能把它誤判成和 `EMA inside-range` 同等級的主線條件。
+- 把 tier 寫進 deterministic contract 後，分析報表、summary JSON 與後續 compare 流程就能直接知道它是第二層條件，而不是再靠聊天或實驗紀錄補充上下文。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `128 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這輪只整理 surface 語意，不動策略決策鏈。
+
+### 下一步
+
+1. 下一輪若進入分析輪，可直接比較「保留這個 secondary refinement 標示」後，artifact 是否更容易讀出主次層級。
+2. 下一輪若進入 review 輪，可檢查 `EMA trend`、`EMA inside-range`、`OR volume baseline` 是否也需要類似的 tier 分層。

@@ -79,6 +79,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - `volume_multiplier`：預設 `1.5`，代表 breakout bar 的量能至少要是最近平均量的 1.5 倍。
 - `require_vwap_confirmation`：預設 `True`，要求 breakout bar close 站上 session VWAP。
 - `--orb-vwap-slope-confirmation`：可選的 VWAP slope confirmation。若有設定，除了 `close > VWAP` 之外，還要求 breakout 當下的 session VWAP 相對前一根同 session bar 保持上升，避免在平或下彎的 VWAP 上方追突破。
+- artifact 的 `strategy_spec` 現在會把 `orb_vwap_slope_tier` 明寫成 `secondary_refinement`，避免後續把它誤讀成 ORB 主線第一層結構條件。
 - `--orb-ema-trend-confirmation`：可選的 EMA trend confirmation。若有設定，breakout 當下除了要維持 `close > OR high`，還要求 `close > rolling EMA`，且該 EMA 相對前一根同 session bar 保持上升，避免只靠短線噴出就追價。
 - `--orb-ema-window`：EMA trend confirmation 使用的 rolling EMA 視窗長度。預設 `20`；視窗越大，越偏向「較慢趨勢基線」。
 - `--orb-reject-ema-inside-range`：可選的結構 gate。若有設定，當 breakout 發生時只要 rolling EMA 仍落在 `OR low ~ OR high` 之間，就直接拒絕這次訊號。這一條不是再疊一個 generic 均線濾網，而是直接利用 EMA 與 OR 盒子的相對位置判斷 breakout 結構是否夠乾淨。

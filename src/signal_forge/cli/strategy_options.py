@@ -88,7 +88,7 @@ def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--orb-vwap-slope-confirmation",
         action="store_true",
-        help="require session VWAP to keep rising into the breakout bar before ORB long entry",
+        help="enable the secondary ORB refinement that requires session VWAP to keep rising into the breakout bar before long entry",
     )
     parser.add_argument(
         "--orb-ema-trend-confirmation",
@@ -195,8 +195,8 @@ def build_strategy_from_args(args: argparse.Namespace) -> Strategy:
 
 def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:
     """
-    用途與流程：整理 CLI strategy 來源、實作名稱、Phase 1 long-only 邊界與可選濾網設定，寫入 entry-edge reporting；同時依策略類型挑選正確的量能欄位預設值，避免 ORB 的內建 breakout volume gate 被誤記成外層 wrapper 的預設參數。
-    參數：args 是 CLI 命名空間；strategy 是已建立的策略或 wrapper 實例；函式會把 ORB 的 session、session end/timezone metadata、VWAP slope confirmation、EMA trend confirmation、EMA inside-range gate、signal window、range gate、breakout distance、full-bar breakout、breakout body strength、fresh-breakout gate、開盤區間量能 baseline 與研究邊界一併寫入 deterministic spec。
+    用途與流程：整理 CLI strategy 來源、實作名稱、Phase 1 long-only 邊界與可選濾網設定，寫入 entry-edge reporting；同時依策略類型挑選正確的量能欄位預設值，避免 ORB 的內建 breakout volume gate 被誤記成外層 wrapper 的預設參數，並把像 VWAP slope 這類已降級成次要 refinement 的條件明確標示在 artifact 中。
+    參數：args 是 CLI 命名空間；strategy 是已建立的策略或 wrapper 實例；函式會把 ORB 的 session、session end/timezone metadata、VWAP slope confirmation、VWAP slope refinement tier、EMA trend confirmation、EMA inside-range gate、signal window、range gate、breakout distance、full-bar breakout、breakout body strength、fresh-breakout gate、開盤區間量能 baseline 與研究邊界一併寫入 deterministic spec。
     回傳與錯誤：回傳 deterministic dict[str, str]；不讀取檔案或外部狀態。
     """
     defaults = STRATEGY_PARAMETER_DEFAULTS[args.strategy]
@@ -271,7 +271,8 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         "orb_vwap_slope_confirmation": "enabled"
         if getattr(args, "orb_vwap_slope_confirmation", False)
         else "disabled",
-        "orb_vwap_slope_rule": "when enabled, breakout is only accepted if session VWAP is rising versus the previous bar in the same session",
+        "orb_vwap_slope_tier": "secondary_refinement",
+        "orb_vwap_slope_rule": "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         "orb_ema_trend_confirmation": "enabled"
         if getattr(args, "orb_ema_trend_confirmation", False)
         else "disabled",

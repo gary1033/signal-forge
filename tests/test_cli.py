@@ -471,7 +471,7 @@ class CliTests(unittest.TestCase):
 
     def test_entry_edge_command_accepts_orb_vwap_slope_confirmation(self) -> None:
         """
-        用途與流程：驗證 entry-edge CLI 可啟用 ORB 的 VWAP slope confirmation，並把這個 entry-quality 規則寫入 strategy spec。
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB 的 VWAP slope confirmation，並把它在 strategy spec 中明確標示為 secondary refinement，而不是主線核心結構條件。
         參數：self 表示目前物件實例
         回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
         """
@@ -501,8 +501,12 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(summary["strategy_spec"]["orb_vwap_slope_confirmation"], "enabled")
         self.assertEqual(
+            summary["strategy_spec"]["orb_vwap_slope_tier"],
+            "secondary_refinement",
+        )
+        self.assertEqual(
             summary["strategy_spec"]["orb_vwap_slope_rule"],
-            "when enabled, breakout is only accepted if session VWAP is rising versus the previous bar in the same session",
+            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         )
 
     def test_entry_edge_command_accepts_orb_ema_trend_confirmation(self) -> None:
