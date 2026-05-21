@@ -661,3 +661,52 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
   - `one-and-done`
 
   分開看，不要先假設 60 分鐘 cutoff 就是正確的台股版本。
+
+## `one-and-done` 在台股 session family 裡的定位
+
+公開 ORB 腳本常把下面這類規則放在一級 session control：
+
+- `one trade per day`
+- `first breakout only`
+- `one signal per side per day`
+- `max trades per session`
+
+這代表 `one-and-done` 的角色比較像：
+
+- 接受第一個有效 breakout
+- 拒絕同 session 後續的重複追價
+
+而不是：
+
+- 直接把整段後續時段全部切掉
+- 或把 breakout 本身再變成更嚴的結構 qualification
+
+### 為什麼它比 `signal window 60` 更值得先走下一步
+
+- `signal window 60` 在台股 aligned baseline 上已經證明會把目前最強 stacked profile 壓成 `0` 交易。
+- `one-and-done` 則有機會保留第一個有效 breakout，同時減少後續重複 breakout 帶來的雜訊。
+
+### 目前較合理的優先順序
+
+因此台股這條線目前較合理的 session family 順序是：
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `one-and-done`
+5. `signal window`
+6. `OR average volume baseline`
+7. `OR retest`
+8. `breakout body strength 0.60`
+
+### 風險邊界
+
+- `one-and-done` 若要實作，仍應鎖在：
+  - same-session
+  - confirmed-bar-only
+  - entry count control
+
+- 不應順手擴成：
+  - cross-session cool-down
+  - higher-timeframe bias
+  - after-cutoff force flatten

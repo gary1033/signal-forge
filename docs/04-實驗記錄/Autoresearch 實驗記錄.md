@@ -5097,3 +5097,52 @@ phase hold 1 blocked reasons：
 
 1. 若進入研究輪，優先整理 `one-and-done` 的外部模式與最小 contract。
 2. 若進入執行輪，優先把 `one-and-done` 收斂成 machine-readable contract，而不是再調整 `signal window 60` 數值。
+
+## 2026-05-21 研究：台股 session family 裡 `one-and-done` 比 `signal window` 更值得先走下一步
+
+### 研究問題
+
+在 `signal window 60` 已被定性為 over-compressive 之後，台股 session family 若還要繼續往前走，下一個較合理的候選應該是什麼？
+
+### 外部依據
+
+- TradingView `Opening-Range Breakout` 明確提供 **One Trade Per Day** toggle。
+- TradingView `ORB Breakout` 明確標示 **once per day per direction**。
+- TradingView `ORB Breakout Strategy` 也把 **maximum one trade per day** 當成系統級控制。
+- TradingView `ORB Strategy [LuciTech]` 明確說 **only the first confirmed breakout per day is traded**，而且若超過某個時間仍沒 breakout，當天就不交易。
+- TradingView `RPFXBYDAN - ORB` 明確提供 **one-signal-per-side-per-day guard**。
+- TradingView `ORB SESSIONS` 則更進一步把它放進 **max trades/session / re-arm / cooldown** 這一類 session control family 裡。
+
+### 研究結論
+
+1. **在台股 session family 裡，`one-and-done` 比 `signal window` 更值得先走下一步。**
+   - 它比較像「先接受一個有效 breakout，然後阻止同 session 後續追價」。
+   - 這和 `signal window 60` 直接把整段後續時間切掉不同。
+
+2. **這條線仍然符合目前 SignalForge 的安全邊界。**
+   - 它可以維持在 same-session、confirmed-bar-only。
+   - 不需要引入 previous-day、higher-timeframe 或 intrabar 探針。
+
+3. **它比較像 session control，而不是新的 breakout qualification。**
+   - `full bar above range` 仍是結構確認。
+   - `OR average volume baseline` 仍是 volume compression / stacked profile 元件。
+   - `one-and-done` 則更像「成交機會數量管理」，目的是減少後續重複 breakout 嘗試。
+
+### 對目前主線的影響
+
+- 台股 session family 現在較合理的分流是：
+  - `signal window`：目前已知 `60` 分鐘版本過度壓縮
+  - `one-and-done`：下一個較值得正式收斂 contract 的候選
+
+- 在新的數據出來前，台股 canonical comparison anchors 仍維持：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+
+### 下一步
+
+1. 若進入執行輪，優先把 `one-and-done` 收斂成 same-session、confirmed-bar-only 的 machine-readable contract。
+2. 若進入分析輪，`one-and-done` 應直接對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
