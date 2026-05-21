@@ -239,3 +239,41 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 2. 下一步若要繼續補工程邊界，較合理的是讓 artifact / reporting 更顯眼地提示這件事，而不是直接把 `mismatch` run 變成不可執行。
 
 原因是 `mismatch` run 仍有研究價值：它能幫助我們理解 market-clock 是否扭曲結果；但正式比較與結論應明確站在 aligned baseline 上。
+
+## 台股 aligned baseline 上的 OR average volume baseline
+
+把 `TWSE_2330_5M.csv` 固定在 `Asia/Taipei 09:00-13:30 aligned` baseline 後，再比較：
+
+1. `ORB + EMA inside-range`
+2. `ORB + EMA inside-range + OR average volume baseline`
+
+可以先固定一個和 `VWAP slope` 不同的結論：
+
+- `OR average volume baseline` **不是零增量 refinement**。
+- 它會明顯壓縮交易數，並改善最短持有期的品質：
+  - hold 1 PF：`0.513 -> 0.948`
+  - trades：`21 -> 12`
+  - average net PnL：`-7.47 -> -0.60`
+  - max drawdown：`-2.88% -> -1.16%`
+
+但這個改善沒有跨 hold 穩定：
+
+- hold 3 PF：`0.538 -> 0.369`
+- hold 5 PF：`0.685 -> 0.406`
+- hold 10 PF：`0.309 -> 0.268`
+
+而且它改變的主因不是新的 OR 結構資訊：
+
+- `ema_inside_opening_range` 維持 `86` 不變
+- `breakout_volume_blocked` 從 `80` 升到 `231`
+
+這代表 `OR average volume baseline` 在台股 aligned baseline 上，比較像一個 **trade-compression refinement**：
+
+- 它會更嚴格地壓掉量能不足的突破；
+- 對最短持有期有幫助；
+- 但會犧牲後續多持有期的穩定性。
+
+所以它和 `VWAP slope` 的定位不同：
+
+- `VWAP slope` 在台股樣本上是零增量；
+- `OR average volume baseline` 則是**有資訊、但帶明顯 tradeoff** 的市場特化 refinement 候選。

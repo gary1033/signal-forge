@@ -3941,3 +3941,95 @@ git diff --check
 
 1. 若進入分析輪，直接站在 `TWSE_2330_5M aligned` baseline 上比較下一個台股 refinement。
 2. 若進入 review 輪，優先檢查是否還需要更強的 flow hint；不要再重跑同題 market-clock 或 `VWAP slope` 驗證。
+
+## 2026-05-21 分析輪：TWSE aligned baseline 上比較 OR average volume baseline
+
+這輪不再回頭驗證 `VWAP slope` 或 market-clock，而是直接站在台股 canonical baseline `Asia/Taipei 09:00-13:30 aligned` 上，比較：
+
+1. `orb-volume-vwap --orb-reject-ema-inside-range`
+2. `orb-volume-vwap --orb-reject-ema-inside-range --orb-use-opening-range-volume-baseline`
+
+目標是回答：**`OR average volume baseline` 在台股樣本上，到底是新的有資訊 refinement，還是只是另一個零增量 gate。**
+
+### 比較對象
+
+- Sample：`data/processed/TWSE_2330_5M.csv`
+- Baseline：`Asia/Taipei 09:00-13:30 aligned`
+- Hold comparison：
+  - `reports/generated/twse-orb-aligned-emabox_hold_comparison.json`
+  - `reports/generated/twse-orb-aligned-emabox-orvol_hold_comparison.json`
+- Phase trace：
+  - `reports/generated/twse-orb-aligned-emabox-phase_trace_summary.json`
+  - `reports/generated/twse-orb-aligned-emabox-orvol-phase_trace_summary.json`
+- 比較報表：
+  - `reports/generated/twse-orb-aligned-emabox-orvol-comparison-20260521.md`
+  - `reports/generated/twse-orb-aligned-emabox-orvol-comparison-20260521.json`
+
+### Hold comparison
+
+#### EMA inside-range
+
+- hold 1：PF `0.513` / Trades `21` / Avg net PnL `-7.47` / Max DD `-2.88%`
+- hold 3：PF `0.538`
+- hold 5：PF `0.685`
+- hold 10：PF `0.309`
+
+#### EMA inside-range + OR average volume baseline
+
+- hold 1：PF `0.948` / Trades `12` / Avg net PnL `-0.60` / Max DD `-1.16%`
+- hold 3：PF `0.369`
+- hold 5：PF `0.406`
+- hold 10：PF `0.268`
+
+### Phase trace summary 對照
+
+#### EMA inside-range
+
+- accepted：`21`
+- blocked：`2266`
+- hold：`500`
+- blocked reasons：
+  - `below_or_high(2087)`
+  - `ema_inside_opening_range(86)`
+  - `breakout_volume_blocked(80)`
+  - `volume_warmup(13)`
+
+#### EMA inside-range + OR average volume baseline
+
+- accepted：`12`
+- blocked：`2475`
+- hold：`300`
+- blocked reasons：
+  - `below_or_high(2156)`
+  - `breakout_volume_blocked(231)`
+  - `ema_inside_opening_range(86)`
+  - `breakout_ema_reference_unavailable(2)`
+
+### 關鍵判讀
+
+1. **`OR average volume baseline` 不是零增量 refinement。**
+   - 它明顯改變了 trade count、PF 與 blocked reason 分布。
+   - 和先前 `VWAP slope` 在台股 aligned baseline 上完全零增量的情況不同。
+
+2. **它明顯改善了最短持有期，但沒有跨 hold 穩定。**
+   - hold 1 PF：`0.513 -> 0.948`
+   - hold 1 Avg net PnL：`-7.47 -> -0.60`
+   - hold 1 Max DD：`-2.88% -> -1.16%`
+   - 但 hold 3 / 5 / 10 的 PF 都更差。
+
+3. **它主要是 trade-compression refinement，不是新的結構 gate。**
+   - `ema_inside_opening_range` 維持 `86` 不變。
+   - 真正大幅上升的是 `breakout_volume_blocked`：`80 -> 231`
+   - accepted trades 也從 `21 -> 12`
+   - 這表示它主要是在更嚴格地壓縮突破樣本，而不是重新定義 OR 結構。
+
+### 結論
+
+- 在 `TWSE_2330_5M aligned` 上，`OR average volume baseline` 比 `VWAP slope` 更值得研究，因為它確實帶來了新的行為差異。
+- 但它目前只對 hold 1 的品質有明顯幫助，還不足以成為跨 hold 穩定的主線改善。
+- 因此較合理的定位是：**台股市場特化的 trade-compression refinement 候選**，而不是已經足以把 ORB 主線翻成 `PASS` 的關鍵條件。
+
+### 下一步
+
+1. 若進入 review 輪，應正式整理這個 refinement 的定位：它比 `VWAP slope` 有資訊，但更像短持有期品質優化，不是普適主線。
+2. 若進入後續分析輪，新的台股 refinement 應拿來對照它的 tradeoff：`hold 1 quality up` vs `multi-hold robustness down`。
