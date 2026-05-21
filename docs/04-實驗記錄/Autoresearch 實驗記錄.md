@@ -1637,3 +1637,56 @@ git diff --check
 1. 下一輪若回到 code review，應檢查 `VWAP slope` 是否值得繼續佔用目前主線 CLI / strategy name surface。
 2. 若下一輪回到執行輪，較合理的改動不是再擴 `VWAP slope`，而是讓 compare / reporting 更容易直接看出「微弱增量但非零」這種情況。
 3. 若之後換第二份 intraday 樣本，優先驗證這個微弱增量是否可重現；若不可重現，`VWAP slope` 更適合降到實驗分支。
+
+## 2026-05-21 Code Review：ORB attribution helper 抽離後的殘餘技術債
+
+這輪是 review-only，不改策略語意。重點是檢查 `a0fb74d` 之後，ORB attribution helper 雖然已抽出，但還有哪些技術債沒有真正消失。
+
+### Findings
+
+#### 1. `flatten_count` 已成為 validator 的死參數
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\reporting\_orb_attribution.py`
+- 現況：`validate_orb_filter_attribution_dict(...)` 仍接收 `flatten_count`，但函式一進來就 `del flatten_count`，代表這個參數已經不再參與任何驗證。
+- 風險：呼叫端會誤以為 ORB attribution validator 仍有檢查 flatten 關係，但實際上沒有；這會讓 contract surface 比真正需要的更寬，也增加後續重構成本。
+- 建議修法：下一個執行輪可把 `flatten_count` 從 helper 與呼叫端簽名一起移除，或明確定義它應該驗證什麼，二選一，不要維持半退役狀態。
+
+#### 2. generic reporting 仍直接知道 ORB markdown schema
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\reporting\_legacy.py`
+- 現況：taxonomy 與 validator 已抽到 `_orb_attribution.py`，但 markdown rendering 仍在 `_legacy.py` 內手動拆 `accepted/hold/session/range/structure/trend/volume/retest/other` 九個 group，並自己拼 `Blocked reasons` 文字。
+- 風險：這表示 ORB 特例只是從「驗證層耦合」移到「呈現層耦合」。未來只要 ORB attribution 顯示格式變動，generic reporting 仍必須跟著改。
+- 建議修法：下一輪若要繼續消化耦合，應考慮把 ORB attribution markdown section builder 也抽成 helper，讓 `_legacy.py` 只負責插入區塊，不負責理解 ORB schema 細節。
+
+#### 3. ORB CLI / artifact spec surface 仍在單一平面持續膨脹
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\cli\strategy_options.py`
+- 現況：ORB 已累積 session start/end/timezone、VWAP slope、EMA trend、EMA inside-range、signal window、range gate、breakout distance、full bar、body strength、fresh breakout、OR volume baseline 等大量平面欄位。
+- 風險：CLI 可用，但 artifact `strategy_spec` 與參數命名面積已經很大，後續再加 filter 時，閱讀、比較與維護成本會持續上升。
+- 建議修法：不要急著再擴 surface。下一輪若做執行輪，比較合理的是整理 ORB spec grouping 或 helper，而不是再加新的 ORB filter 參數。
+
+#### 4. deterministic reason-count formatting helper 出現重複實作
+
+- 嚴重度：低
+- 受影響檔案：`src\signal_forge\reporting\_legacy.py`、`src\signal_forge\reporting\_orb_attribution.py`
+- 現況：`_build_reason_count_items(...)` 在 generic reporting 與 ORB helper 各有一份，邏輯都是把 Counter 依 `(-count, reason)` 排序後輸出 deterministic list。
+- 風險：目前不是 correctness bug，但若未來排序 contract 或欄位形狀變動，容易發生兩邊修一邊漏一邊。
+- 建議修法：除非下一輪剛好需要動到 reason-count contract，否則先記錄即可；等 helper 邊界再穩一點時，再評估是否抽成共用 deterministic formatter。
+
+### Review 結論
+
+- `a0fb74d` 已經把 ORB attribution 的 taxonomy 與 validator 從 `_legacy.py` 拉出來，方向正確。
+- 但目前比較接近「**切出第一層 helper**」，不是完全解耦。
+- 下一個最值得做的單點修復，不是再擴 `VWAP slope` 或新增 ORB filter，而是：
+  1. 收窄 ORB attribution validator 的假 surface；
+  2. 再往前抽一層 ORB attribution markdown builder；
+  3. 暫停擴大 ORB CLI / artifact 平面欄位。
+
+### 下一步
+
+1. 下一輪若進入研究輪，可先研究 `VWAP slope` 是否值得退出主線 CLI surface，只保留 compare-only 分支。
+2. 下一輪若進入執行輪，最合理的單點改動是移除 `flatten_count` 死參數，或把 ORB attribution markdown builder 從 `_legacy.py` 抽離。
+3. 下一輪若進入分析輪，可比較 `VWAP slope` 保留在主線 surface 與降級為 compare-only 分支後，artifact 可讀性是否明顯改善。
