@@ -186,7 +186,15 @@ class CliTests(unittest.TestCase):
             mismatched_spec["orb_known_sample_market_clock_alignment"], "mismatch"
         )
         self.assertEqual(
+            mismatched_spec["orb_known_sample_market_clock_baseline_note"],
+            "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is mismatch.",
+        )
+        self.assertEqual(
             aligned_spec["orb_known_sample_market_clock_alignment"], "aligned"
+        )
+        self.assertEqual(
+            aligned_spec["orb_known_sample_market_clock_baseline_note"],
+            "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
         )
 
     def test_validate_orb_same_session_contract_rejects_previous_day_surface(self) -> None:

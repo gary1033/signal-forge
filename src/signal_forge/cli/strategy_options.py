@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 from datetime import datetime
@@ -31,10 +31,7 @@ ORB_KNOWN_SAMPLE_MARKET_CLOCKS = {
 
 def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
     """
-    用途與流程：把 entry-edge 與 phase 共用的策略參數集中掛到 argparse parser，避免兩個 command 重複維護。
-    參數：parser 是目標 argparse.ArgumentParser，呼叫後會被加入策略名稱、SMA、VWAP、RSI、ORB session 與 volume filter 等 options。
-    回傳與錯誤：回傳 None；argparse option 衝突時會由 argparse 拋出例外。
-    """
+    ?券?瘚?嚗? entry-edge ??phase ?梁???亙??賊?銝剜???argparse parser嚗???command ??蝬剛風??    ?嚗arser ?舐璅?argparse.ArgumentParser嚗?怠??◤?蝑?迂?MA?WAP?SI?RB session ??volume filter 蝑?options??    ??隤歹?? None嚗rgparse option 銵?????argparse ?靘???    """
     from signal_forge.strategies import SUPPORTED_STRATEGY_NAMES
 
     parser.add_argument(
@@ -168,10 +165,7 @@ def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
 
 def build_strategy_from_args(args: argparse.Namespace) -> Strategy:
     """
-    用途與流程：依 CLI args 透過 Phase 1 factory 建立 long-only strategy，並套用 VWAP regime、ORB retest、ORB session 起點、session 結束 metadata、session timezone metadata、VWAP slope confirmation、EMA trend confirmation、EMA inside-range 結構 gate、signal window cutoff、ORB range size、ORB breakout distance、ORB full-bar breakout、ORB breakout body strength、ORB fresh-breakout gate、ORB 開盤區間量能 baseline 與成交量 wrapper 設定。
-    參數：args 是 argparse 解析出的命名空間，需包含 add_strategy_arguments 建立的欄位，包含 ORB retest、session、session end/timezone metadata、VWAP slope confirmation、EMA trend confirmation、EMA inside-range gate、signal window、range size、breakout distance、full-bar breakout、breakout body strength、fresh-breakout 與開盤區間量能 baseline 參數。
-    回傳與錯誤：回傳 Strategy；策略名稱或參數不合法時由 build_phase1_strategy 拋出 ValueError。
-    """
+    ?券?瘚?嚗? CLI args ?? Phase 1 factory 撱箇? long-only strategy嚗蒂憟 VWAP regime?RB retest?RB session 韏琿??ession 蝯? metadata?ession timezone metadata?WAP slope confirmation?MA trend confirmation?MA inside-range 蝯? gate?ignal window cutoff?RB range size?RB breakout distance?RB full-bar breakout?RB breakout body strength?RB fresh-breakout gate?RB ??????baseline ??鈭日? wrapper 閮剖???    ?嚗rgs ??argparse 閫???箇??賢?蝛粹?嚗?? add_strategy_arguments 撱箇???雿?? ORB retest?ession?ession end/timezone metadata?WAP slope confirmation?MA trend confirmation?MA inside-range gate?ignal window?ange size?reakout distance?ull-bar breakout?reakout body strength?resh-breakout ???文?????baseline ???    ??隤歹?? Strategy嚗??亙?蝔望??銝?瘜???build_phase1_strategy ? ValueError??    """
     return build_phase1_strategy(
         args.strategy,
         fast_window=args.fast_window,
@@ -214,10 +208,7 @@ def build_strategy_from_args(args: argparse.Namespace) -> Strategy:
 
 def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:
     """
-    用途與流程：整理 CLI strategy 來源、實作名稱、Phase 1 long-only 邊界與可選濾網設定，寫入 entry-edge reporting；同時依策略類型挑選正確的量能欄位預設值，避免 ORB 的內建 breakout volume gate 被誤記成外層 wrapper 的預設參數，並把像 VWAP slope 這類已降級成次要 refinement 的條件明確標示在 artifact 中。
-    參數：args 是 CLI 命名空間；strategy 是已建立的策略或 wrapper 實例；函式會把 ORB 的 session、session end/timezone metadata、VWAP slope confirmation、VWAP slope refinement tier、EMA trend confirmation、EMA inside-range gate、signal window、range gate、breakout distance、full-bar breakout、breakout body strength、fresh-breakout gate、開盤區間量能 baseline 與研究邊界一併寫入 deterministic spec。
-    回傳與錯誤：回傳 deterministic dict[str, str]；不讀取檔案或外部狀態。
-    """
+    ?券?瘚?嚗??CLI strategy 靘??祕雿?蝔晞hase 1 long-only ????豢蕪蝬脰身摰?撖怠 entry-edge reporting嚗???蝑憿??甇?Ⅱ???賣?雿?閮剖潘??踹? ORB ?撱?breakout volume gate 鋡怨炊閮?憭惜 wrapper ??閮剖??賂?銝行???VWAP slope ??撌脤?蝝?甈∟? refinement ??隞嗆?蝣箸?蝷箏 artifact 銝准?    ?嚗rgs ??CLI ?賢?蝛粹?嚗trategy ?臬歇撱箇????交? wrapper 撖虫?嚗撘???ORB ??session?ession end/timezone metadata?WAP slope confirmation?WAP slope refinement tier?MA trend confirmation?MA inside-range gate?ignal window?ange gate?reakout distance?ull-bar breakout?reakout body strength?resh-breakout gate???文?????baseline ??蝛園???雿萄神??deterministic spec??    ??隤歹?? deterministic dict[str, str]嚗?霈??獢?憭???    """
     defaults = STRATEGY_PARAMETER_DEFAULTS[args.strategy]
     volume_window, volume_multiplier = _strategy_level_volume_reporting_defaults(args)
     spec = {
@@ -348,10 +339,7 @@ def orb_runtime_spec_from_bars(
     bars: list[Bar],
 ) -> dict[str, str]:
     """
-    用途與流程：根據 ORB 目前的 session 起點與 opening range 參數，從本次輸入 bars 推導 run-level OR range 百分比摘要，讓 artifact 能直接顯示當次資料中的區間大小範圍。
-    參數：args 是 CLI 命名空間，至少需包含 strategy、orb_opening_range_minutes、orb_session_start_hour、orb_session_start_minute；bars 是此次執行使用的 OHLCV 序列。session end / timezone metadata 不參與這裡的 run-level OR 百分比計算。
-    回傳與錯誤：回傳 dict[str, str]；若不是 ORB 策略、資料沒有 intraday timestamp，或無法形成完整 opening range，則回傳空 dict，不主動拋錯。
-    """
+    ?券?瘚?嚗??ORB ?桀???session 韏琿???opening range ?嚗??祆活頛詨 bars ?典? run-level OR range ?曉?瘥?閬?霈?artifact ?賜?仿＊蝷箇甈∟??葉???之撠???    ?嚗rgs ??CLI ?賢?蝛粹?嚗撠?? strategy?rb_opening_range_minutes?rb_session_start_hour?rb_session_start_minute嚗ars ?舀迨甈∪銵蝙?函? OHLCV 摨??ession end / timezone metadata 銝??ㄐ??run-level OR ?曉?瘥?蝞?    ??隤歹?? dict[str, str]嚗銝 ORB 蝑??????intraday timestamp嚗??⊥?敶Ｘ?摰 opening range嚗??蝛?dict嚗?銝餃????    """
     if getattr(args, "strategy", "") != "orb-volume-vwap":
         return {}
 
@@ -397,10 +385,7 @@ def _strategy_level_volume_reporting_defaults(
     args: argparse.Namespace,
 ) -> tuple[int | float | str | None, int | float | str | None]:
     """
-    用途與流程：根據目前 strategy 與是否啟用外層 volume wrapper，挑選報表中應顯示的量能參數來源；一般策略沿用 wrapper 預設值，但 ORB 在未啟用 wrapper 時，需改顯示策略本體的 breakout volume SMA 視窗與倍數門檻。
-    參數：args 是 CLI 命名空間；至少需包含 strategy、volume_filter、volume_window 與 volume_multiplier 等 add_strategy_arguments 掛上的欄位。
-    回傳與錯誤：回傳 tuple，第一個元素是要寫入 artifact 的 volume_window，第二個元素是 volume_multiplier；若欄位不存在則退回對應預設值，不主動拋錯。
-    """
+    ?券?瘚?嚗???strategy ??血??典?撅?volume wrapper嚗??詨銵其葉?＊蝷箇???靘?嚗??祉??交窒??wrapper ?身?潘?雿?ORB ?冽? wrapper ????寥＊蝷箇??交擃? breakout volume SMA 閬???瑼颯?    ?嚗rgs ??CLI ?賢?蝛粹?嚗撠?? strategy?olume_filter?olume_window ??volume_multiplier 蝑?add_strategy_arguments ????雿?    ??隤歹?? tuple嚗洵銝??蝝閬神??artifact ??volume_window嚗洵鈭?蝝 volume_multiplier嚗甈?銝??典??????閮剖潘?銝蜓???胯?    """
     if getattr(args, "strategy", "") == "orb-volume-vwap" and not getattr(
         args, "volume_filter", False
     ):
@@ -424,10 +409,7 @@ def _strategy_level_volume_reporting_defaults(
 
 def _validate_orb_same_session_contract(spec: dict[str, str]) -> None:
     """
-    用途與流程：驗證 ORB 的 strategy spec 仍維持目前 same-session only 研究契約，先檢查固定的 session scope 與 extended-hours policy 是否存在，再拒絕任何 previous-day、gap 或 overnight family key 混入。
-    參數：spec 是 strategy_spec_from_args 建好的 deterministic metadata dict；呼叫端應只在 ORB strategy 上使用這個檢查。
-    回傳與錯誤：回傳 None；若缺少必要 contract 欄位、或 spec 混入目前禁止的 previous-day family surface，會拋出 ValueError。
-    """
+    ?券?瘚?嚗?霅?ORB ??strategy spec 隞雁???same-session only ?弦憟?嚗?瑼Ｘ?箏???session scope ??extended-hours policy ?臬摮嚗???隞颱? previous-day?ap ??overnight family key 瘛瑕??    ?嚗pec ??strategy_spec_from_args 撱箏末??deterministic metadata dict嚗?怎垢???ORB strategy 銝蝙?券炎?乓?    ??隤歹?? None嚗蝻箏?敹? contract 甈??? spec 瘛瑕?桀?蝳迫??previous-day family surface嚗?? ValueError??    """
     if spec.get("orb_session_scope") != ORB_SESSION_SCOPE_CONTRACT:
         raise ValueError("ORB strategy spec lost the same-session scope contract")
     if spec.get("orb_extended_hours_policy") != ORB_EXTENDED_HOURS_POLICY_CONTRACT:
@@ -441,10 +423,7 @@ def _validate_orb_same_session_contract(spec: dict[str, str]) -> None:
 
 def _validate_orb_prior_day_close_contract(contract: dict[str, str]) -> None:
     """
-    用途與流程：驗證未來 ORB 若要落第一個 previous-day scalar 時，最小的 prior-day close 正面資料契約是否自洽；這裡只檢查 research note 已收斂出的來源 session、時區對齊、availability 與 fill policy，不把它接進目前 same-session only 的 ORB strategy surface。
-    參數：contract 是 prior-day close metadata dict；預期至少包含 prior_day_close_regular_session、prior_day_close_source_session、prior_day_close_timezone、prior_day_close_availability 與 prior_day_close_fill_policy。
-    回傳與錯誤：回傳 None；若缺少必要欄位、來源不是 regular session、時區沒有對齊 ORB market clock、availability 非 available/unavailable_first_session，或 fill policy 不是 no_forward_fill，會拋出 ValueError。
-    """
+    ?券?瘚?嚗?霅靘?ORB ?亥??賜洵銝??previous-day scalar ???撠? prior-day close 甇?鞈?憟??臬?芣晾嚗ㄐ?芣炎??research note 撌脫???皞?session???撠??vailability ??fill policy嚗????仿脩??same-session only ??ORB strategy surface??    ?嚗ontract ??prior-day close metadata dict嚗??撠???prior_day_close_regular_session?rior_day_close_source_session?rior_day_close_timezone?rior_day_close_availability ??prior_day_close_fill_policy??    ??隤歹?? None嚗蝻箏?敹?甈???皞???regular session???瘝?撠? ORB market clock?vailability ??available/unavailable_first_session嚗? fill policy 銝 no_forward_fill嚗?? ValueError??    """
     required_keys = (
         "prior_day_close_regular_session",
         "prior_day_close_source_session",
@@ -488,9 +467,9 @@ def _orb_known_sample_market_clock_metadata(
     spec: dict[str, str],
 ) -> dict[str, str]:
     """
-    用途與流程：針對已知的 ORB intraday 樣本，補上 sample-aware market-clock metadata，讓 artifact 能直接顯示該樣本的 canonical session/timezone 與目前 CLI 設定是否對齊，而不必先閱讀外部研究筆記才知道這次比較是否沿用錯誤市場時鐘。
-    參數：args 是 CLI 命名空間，需包含 csv 路徑；spec 是 strategy_spec_from_args 已建立的 ORB metadata，至少需含 orb_session_start_hour、orb_session_start_minute、orb_session_end_hour、orb_session_end_minute 與 orb_session_timezone。
-    回傳與錯誤：回傳 dict[str, str]；若 CSV 路徑不存在、不是已知樣本，或目前不是 ORB 策略，則回傳空 dict，不主動拋錯。
+    用途與流程：對已知的 ORB intraday 樣本補上 sample-aware market-clock metadata，讓 artifact 可以同時顯示 canonical session/timezone 預期、目前 run 是否 aligned，以及一行可直接給人判讀的 baseline note。
+    參數：args 是 CLI 命名空間，至少需包含 csv 路徑；spec 是 strategy_spec_from_args 已建立的 ORB metadata，需包含 orb_session_start_hour、orb_session_start_minute、orb_session_end_hour、orb_session_end_minute 與 orb_session_timezone。
+    回傳與錯誤：回傳 dict[str, str]。若 csv 不是已知樣本則回傳空 dict；若是已知樣本則回傳 canonical market-clock expectation、alignment 狀態與 baseline note。本函式本身不負責拒絕不合法 surface，相關錯誤由外層 validator 處理。
     """
     csv_path = getattr(args, "csv", None)
     if not csv_path:
@@ -512,6 +491,11 @@ def _orb_known_sample_market_clock_metadata(
         and observed_end == expected["session_end"]
         and observed_timezone == expected["timezone"]
     )
+    baseline_note = (
+        f"{sample_name} uses {expected['timezone']} "
+        f"{expected['session_start']}-{expected['session_end']} as the canonical ORB baseline; "
+        f"current run is {'aligned' if aligned else 'mismatch'}."
+    )
     return {
         "orb_known_sample_market_clock_name": sample_name,
         "orb_known_sample_market_clock_expected_timezone": expected["timezone"],
@@ -523,7 +507,9 @@ def _orb_known_sample_market_clock_metadata(
         if aligned
         else "mismatch",
         "orb_known_sample_market_clock_rule": "known ORB intraday samples may declare a canonical market-clock expectation; compare orb_session_* metadata with that expectation before interpreting cross-sample results",
+        "orb_known_sample_market_clock_baseline_note": baseline_note,
     }
+
 
 
 def _arg_or_default(
@@ -532,20 +518,14 @@ def _arg_or_default(
     default_value: int | float | str | None,
 ) -> int | float | str | None:
     """
-    用途與流程：讀取 argparse 欄位，將 None 視為「使用策略或 wrapper default」，供 reporting spec 寫出實際生效值。
-    參數：args 是 CLI 命名空間；field_name 是欲讀取的參數名稱；default_value 是該欄位未輸入時的有效預設值，可為數值、字串或 None。
-    回傳與錯誤：回傳 int、float、str 或 None；若欄位不存在也會回傳 default_value，不拋出錯誤。
-    """
+    ?券?瘚?嚗???argparse 甈?嚗? None 閬?蝙?函??交? wrapper default??靘?reporting spec 撖怠撖阡????潦?    ?嚗rgs ??CLI ?賢?蝛粹?嚗ield_name ?舀炬霈????迂嚗efault_value ?航府甈??芾撓?交?????閮剖潘??舐?詨潦?銝脫? None??    ??隤歹?? int?loat?tr ??None嚗甈?銝??其?????default_value嚗???航炊??    """
     value = getattr(args, field_name, None)
     return default_value if value is None else value
 
 
 def _stringify_optional_number(value: int | float | None) -> str:
     """
-    用途與流程：把可選的數值參數轉成 reporting 可穩定輸出的字串，讓未啟用的選項用固定 `disabled` 表示，而不是混成 `None` 或空字串。
-    參數：value 是來自 CLI 或策略 default 的整數、浮點數或 None；None 代表這個功能未啟用。
-    回傳與錯誤：回傳 str；None 會轉成 `disabled`，其餘值則直接做字串化，不主動拋錯。
-    """
+    ?券?瘚?嚗??舫??澆??貉???reporting ?舐帘摰撓?箇?摮葡嚗??芸??函??賊??典摰?`disabled` 銵函內嚗??舀毽??`None` ?征摮葡??    ?嚗alue ?臭???CLI ????default ??詻筑暺??None嚗one 隞?”???賣???    ??隤歹?? str嚗one ????`disabled`嚗擗澆??湔??銝脣?嚗?銝餃????    """
     return "disabled" if value is None else str(value)
 
 
@@ -557,10 +537,7 @@ def _observed_opening_range_pcts(
     session_start_minute: int,
 ) -> list[float]:
     """
-    用途與流程：掃描輸入 bars，依 session 起點與 OR 視窗切出每個 session 的 opening range，並計算 OR 寬度相對於 session 第一根開盤價的百分比。
-    參數：bars 是此次執行使用的 OHLCV 序列；opening_range_minutes 是 OR 建立期長度；session_start_hour / session_start_minute 是 session 起點。
-    回傳與錯誤：回傳 list[float]；若 timestamp 不含時間資訊、session 不完整或開盤參考價無效，該 session 會被略過，不主動拋錯。
-    """
+    ?券?瘚?嚗??撓??bars嚗? session 韏琿???OR 閬??瘥?session ??opening range嚗蒂閮? OR 撖砍漲?詨???session 蝚砌??寥??文?????    ?嚗ars ?舀迨甈∪銵蝙?函? OHLCV 摨?嚗pening_range_minutes ??OR 撱箇??摨佗?session_start_hour / session_start_minute ??session 韏琿???    ??隤歹?? list[float]嚗 timestamp 銝??鞈??ession 銝??湔????⊥?嚗府 session ?◤?仿?嚗?銝餃????    """
     observed: list[float] = []
     current_session_id: str | None = None
     current_open: float | None = None
@@ -628,10 +605,7 @@ def _observed_opening_range_gate_counts(
     max_range_pct: float | None,
 ) -> dict[str, str]:
     """
-    用途與流程：依目前 ORB range gate 設定，把已觀測到的 opening range 百分比分類成低於下限、落在 gate 內、或高於上限的 session 數量，讓 artifact 可直接呈現 filter 實際覆蓋到的樣本分布。
-    參數：observed 是各 session 的 OR 百分比列表；min_range_pct 與 max_range_pct 是目前策略使用的最小/最大 gate，兩者可為 None。
-    回傳與錯誤：回傳 dict[str, str]；若未設定任何 gate 或 observed 為空，回傳空 dict，不主動拋錯。
-    """
+    ?券?瘚?嚗??桀? ORB range gate 閮剖?嚗?撌脰?皜砍??opening range ?曉?瘥?憿?雿銝????gate ?扼?擃銝???session ?賊?嚗? artifact ?舐?亙???filter 撖阡?閬??啁?璅?????    ?嚗bserved ?臬? session ??OR ?曉?瘥?銵剁?min_range_pct ??max_range_pct ?舐???乩蝙?函??撠??憭?gate嚗???None??    ??隤歹?? dict[str, str]嚗?芾身摰遙雿?gate ??observed ?箇征嚗??喟征 dict嚗?銝餃????    """
     if not observed or (min_range_pct is None and max_range_pct is None):
         return {}
 
@@ -655,10 +629,7 @@ def _observed_opening_range_gate_counts(
 
 def _parse_intraday_timestamp_for_spec(timestamp: str) -> datetime | None:
     """
-    用途與流程：把 CLI reporting 需要的 timestamp 解析成 datetime；只接受含時間資訊的 ISO-8601 字串，避免把日線資料誤當成 ORB session。
-    參數：timestamp 是 bar.timestamp 字串。
-    回傳與錯誤：回傳 datetime 物件或 None；格式不含時間或無法解析時回傳 None，不主動拋錯。
-    """
+    ?券?瘚?嚗? CLI reporting ?閬? timestamp 閫????datetime嚗?亙??急???閮? ISO-8601 摮葡嚗???亦?鞈?隤斤??ORB session??    ?嚗imestamp ??bar.timestamp 摮葡??    ??隤歹?? datetime ?拐辣??None嚗撘??急????⊥?閫??????None嚗?銝餃????    """
     if not timestamp or ("T" not in timestamp and " " not in timestamp):
         return None
     candidate = timestamp.replace("Z", "+00:00")

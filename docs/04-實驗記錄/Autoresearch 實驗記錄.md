@@ -3762,3 +3762,27 @@ git diff --check
 
 1. 若進入執行輪，優先補一個更靠近 CLI / reporting 的 `active baseline note`，而不是擴新 filter。
 2. 若進入分析輪，直接站在 `TWSE_2330_5M aligned` baseline 上比較下一個 refinement，不要再做同題 market-clock A/B。
+
+## 2026-05-21 執行輪：將台股 canonical baseline 提示推進 ORB artifact
+
+這輪不改 ORB 策略語意，只把前一輪研究收斂出的 `active baseline` 提示正式寫進 `strategy_spec`。對已知的 `TWSE_2330_5M.csv`，artifact 現在除了原本的 `aligned / mismatch` metadata 之外，還會固定輸出一行 `orb_known_sample_market_clock_baseline_note`，直接說明這份樣本的 canonical ORB baseline 是 `Asia/Taipei 09:00-13:30`，以及本次 run 是否對齊。
+
+### 修改內容
+
+- `src/signal_forge/cli/strategy_options.py`
+  - 擴充 `_orb_known_sample_market_clock_metadata(...)`
+  - 新增 `orb_known_sample_market_clock_baseline_note`
+- `tests/test_cli.py`
+  - 補 direct unit test，分別鎖住：
+    - defaults 下的 `mismatch` baseline note
+    - `Asia/Taipei 09:00-13:30` 對齊後的 `aligned` baseline note
+
+### 結論
+
+- 這輪把台股 canonical baseline 從「研究結論」再往前推到「artifact 直接可讀」。
+- 它不改 ORB breakout、volume、VWAP、EMA inside-range 的 trade selection，只改善跨樣本報表的第一眼可判讀性。
+
+### 下一步
+
+1. 若進入分析輪，直接比較 `TWSE_2330_5M` 在 aligned baseline 上的下一個 refinement，不要再重複驗證 market-clock 本身。
+2. 若之後還需要更強的 guard，再考慮把這個 baseline 提示升級成流程性 validator，而不是單純 metadata。
