@@ -2591,3 +2591,66 @@ git diff --check
 
 1. `EMA trend` 暫時不應補成和 `VWAP slope` 對稱的 tier/role surface。
 2. 若要再做 ORB 比較，優先考慮新的 filter family 或第二份 intraday 樣本，而不是繼續疊加 `EMA trend`。
+
+## 2026-05-21 Code Review：`EMA trend` 現階段更適合降級為 compare-only filter，而不是繼續佔用 ORB contract 配額
+
+這輪是 review-only，不改 ORB 策略語意。重點是把上一輪 `EMA family` 比較結果轉成工程上的收斂結論，避免後續又回頭擴 `EMA trend` 的 artifact / schema surface。
+
+### Finding 1：`EMA trend` 已經有足夠證據證明它目前不值得補對稱 contract
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\cli\strategy_options.py`
+  - `tests\test_cli.py`
+- 證據：
+  - `EMA trend only`：PF `0.264`，`FAIL`
+  - `EMA inside-range only`：PF `4.452`，`PASS`
+  - `EMA trend + EMA inside-range`：PF `1.494`，仍比 `EMA inside-range only` 差很多
+- 判讀：
+  - 這已經不是「還缺一點證據」的狀態，而是足以支持目前**不要再擴 `orb_ema_trend_*` surface**。
+- 建議：
+  - 先把 `EMA trend` 視為 compare-only filter。
+  - 若未來沒有第二份或更多 intraday 樣本推翻這個結論，不應再投入執行輪去補 tier/role 對稱欄位。
+
+### Finding 2：`strategy_name` 仍會把 `ema10` 編進變體名稱，但這不等於它值得升級成主線 contract
+
+- 嚴重度：低
+- 受影響檔案：
+  - `src\signal_forge\strategies\orb_volume_vwap.py`
+  - `src\signal_forge\cli\strategy_options.py`
+- 現況：
+  - ORB 變體名稱會在啟用 `EMA trend` 時直接帶出 `ema10`。
+- 風險：
+  - 人類讀 artifact 時，容易把「名稱上存在」誤解成「方法論上與 `EMA inside-range` 同等重要」。
+- 建議：
+  - 短期內先不改 naming，避免再擴 schema 或命名契約。
+  - 但後續文件與 review 應持續明講：名稱帶出 `ema10` 只是變體識別，不代表它已升級成主線結構條件。
+
+### Finding 3：當前分析輪配額應從 `EMA trend` 移開，轉向新 family 或更廣樣本
+
+- 嚴重度：中
+- 受影響檔案：
+  - `docs\04-實驗記錄\Autoresearch 實驗記錄.md`
+  - `docs\策略筆記\ORB + Volume + VWAP.md`
+- 現況：
+  - `VWAP slope`、`EMA trend`、`EMA inside-range` 的相對排序已在同一份 `MSFT 5m demo` 上被反覆交叉檢查。
+- 風險：
+  - 若繼續把分析輪花在同一個 family，只會增加文案與報表密度，不會帶來新的決策資訊。
+- 建議：
+  - 下一個分析輪若還做 ORB，比較值得投入的是：
+    1. 新的 filter family；
+    2. 第二份 intraday 樣本；
+    3. 不同 market-clock / session 邊界對 ORB 的影響。
+
+### Review 結論
+
+- 目前 `EMA trend` 的最合理定位是：**保留實作、保留 compare 能力，但降級為 compare-only filter**。
+- 這不代表要刪掉它，而是代表：
+  1. 不再優先擴它的 contract；
+  2. 不再優先花分析輪反覆驗證同一題；
+  3. 把後續 schema 與測試維護成本留給更有新增資訊的題目。
+
+### 下一步
+
+1. 若下一輪進入研究輪，優先挑新的 ORB filter family 或第二份 intraday 樣本，不要再圍繞 `EMA trend` 做 contract 討論。
+2. 若下一輪進入執行輪，也不建議先動 `EMA trend` surface；較合理的是讓執行輪配額回到 reporting / validator 或其他更有新增資訊的 artifact 題目。
