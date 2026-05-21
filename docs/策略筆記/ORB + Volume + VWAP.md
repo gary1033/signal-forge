@@ -516,3 +516,47 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
   2. 它比單獨的 `full bar above range` 又多了多少增量
 
 這樣比較能看清楚：台股這條線現在不是只有「單一 refinement 誰最強」，而是已經出現了值得單獨追蹤的 confirmation profile。
+
+## 台股 aligned baseline 上的 breakout body strength 0.60
+
+目前已把 `full bar above range + OR average volume baseline` 固定成台股最強的已測 stacked profile。接著如果再疊 `breakout body strength 0.60`，它的角色比較像什麼？
+
+### 它不是零增量，但也不是新的主 benchmark
+
+在 `TWSE_2330_5M aligned` 上，`breakout body strength 0.60` 會：
+
+- 把 hold 1 PF 從 `6.525` 拉到 `8.426`
+- 但同時把 trades 從 `8` 壓到 `4`
+
+更重要的是，它會把較長持有期明顯拉壞：
+
+- hold 3：`2.259 -> 0.584`
+- hold 5：`1.374 -> 0.081`
+- hold 10：`1.099 -> 0.176`
+
+所以它不是完全冗餘，但也不該升成新的主 benchmark。
+
+### 它主要在擋什麼
+
+新的主要 blocked family 是：
+
+- `breakout_body_too_small`
+
+這代表它的作用不是再重複 volume baseline，而是在要求 breakout candle 本身要更紮實、更有實體。這是一種有資訊的結構 refinement，但目前對台股樣本來說，代價太大。
+
+### 目前較合理的定位
+
+因此 `breakout body strength 0.60` 現在較合理的定位是：
+
+- **compare-only structure refinement**
+- 有增量
+- 但過度壓縮，不適合取代目前的台股 stacked benchmark
+
+也就是說，台股這條線目前仍應優先用下面這個順序解讀：
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `OR average volume baseline`
+5. `OR retest`
+6. `breakout body strength 0.60`

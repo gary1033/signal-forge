@@ -4628,6 +4628,89 @@ phase hold 1 的主要 blocked reasons：
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
 
+## 2026-05-21 分析：台股 aligned baseline 上 breakout body strength 是否能補到 stacked profile 的新資訊
+
+### 比較問題
+
+前一輪已經收斂出：`full bar above range + OR average volume baseline` 是目前最強的台股 ORB 已測組合。這輪要回答的問題是：
+
+- 若再疊一層 `breakout body strength`，也就是要求 breakout candle body / full range 至少達到 `0.60`，
+- 它到底是在補新的結構資訊，
+- 還是只是把目前最強的 stacked profile 壓得更少、更慢？
+
+### 比較對象
+
+同一份資料：
+
+- `data/processed/TWSE_2330_5M.csv`
+
+同一個 canonical market clock：
+
+- `Asia/Taipei 09:00-13:30`
+
+比較三組：
+
+1. `ORB + EMA inside-range`
+2. `ORB + EMA inside-range + full bar above range + OR average volume baseline`
+3. `ORB + EMA inside-range + full bar above range + OR average volume baseline + breakout body strength 0.60`
+
+### 主要結果
+
+#### 1. body strength 0.60 不是零增量 refinement
+
+- hold 1 PF：`6.525 -> 8.426`
+- trades：`8 -> 4`
+- avg net PnL：`13.88 -> 14.95`
+- max DD：`-0.12% -> -0.08%`
+
+這表示它不是完全冗餘。它確實新增了自己的結構 gate，並把最短持有期的突破品質再往上拉。
+
+#### 2. 但它把目前最強的 stacked profile 壓得太狠
+
+相對於 `full bar + OR average volume baseline`：
+
+- hold 3 PF：`2.259 -> 0.584`
+- hold 5 PF：`1.374 -> 0.081`
+- hold 10 PF：`1.099 -> 0.176`
+
+也就是說，它只改善 hold 1，卻把 hold 3 / 5 / 10 全部拉回明顯 `FAIL`。這不是我們目前想要的台股 benchmark 形狀。
+
+#### 3. 新增的主要 blocked family 是 body 結構，不是量能重複過濾
+
+phase hold 1 blocked reasons：
+
+- `full bar + OR volume baseline`
+  - `below_or_high(2251)`
+  - `breakout_volume_blocked(228)`
+  - `breakout_bar_reentered_range(141)`
+- `+ body strength 0.60`
+  - `below_or_high(2251)`
+  - `breakout_body_too_small(201)`
+  - `breakout_bar_reentered_range(141)`
+  - `breakout_volume_blocked(81)`
+
+這表示新的門檻主要是在擋掉「突破 body 不夠紮實」的 K 棒，而不是單純重複既有的 volume baseline。
+
+### 結論
+
+1. `breakout body strength 0.60` 是 **non-zero-increment** refinement。
+2. 但它目前更像 **over-compressive structure refinement**，而不是新的主 benchmark。
+3. 所以台股 ORB 的排序目前應維持：
+   1. `aligned baseline`
+   2. `full bar above range`
+   3. `full bar above range + OR average volume baseline`
+   4. `OR average volume baseline`
+   5. `OR retest`
+   6. `breakout body strength 0.60`（compare-only）
+
+### 下一步
+
+1. 後續若測新的台股 refinement，仍應固定同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+2. `breakout body strength 0.60` 暫時不升成主 benchmark，只保留 compare-only 位置。
+
 ## 2026-05-21 Code Review：台股 full bar above range 與現有 benchmark 的優先級收斂
 
 ### Review 範圍
