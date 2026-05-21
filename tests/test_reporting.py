@@ -25,6 +25,7 @@ from signal_forge.reporting import (
     write_entry_edge_outputs,
     write_phase_outputs,
 )
+from signal_forge.reporting._orb_attribution import build_orb_filter_attribution
 from signal_forge.phase import SignalDigest
 
 
@@ -486,6 +487,88 @@ class ReportingTests(unittest.TestCase):
         trace_summary["trace_summary"]["orb_filter_attribution"]["group_counts"]["trend"] = 2  # type: ignore[index]
         with self.assertRaisesRegex(ValueError, "group_counts must be non-negative ints summing to bar_count"):
             validate_trace_summary(trace_summary)
+
+    def test_build_orb_filter_attribution_helper_keeps_reporting_contract(self) -> None:
+        """
+        用途與流程：直接驗證 ORB attribution helper 在模組抽離後仍維持既有 deterministic contract，避免 generic reporting 與 ORB taxonomy 重新耦合時沒有最小單元測試守住。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若 helper 輸出結構、排序或統計關係漂移，會由 assertion 失敗回報。
+        """
+        digests = [
+            SignalDigest(
+                index=0,
+                timestamp="2026-01-01T09:30:00",
+                target_position=0.0,
+                position_change=0.0,
+                reason="opening_range_building",
+                score=0.0,
+                is_long_entry=False,
+                is_flatten=False,
+            ),
+            SignalDigest(
+                index=1,
+                timestamp="2026-01-01T09:31:00",
+                target_position=0.0,
+                position_change=0.0,
+                reason="breakout_vwap_slope_blocked",
+                score=0.0,
+                is_long_entry=False,
+                is_flatten=False,
+            ),
+            SignalDigest(
+                index=2,
+                timestamp="2026-01-01T09:32:00",
+                target_position=1.0,
+                position_change=1.0,
+                reason="orb_volume_vwap_breakout",
+                score=1.0,
+                is_long_entry=True,
+                is_flatten=False,
+            ),
+            SignalDigest(
+                index=3,
+                timestamp="2026-01-01T09:33:00",
+                target_position=1.0,
+                position_change=0.0,
+                reason="hold_intraday_breakout",
+                score=0.0,
+                is_long_entry=False,
+                is_flatten=False,
+            ),
+            SignalDigest(
+                index=4,
+                timestamp="2026-01-02T09:30:00",
+                target_position=0.0,
+                position_change=-1.0,
+                reason="session_reset",
+                score=0.0,
+                is_long_entry=False,
+                is_flatten=True,
+            ),
+        ]
+
+        self.assertEqual(
+            build_orb_filter_attribution(digests),
+            {
+                "accepted_entry_count": 1,
+                "accepted_reason_counts": [{"count": 1, "reason": "orb_volume_vwap_breakout"}],
+                "blocked_reason_counts": [{"count": 1, "reason": "breakout_vwap_slope_blocked"}],
+                "blocked_signal_count": 1,
+                "group_counts": {
+                    "accepted": 1,
+                    "hold": 1,
+                    "other": 0,
+                    "range": 0,
+                    "retest": 0,
+                    "session": 2,
+                    "structure": 0,
+                    "trend": 1,
+                    "volume": 0,
+                },
+                "hold_count": 1,
+                "hold_reason_counts": [{"count": 1, "reason": "hold_intraday_breakout"}],
+            },
+        )
 
     def test_signal_digest_csv_validator_rejects_position_bucket_mismatch(self) -> None:
         """

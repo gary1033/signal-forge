@@ -1556,3 +1556,35 @@ git diff --check
 1. 若下一輪進入執行輪，優先處理 ORB helper / attribution 邊界，不再擴 `VWAP slope` 的 surface。
 2. 若下一輪進入分析輪，應直接比較「移除 `VWAP slope` 後 artifact 是否更乾淨、資訊量是否實際下降」。
 3. 若之後換第二份 intraday 樣本，重點不是先驗證所有 filter，而是先驗證 `EMA inside-range` 是否仍能提供獨立資訊。
+
+## 2026-05-21 執行輪：抽出 ORB attribution helper
+
+這輪不改 ORB 策略條件，也不新增 artifact 欄位。唯一的聚焦改動是把 ORB 專屬的 attribution taxonomy 與 validator，從 generic reporting 檔案 `src\signal_forge\reporting\_legacy.py` 抽到專用模組 `src\signal_forge\reporting\_orb_attribution.py`。
+
+### 修改內容
+
+- 新增 `src\signal_forge\reporting\_orb_attribution.py`
+  - 收納 `ORB_GROUP_KEYS`
+  - 收納 `ORB_BLOCKED_GROUP_KEYS`
+  - 收納 `build_orb_filter_attribution(...)`
+  - 收納 `validate_orb_filter_attribution_dict(...)`
+- `src\signal_forge\reporting\_legacy.py` 改成只 import ORB helper，不再直接承載 ORB taxonomy 常數與 attribution validator 細節。
+- `tests\test_reporting.py` 新增 direct-helper test，直接鎖住抽離後的 ORB attribution 輸出 contract。
+
+### 這輪解決的技術債
+
+- 降低 `_legacy.py` 與 ORB 特例的直接耦合。
+- 讓 ORB attribution 有明確的模組邊界，下一輪若要再抽 compare helper 或調整 blocked reason mapping，切點會更清楚。
+- 用 direct-helper test 補上一層單元測試，避免只靠整合測試間接覆蓋。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `128 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這輪沒有改變 ORB 的交易語意、artifact schema 或 Phase 報表內容；它只整理 reporting 的程式邊界。
+- 下一輪較合理的方向是進入 **第 3 輪分析比較**，直接比較「保留 / 移除 `VWAP slope`」後的 artifact 與指標差異，確認它是否真的值得留在主線 surface。
