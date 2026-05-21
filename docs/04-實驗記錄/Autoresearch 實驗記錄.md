@@ -2423,3 +2423,56 @@ git diff --check
 
 1. 若下一輪進入研究輪，優先決定 `EMA trend` 是否真的值得補對稱 contract。
 2. 若下一輪進入執行輪，不建議先動 schema；較合理的是做更小的 reporting readability 修補，或直接把執行輪配額讓給新的 filter family 分析題。
+
+## 2026-05-21 研究輪：`EMA trend` 暫時不應直接補成和 `VWAP slope` 相同的 `secondary_refinement` contract
+
+這輪不改程式，只回答一個 schema 問題：既然 `VWAP slope` 已經有 `orb_vwap_slope_tier=secondary_refinement`，`EMA trend` 是否也應直接補上一個對稱的 tier 欄位。
+
+### 來源
+
+- TradingView `Opening Range Breakout`
+  https://www.tradingview.com/script/tZtCD3TM-Opening-Range-Breakout/
+- TradingView `ORB with 100 EMA`
+  https://www.tradingview.com/script/JHm0ftM9-ORB-with-100-EMA/
+- TradingView `Opening Range Breakout (ORB)`
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView `Opening Range Breakout + VWAP + Volume [ORB Strategy]`
+  https://www.tradingview.com/script/hapKLoXr-Opening-Range-Breakout-VWAP-Volume-ORB-Strategy/
+- TradingView Pine Script docs：Inputs
+  https://www.tradingview.com/pine-script-docs/concepts/inputs/
+
+### 外部研究重點
+
+- `Opening Range Breakout` 直接把 EMA 趨勢方向、價格是否站上 EMA、以及 **EMA 是否位於 OR high 之上** 當成 breakout 成立條件。這代表在不少 ORB 腳本裡，EMA trend 並不是次要微調，而是接近主方向確認。
+- `ORB with 100 EMA` 更進一步把「100EMA 落在 opening range 盒子內時不給訊號」列為核心限制，顯示 EMA 家族條件常常同時承擔：
+  - direction confirmation
+  - structure gate
+- 相較之下，`Opening Range Breakout (ORB)` 與 `Opening Range Breakout + VWAP + Volume [ORB Strategy]` 雖然也會提供 VWAP slope / VWAP alignment / volume 等可選 filter，但它們更像是 breakout 成立後再做的順風確認或品質微調。
+- 官方 Inputs 文件則支持另一個工程結論：toggle state、規則描述、群組顯示應分離，但**沒有要求所有 optional filter 都必須共享同一個 tier 欄位**。
+
+### 研究結論
+
+- `EMA trend` 與 `VWAP slope` 在「都屬趨勢方向 refinement」這件事上確實接近，但它們在外部腳本中的地位並不完全對等。
+- 對目前 SignalForge 較合理的判斷是：
+  1. `VWAP slope` 繼續保留 `secondary_refinement` 沒問題；
+  2. `EMA trend` **暫時不應直接補成同一個 `secondary_refinement` contract**；
+  3. 若未來要讓 `EMA trend` 也有顯式角色，應走更完整的 `role/family` 設計，例如把它歸到 `trend_confirmation`，而不是先用平面 tier 硬對齊。
+
+### 理由
+
+- 若現在直接新增例如 `orb_ema_trend_tier=secondary_refinement`，會把一個原本可能更接近主方向確認的條件，硬壓成和 `VWAP slope` 同級的小 filter。
+- 這不只會誤導 artifact 解讀，也會讓 `strategy_spec` 的平面欄位繼續膨脹。
+- 因此目前比較好的工程邊界是：
+  - 承認 `VWAP slope` 是已落地的單點特例；
+  - 暫時不要為了表面對稱而擴 `EMA trend` 欄位；
+  - 等未來真的要把多個 ORB filter 做角色分層，再一起設計 `role/family`。
+
+### 下一步
+
+1. 下一輪若進入執行輪，不建議直接補 `orb_ema_trend_tier`。
+2. 若要先消化一個小債，較合理的是做 reporting readability 修補，而不是再擴 schema。
+3. 若未來要重啟這題，應先定義：
+   - 哪些屬 `trend_confirmation`
+   - 哪些屬 `structure_gate`
+   - 哪些屬 `baseline_choice`
+   再決定是否需要正式的 `role/family` contract。
