@@ -185,3 +185,4 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - `VWAP slope` 目前更適合留在 compare-first / optional refinement 的位置；除非後續第二份 intraday 樣本顯示它能穩定提供獨立資訊，否則不應再把更多主線 surface 配額用在它身上。
 - `orb_vwap_slope_rule` 現在已改成靜態規則描述，enabled / disabled 狀態交由 `orb_vwap_slope_confirmation` 單獨表達。這次 wording cleanup 已確認只改善 artifact 可讀性，不改變 ORB runtime 行為或回測指標。
 - `EMA trend` 雖然和 `VWAP slope` 同樣屬方向確認類條件，但在不少公開 ORB 腳本裡，EMA 更接近主方向確認或結構 gate，而不只是次要微調；因此目前不建議為了表面對稱，直接把它也標成和 `VWAP slope` 一樣的 `secondary_refinement`。若未來要擴 contract，較合理的是改走 `role/family`，把 `trend confirmation`、`structure gate`、`baseline choice` 分開。
+- phase markdown 現在會在 `ORB Filter Attribution` 區塊明講：這裡只是一層 compact blocked/accepted summary；真正的 `state / tier / rule` metadata 仍以 entry-edge artifact 的 `strategy_spec` 為主。這能避免把 phase 報表誤讀成完整 ORB filter schema。

@@ -1641,15 +1641,58 @@ def _signal_digest_invariants_summary(digests: list[SignalDigest]) -> dict[str, 
     }
 
 
+def _build_phase_orb_filter_attribution_lines(
+    orb_filter_attribution: dict[str, object],
+) -> list[str]:
+    """
+    用途與流程：根據既有 ORB attribution dict 建立 Phase markdown 片段，讓 phase 報表只補強人類可讀摘要，不擴新 schema。
+    參數：orb_filter_attribution（dict[str, object]）需符合 `_orb_attribution` 模組已驗證過的 contract，至少包含 accepted、blocked、hold 與 group/reason 摘要。
+    回傳與錯誤：回傳 list[str] 供 `_phase_markdown_report(...)` 直接串接；若欄位缺漏，會以 `None` / `n/a` 形式保守輸出，不主動丟錯。
+    """
+    group_counts = orb_filter_attribution.get("group_counts")
+    blocked_reason_counts = orb_filter_attribution.get("blocked_reason_counts")
+    blocked_reason_text = "n/a"
+    if isinstance(blocked_reason_counts, list) and blocked_reason_counts:
+        blocked_reason_text = ", ".join(
+            f"{item.get('reason')}({item.get('count')})"
+            for item in blocked_reason_counts
+            if isinstance(item, dict)
+        )
+    accepted_group = hold_group = other_group = range_group = retest_group = None
+    session_group = structure_group = trend_group = volume_group = None
+    if isinstance(group_counts, dict):
+        accepted_group = group_counts.get("accepted")
+        hold_group = group_counts.get("hold")
+        other_group = group_counts.get("other")
+        range_group = group_counts.get("range")
+        retest_group = group_counts.get("retest")
+        session_group = group_counts.get("session")
+        structure_group = group_counts.get("structure")
+        trend_group = group_counts.get("trend")
+        volume_group = group_counts.get("volume")
+    return [
+        "",
+        "## ORB Filter Attribution",
+        "",
+        f"- Accepted breakouts: {orb_filter_attribution.get('accepted_entry_count')}",
+        f"- Blocked non-entry bars: {orb_filter_attribution.get('blocked_signal_count')}",
+        f"- Hold bars: {orb_filter_attribution.get('hold_count')}",
+        "- Groups (accepted/hold/session/range/structure/trend/volume/retest/other): "
+        f"{accepted_group}/{hold_group}/{session_group}/{range_group}/{structure_group}/{trend_group}/{volume_group}/{retest_group}/{other_group}",
+        f"- Blocked reasons: {blocked_reason_text}",
+        "- Interpretation: this phase report keeps ORB attribution as a compact blocked/accepted summary; state, tier, and rule metadata remain in entry-edge strategy_spec artifacts.",
+    ]
+
+
 def _phase_markdown_report(
     result: PhaseExecutionResult,
     *,
     trace_summary: dict[str, object] | None = None,
 ) -> str:
     """
-    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
-    參數：result（PhaseExecutionResult）由呼叫端傳入，需符合函式 contract；trace_summary（dict[str, object] | None）由呼叫端傳入，需符合函式 contract
-    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    用途與流程：組裝 Phase markdown 報表，依 mode 決定是否加入 backtest digest、trace summary 與 live dry-run intents 區塊。
+    參數：result（PhaseExecutionResult）提供 Phase 執行結果；trace_summary（dict[str, object] | None）在 backtest 時提供已驗證的 signals trace 摘要。
+    回傳與錯誤：回傳 str 供 writer 直接落盤；若上游傳入不符合 contract 的資料，會沿用既有欄位讀取結果並在必要時由上游 validator 擋下。
     """
     lines = [
         f"# Phase Report - {result.mode}",
@@ -1743,40 +1786,7 @@ def _phase_markdown_report(
                 )
                 orb_filter_attribution = trace.get("orb_filter_attribution")
                 if isinstance(orb_filter_attribution, dict):
-                    group_counts = orb_filter_attribution.get("group_counts")
-                    blocked_reason_counts = orb_filter_attribution.get("blocked_reason_counts")
-                    blocked_reason_text = "n/a"
-                    if isinstance(blocked_reason_counts, list) and blocked_reason_counts:
-                        blocked_reason_text = ", ".join(
-                            f"{item.get('reason')}({item.get('count')})"
-                            for item in blocked_reason_counts
-                            if isinstance(item, dict)
-                        )
-                    accepted_group = hold_group = other_group = range_group = retest_group = None
-                    session_group = structure_group = trend_group = volume_group = None
-                    if isinstance(group_counts, dict):
-                        accepted_group = group_counts.get("accepted")
-                        hold_group = group_counts.get("hold")
-                        other_group = group_counts.get("other")
-                        range_group = group_counts.get("range")
-                        retest_group = group_counts.get("retest")
-                        session_group = group_counts.get("session")
-                        structure_group = group_counts.get("structure")
-                        trend_group = group_counts.get("trend")
-                        volume_group = group_counts.get("volume")
-                    lines.extend(
-                        [
-                            "",
-                            "## ORB Filter Attribution",
-                            "",
-                            f"- Accepted breakouts: {orb_filter_attribution.get('accepted_entry_count')}",
-                            f"- Blocked non-entry bars: {orb_filter_attribution.get('blocked_signal_count')}",
-                            f"- Hold bars: {orb_filter_attribution.get('hold_count')}",
-                            "- Groups (accepted/hold/session/range/structure/trend/volume/retest/other): "
-                            f"{accepted_group}/{hold_group}/{session_group}/{range_group}/{structure_group}/{trend_group}/{volume_group}/{retest_group}/{other_group}",
-                            f"- Blocked reasons: {blocked_reason_text}",
-                        ]
-                    )
+                    lines.extend(_build_phase_orb_filter_attribution_lines(orb_filter_attribution))
 
     if result.order_intents is not None:
         lines.extend(["", "## Live Dry-Run Intents", ""])

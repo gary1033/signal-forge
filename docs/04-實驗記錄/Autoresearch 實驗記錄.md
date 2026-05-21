@@ -2476,3 +2476,38 @@ git diff --check
    - 哪些屬 `structure_gate`
    - 哪些屬 `baseline_choice`
    再決定是否需要正式的 `role/family` contract。
+
+## 2026-05-21 執行輪：Phase markdown 補明 ORB attribution 只是一層 compact summary
+
+這輪不改 ORB 策略語意，也不擴 artifact schema；只做一個 reporting readability 修補：當 phase markdown 顯示 `## ORB Filter Attribution` 時，額外補一行解讀，明確說明這個區塊只負責 **accepted / blocked / hold** 的 compact summary，而 `state / tier / rule` 仍以 entry-edge 的 `strategy_spec` 為主。
+
+### 修改內容
+
+- `src\signal_forge\reporting\_legacy.py`
+  - 抽出 `_build_phase_orb_filter_attribution_lines(...)`
+  - 在 phase markdown 的 ORB attribution 區塊新增：
+    - `Interpretation: this phase report keeps ORB attribution as a compact blocked/accepted summary; state, tier, and rule metadata remain in entry-edge strategy_spec artifacts.`
+- `tests\test_reporting.py`
+  - 補對應 assertion，鎖住 phase markdown 這行可讀性 contract。
+
+### 為什麼做這個修補
+
+- 先前 review 已指出：entry-edge artifact 看得到完整 `strategy_spec`，phase markdown 則只有 attribution counts。
+- 若不明講，使用者容易把 phase report 誤讀成「已包含完整 ORB filter metadata」，進而期待在 phase markdown 直接看到 `tier / rule / enabled-disabled state`。
+- 這次改動只補說明，不擴 schema，也不讓 phase report 去複製 entry-edge 的完整 metadata surface。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `130 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動把 phase / entry-edge 的 reporting 邊界講清楚，但不把 ORB surface 進一步扁平化到 phase markdown。
+
+### 下一步
+
+1. 若後續還要補 ORB reporting readability，優先考慮更小的 phase 解讀提示，而不是再擴平面 schema。
+2. `EMA trend` 是否需要對稱 contract，仍留在研究題，不在這輪一併處理。
