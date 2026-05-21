@@ -2106,3 +2106,61 @@ git diff --check
 
 1. 下一輪若進入分析輪，可確認這個 unit-level contract test 是否已足夠降低 metadata drift 風險。
 2. 若之後仍要擴 tier/role contract，優先考慮 `EMA trend` 是否要補對稱欄位，而不是先碰 `OR size` 或 `OR volume baseline`。
+
+## 2026-05-21 分析輪：`strategy_spec_from_args(...)` 直測補上後，還需要再為 `VWAP slope tier` 重跑更多比較嗎
+
+這輪不改策略，也不再新增 ORB filter 組合。目標只有一個：在上一輪補上 `strategy_spec_from_args(...)` 的 unit-level contract test 後，確認 `VWAP slope tier` 的 runtime regression risk 是否已經足夠下降，避免夜間自動化繼續在同一題上重複消耗回測輪次。
+
+### 比較設定
+
+- 資料檔：`C:\Projects\signal-forge\data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+- 比較組合：
+  1. `EMA inside-range`
+  2. `EMA inside-range + VWAP slope`
+- 本輪新產物：
+  - `C:\Projects\signal-forge\reports\generated\msft-orb-vwap-slope-contract-coverage-sufficiency-20260521.md`
+  - `C:\Projects\signal-forge\reports\generated\msft-orb-vwap-slope-contract-coverage-sufficiency-20260521.json`
+
+### 結果摘要
+
+- `EMA inside-range`
+  - PF `4.452`
+  - Trades `13`
+  - Win rate `38.46%`
+  - Avg net PnL `16.27`
+  - Max DD `-0.29%`
+  - blocked `1754`
+  - hold `873`
+  - `orb_vwap_slope_confirmation=disabled`
+  - `orb_vwap_slope_tier=secondary_refinement`
+- `EMA inside-range + VWAP slope`
+  - PF `4.546`
+  - Trades `13`
+  - Win rate `38.46%`
+  - Avg net PnL `16.37`
+  - Max DD `-0.29%`
+  - blocked `1762`
+  - hold `865`
+  - `orb_vwap_slope_confirmation=enabled`
+  - `orb_vwap_slope_tier=secondary_refinement`
+
+### 保護層判讀
+
+目前 `VWAP slope tier` 已有三層保護：
+
+1. CLI artifact regression 已鎖住 disabled / enabled 兩條路徑。
+2. 先前分析已確認補 regression 前後，runtime artifact 與 PF / trades / blocked / hold 都沒有改變。
+3. 最新單元測試已直接鎖 `strategy_spec_from_args(...)` 的 disabled/enabled state、tier 與 rule。
+
+### 分析結論
+
+- 目前 `orb_vwap_slope_tier` 的 runtime regression risk 已經明顯下降。
+- 在沒有新策略語意變更之前，**沒有必要再為 `VWAP slope tier` 單獨重跑更多同型態的 ORB 比較**。
+- 後續更值得投入的方向是：
+  1. `EMA trend` 是否需要對稱 contract；
+  2. disabled 狀態下的 `orb_vwap_slope_rule` 文案是否要改得更中性。
+
+### 下一步
+
+1. 下一輪若進入 review，可判斷 `EMA trend` 對稱 contract 與 disabled rule wording，哪一個債更值得優先處理。
+2. 若下一輪進入研究輪，應該把 focus 從 `VWAP slope tier` 移開，改成 `EMA trend` / role-family 邊界。
