@@ -3825,3 +3825,45 @@ git diff --check
 - `reports/generated/twse-orb-aligned-emabox-vslope_hold_comparison.json`
 - `reports/generated/twse-orb-aligned-emabox-phase.md`
 - `reports/generated/twse-orb-aligned-emabox-vslope-phase.md`
+
+## 2026-05-21 Code Review：台股 aligned baseline 與 zero-increment refinement 後續工程債
+
+這輪是 review-only，不改 ORB trade logic。重點不是再驗一次 `VWAP slope`，而是把 `TWSE_2330_5M aligned baseline` 與 `VWAP slope zero-increment` 之後，還剩哪些真正值得處理的工程債寫清楚。
+
+### Findings
+
+1. **目前只有描述性 baseline guard，還沒有流程性 guard。**
+   - `strategy_spec` 已經會標出：
+     - `orb_known_sample_market_clock_alignment`
+     - `orb_known_sample_market_clock_baseline_note`
+   - 但系統目前不會阻止後續分析再次把 `mismatch` 版拿來當台股主結論。
+   - 也就是說，baseline 已經「可見」，但還沒有「被流程偏好」。
+
+2. **`VWAP slope` 在台股 aligned baseline 上已是零增量，但這件事仍只存在於研究結論，不在 artifact contract 裡。**
+   - 目前我們已經知道：
+     - `TWSE_2330_5M aligned`
+     - `EMA inside-range`
+     - `EMA inside-range + VWAP slope`
+     三者比較下，`VWAP slope` 沒有改變 PF、trade count、blocked reasons 或 hold counts。
+   - 但 artifact 還沒有一個更短的 machine-readable 提示，能直接說明「這個 refinement 在這個 sample 上目前屬 compare-only / zero-increment」。
+   - 是否要把這種 sample-specific 結論寫進 schema，仍屬產品判斷；現階段先不要硬做。
+
+3. **下一步不該再花在 `VWAP slope` 或第三次 market-clock A/B。**
+   - 目前已經有足夠證據說明：
+     - `TWSE_2330_5M` 必須用 `Asia/Taipei 09:00-13:30 aligned` 當 canonical baseline；
+     - 在這個 baseline 上，`VWAP slope` 沒有新增資訊。
+   - 因此後續再跑同題，只會增加 docs 噪音，不會增加研究價值。
+
+### 結論
+
+- 台股 ORB 主線目前應固定站在 `aligned baseline` 上看問題。
+- `VWAP slope` 在台股 aligned baseline 上，暫時可視為 **compare-only / zero-increment refinement**。
+- 下一個值得進入執行輪或分析輪的主題，不應再是 `VWAP slope`；更合理的是：
+  1. baseline flow guard；
+  2. 其他台股 market-specific refinement；
+  3. 或明確承認現有 ORB 主線對台股不夠適配。
+
+### 下一步
+
+1. 若進入執行輪，優先補一個更靠近 CLI / reporting 的 **aligned baseline flow hint**，而不是再加 filter。
+2. 若進入研究或分析輪，直接把配額轉去其他台股假設；不要再對 `VWAP slope` 或 market-clock 做同題重跑。
