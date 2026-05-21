@@ -4874,3 +4874,44 @@ phase hold 1 blocked reasons：
    - `aligned baseline`
    - `full bar above range`
    - `OR average volume baseline`
+
+## 2026-05-21 Review：台股 body strength 與 stacked profile 的位階收斂
+
+### Findings
+
+1. **Severity: medium — `breakout body strength 0.60` 不應升成台股主 benchmark。**
+   - 在 `TWSE_2330_5M aligned` 上，它雖然把 hold 1 PF 從 `6.525` 拉到 `8.426`，但 trades 也從 `8` 壓到 `4`。
+   - 更重要的是，它會把較長持有期明顯拉壞：hold 3 `2.259 -> 0.584`、hold 5 `1.374 -> 0.081`、hold 10 `1.099 -> 0.176`。
+   - **受影響檔案：** `docs/04-實驗記錄/Autoresearch 實驗記錄.md`、`docs/策略筆記/ORB + Volume + VWAP.md`
+   - **建議修法：** 維持它的 compare-only structure refinement 定位，不要把它推進 comparison hint 的主 benchmark 階層。
+
+2. **Severity: medium — 台股後續比較基準應固定為三層，而不是只對照單一 baseline。**
+   - 目前最穩定的比較骨架已經不是單純 `aligned baseline -> full bar above range`，而是：
+     1. `aligned baseline`
+     2. `full bar above range`
+     3. `full bar above range + OR average volume baseline`
+   - 若後續新 refinement 沒有同時對照這三層，結論很容易誤把「單獨有效」和「只在疊加 profile 裡有效」混在一起。
+   - **受影響檔案：** `src/signal_forge/reporting/_legacy.py`、`tests/test_reporting.py`
+   - **建議修法：** 後續比較與提示都固定以這三層作為台股 canonical anchors，暫時不再擴更重的 machine-readable schema。
+
+3. **Severity: low — 目前的雙層 reporting hint 已足夠，但需要持續和 canonical 結論同步。**
+   - 現有 `benchmark + stacked profile` 提示已經能表達：
+     - `full bar above range` 是 primary structural benchmark
+     - `full bar above range + OR average volume baseline` 是目前最強 stacked profile
+   - 真正的風險不是 hint 太弱，而是後續若 benchmark 排序再變，hint 可能再度落後於研究結論。
+   - **受影響檔案：** `src/signal_forge/reporting/_legacy.py`、`tests/test_reporting.py`、`docs/04-實驗記錄/Autoresearch 實驗記錄.md`
+   - **建議修法：** 下一個 review 輪優先檢查 hint 與 canonical 排序是否一致，而不是再為 `body strength` 重跑同型 A/B。
+
+### 結論
+
+- `breakout body strength 0.60` 目前可明確定性為 **compare-only structure refinement**。
+- `full bar above range + OR average volume baseline` 則仍是目前最強的台股已測 stacked profile。
+- 因此後續新的台股 refinement，應固定同時對照：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+
+### 下一步
+
+1. 若進入執行輪，優先檢查 reporting / comparison hint 是否已完整反映這三層基準。
+2. 若進入分析輪，新的台股 refinement 不再和 `breakout body strength 0.60` 爭 benchmark 位階，而是直接對照上述三層 canonical anchors。
