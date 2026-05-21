@@ -3131,3 +3131,69 @@ git diff --check
 
 1. 若要繼續 previous-day family，先定義第二份 intraday 樣本的最低資料需求與來源。
 2. 在沒有第二份樣本前，不要直接新增 `prior-day close / gap bias` filter、CLI 參數或 artifact schema。
+
+## 2026-05-21 Code Review：prior-day close 若要真正落地，現在還缺的三個正面 contract
+
+這輪是 review-only，不改 ORB 策略語意。重點是把前幾輪對 previous-day family 的研究與 guardrail，再整理成更可執行的工程待辦。結論是：**目前 repo 已經很清楚地知道「什麼不能做」，但還沒有把「第一個可以做的 prior-day close contract 應長什麼樣」寫成程式或測試層的正面定義。**
+
+### Finding 1：目前只有 negative guardrail，還沒有 `prior_day_close_regular_session` 的正面 validator contract
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\cli\strategy_options.py`
+  - `tests\test_cli.py`
+- 現況：
+  - `_validate_orb_same_session_contract(...)` 已能拒絕 `orb_previous_day_*`、`orb_gap_*`、`orb_overnight_*` 混入 ORB surface。
+  - 但 repo 仍沒有對應的正面 contract，例如：
+    - `prior_day_close_regular_session` 必須來自哪個 session 定義；
+    - 它何時可以視為 available；
+    - 它在 artifact 中應以什麼命名與格式出現。
+- 風險：
+  - 未來若真的要落第一個 previous-day family，實作者仍可能邊寫邊決定欄位名稱與來源，導致 contract 漂移。
+- 建議：
+  - 在新增任何 `orb_previous_day_*` surface 前，先寫一份最小 validator / schema 草案，哪怕一開始只是一個 `dict contract` 或 dedicated validation helper 也可以。
+
+### Finding 2：`first session unavailable` 目前只有研究文字，還沒有對應測試
+
+- 嚴重度：中
+- 受影響檔案：
+  - `docs\04-實驗記錄\Autoresearch 實驗記錄.md`
+  - `docs\策略筆記\ORB + Volume + VWAP.md`
+  - `tests\test_cli.py` 或未來的 previous-day family tests
+- 現況：
+  - 研究筆記已明確寫出：若資料集第一個 session 沒有 prior close，必須標成 unavailable，不得補值。
+  - 但這個規則目前仍只存在於文件，不存在任何程式或測試層 contract。
+- 風險：
+  - 一旦 previous-day family 真正開始實作，最容易被默默做掉的就是 `forward fill`、偷用當日第一根 close、或將第一個 session 直接視為 gap=0。
+- 建議：
+  - 下一步若真的進入執行輪，優先補一個極小的 unavailable 行為測試，比直接加 filter 更重要。
+
+### Finding 3：phase / entry-edge reporting 對 previous-day family 的責任仍需先定義
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\reporting\_legacy.py`
+  - `tests\test_reporting.py`
+- 現況：
+  - phase markdown 已明講 previous-day / higher-timeframe context 目前在 ORB contract 外。
+  - entry-edge artifact 則已承擔 `strategy_spec` metadata 主責。
+- 風險：
+  - future previous-day family 若真的進入 ORB，phase 報表很可能又被期待顯示 prior-close 邊界、availability、或 gap-bias 狀態；若沒有先定義責任，很容易再次讓 phase / entry-edge surface 邊做邊長。
+- 建議：
+  - 在落第一個 previous-day scalar 前，先明確決定：
+    1. prior-day metadata 是否只進 `strategy_spec`；
+    2. phase report 是否只保留一句 compact boundary summary；
+    3. 哪些資訊絕不進 phase markdown。
+
+### Review 結論
+
+- 目前 ORB 對 previous-day family 的「拒絕式 contract」已經足夠穩。
+- 下一步真正缺的不是新 filter，而是：
+  1. `prior_day_close_regular_session` 的正面資料 contract；
+  2. 第一個 session unavailable 的測試；
+  3. phase / entry-edge reporting 的責任分層。
+
+### 下一步
+
+1. 研究輪若再碰 previous-day family，優先把正面 contract 草案寫得更像 validator / schema，而不只是 prose。
+2. 執行輪若真的要動 previous-day family，先補 unavailable regression，不要先寫 gap-bias filter。
