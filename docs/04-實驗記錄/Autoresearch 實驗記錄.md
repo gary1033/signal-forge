@@ -2915,3 +2915,42 @@ git diff --check
 
 1. 若還要推進 previous-day family，先定義 `prior-day close` 的資料來源與 session 邊界。
 2. 在那之前，ORB contract 仍維持 same-session only，不把 previous-day family 提前納入正式 surface。
+
+## 2026-05-21 分析輪：拿掉第一個沒有 in-sample prior close 的 session 後，ORB 主線仍維持 pass
+
+這輪不改策略，也不落 previous-day family；只用既有 `MSFT 5m demo` 做一個資料切片比較，回答目前最實際的問題：**如果把第一個沒有 in-sample prior close 可參照的 session 拿掉，現在的 ORB 主線會不會大幅漂移。**
+
+### 比較設定
+
+- Full sample：`data/processed/ALPHAVANTAGE_MSFT_5M_demo.csv`
+- Day2+ sample：`reports/generated/msft_5m_demo_day2plus.csv`
+- 策略：`orb-volume-vwap --orb-reject-ema-inside-range`
+- 產出報表：
+  - `reports/generated/msft-orb-dayboundary-sample-sensitivity-20260521.md`
+  - `reports/generated/msft-orb-dayboundary-sample-sensitivity-20260521.json`
+
+### 結果
+
+| Slice | Bars | PF | Trades | Win rate | Avg net PnL | Max DD | Blocked | Accepted | Hold |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Full sample | 4224 | 4.452 | 13 | 38.46% | 16.27 | -0.290% | 1754 | 13 | 873 |
+| Day2+ only | 4032 | 6.423 | 12 | 41.67% | 19.23 | -0.203% | 1718 | 12 | 790 |
+
+- Full sample blocked reasons：`below_or_high(1480), breakout_volume_blocked(148), ema_inside_opening_range(126)`
+- Day2+ blocked reasons：`below_or_high(1477), breakout_volume_blocked(127), ema_inside_opening_range(114)`
+
+### 分析結論
+
+- 拿掉第一個 session 後，ORB 主線 **沒有翻成 fail**，反而在這份樣本上略為改善：
+  - PF：`4.452 -> 6.423`
+  - Trades：`13 -> 12`
+  - Win rate：`38.46% -> 41.67%`
+  - Avg net PnL：`16.27 -> 19.23`
+  - Max DD：`-0.290% -> -0.203%`
+- 這代表目前唯一的 5m 樣本，還不足以支持「應該立刻把 prior-day family 落進 ORB contract」這種結論。
+- 它支持的只是較窄的一點：**在沒有明確 prior-close 資料邊界前，先把 previous-day family 留在研究題是合理的。**
+
+### 下一步
+
+1. 若還要推進 previous-day family，優先補第二份 intraday 樣本。
+2. 在樣本仍只有這一份之前，不要把 `prior-day close / gap bias` 提前寫成 ORB 的正式 strategy spec surface。
