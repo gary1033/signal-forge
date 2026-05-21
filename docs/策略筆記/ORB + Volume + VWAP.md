@@ -415,3 +415,50 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - `OR retest`：compare-only entry style
 
 這樣後續在台股樣本上看 refinement，比較不會再把 volume baseline 誤讀成第一順位 benchmark。
+
+## 台股 aligned baseline 上的疊加版本：full bar + OR average volume baseline
+
+在 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 上，`full bar above range` 與 `OR average volume baseline` 疊加後，角色又和單獨使用時不一樣。
+
+### 疊加後的實際形狀
+
+疊加版本的結果是：
+
+- hold 1：PF `6.525`、Trades `8`、`PASS`
+- hold 3：PF `2.259`、Trades `8`、`PASS`
+- hold 5：PF `1.374`、Trades `8`、`PASS`
+- hold 10：PF `1.099`、Trades `8`、`FAIL`
+
+這代表它不是把 `full bar above range` 的優勢再壓掉，而是進一步把台股樣本上最短到中短持有期的突破品質一起拉高。
+
+### 它為什麼不像單純 trade compression
+
+若只是更嚴格的壓縮，通常只會改善 hold 1，較長持有期不一定跟上。
+但這組合在 hold 3 與 hold 5 也一起翻成 `PASS`，表示它更像：
+
+1. `full bar above range` 先做突破結構確認
+2. `OR average volume baseline` 再對通過結構確認的突破做量能篩選
+
+也就是說，這組合在台股樣本上的行為更接近 **結構 qualification + 量能 confirmation** 的互補，而不是兩個重複 gate 疊在一起。
+
+### 目前較合理的台股 refinement 排序
+
+在現有已測條件中，台股 ORB 的排序可先收斂成：
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `OR average volume baseline`
+5. `OR retest`
+
+這個排序的意思是：
+
+- `full bar above range` 仍是目前最重要的單一結構 refinement。
+- `OR average volume baseline` 單獨看時是次層 benchmark。
+- 但在 `full bar above range` 已開啟時，它又變成有明顯增量的疊加 refinement。
+
+因此後續若還要研究新的台股 market-specific refinement，至少要同時對照：
+
+- `aligned baseline`
+- `full bar above range`
+- `full bar above range + OR average volume baseline`

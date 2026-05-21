@@ -4386,6 +4386,121 @@ git diff --check
    - `full bar above range`
    - `OR average volume baseline`
 
+## 2026-05-21 分析：台股 aligned baseline 上 full bar 與 OR average volume baseline 的疊加效果
+
+### 比較問題
+
+前一輪已經知道：
+
+- `full bar above range` 是目前最強的台股結構 refinement 候選
+- `OR average volume baseline` 是次層的 trade-compression benchmark
+
+這輪要回答的是更直接的組合問題：
+
+- 若把兩者疊加在 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 上，
+- 這是互補，還是只會把 `full bar above range` 的優勢再壓掉？
+
+### 比較對象
+
+同一份資料：
+
+- `data/processed/TWSE_2330_5M.csv`
+
+同一個台股 canonical market clock：
+
+- `Asia/Taipei 09:00-13:30`
+
+比較三組既有 benchmark / 候選：
+
+1. `ORB + EMA inside-range`
+2. `ORB + EMA inside-range + full bar above range`
+3. `ORB + EMA inside-range + full bar above range + OR average volume baseline`
+
+### 主要結果
+
+#### 1. 疊加後不是退化，而是目前最強的台股 ORB 組合
+
+`full bar above range + OR average volume baseline` 的結果如下：
+
+- hold 1：PF `6.525`、Trades `8`、Avg net PnL `13.88`、Max DD `-0.12%`、`PASS`
+- hold 3：PF `2.259`、Trades `8`、Avg net PnL `39.15`、Max DD `-2.25%`、`PASS`
+- hold 5：PF `1.374`、Trades `8`、Avg net PnL `21.06`、Max DD `-2.25%`、`PASS`
+- hold 10：PF `1.099`、Trades `8`、Avg net PnL `6.73`、Max DD `-2.94%`、`FAIL`
+
+和既有兩組 benchmark 比：
+
+- baseline hold 1 PF：`0.513`
+- `full bar above range` hold 1 PF：`1.672`
+- `full bar + OR volume baseline` hold 1 PF：`6.525`
+
+這表示 OR volume baseline 在 full-bar 結構確認之後，不是把 edge 再壓掉，而是把台股短持有期與中短持有期一起明顯拉高。
+
+#### 2. 這不只是 trade compression，因為改善已經跨到 hold 3 / 5
+
+若它只是更嚴格地砍掉交易數，通常會看到：
+
+- hold 1 改善
+- 但 hold 3 / 5 仍維持弱勢或直接惡化
+
+這次不是這個形狀：
+
+- hold 1：`PASS`
+- hold 3：`PASS`
+- hold 5：`PASS`
+- hold 10：雖然仍 `FAIL`，但 PF 也已經從 baseline 的 `0.309` 拉到 `1.099`
+
+因此這一組比較像：
+
+- `full bar above range` 先處理假突破與 re-entry 結構問題
+- `OR average volume baseline` 再把剩下的低品質量能突破壓掉
+
+兩者在台股樣本上呈現的是**結構確認 + 量能確認的互補**，不是單純重複過濾。
+
+#### 3. phase blocked reasons 也支持「互補」而不是「重複」
+
+phase hold 1 的主要 blocked reasons：
+
+- `below_or_high(2251)`
+- `breakout_volume_blocked(228)`
+- `breakout_bar_reentered_range(141)`
+- `ema_inside_opening_range(44)`
+
+和單獨 `full bar above range` 比較：
+
+- `breakout_bar_reentered_range`：`131 -> 141`
+- `breakout_volume_blocked`：`91 -> 228`
+- `ema_inside_opening_range`：維持低檔 `44`
+
+這代表：
+
+- full-bar 仍主要負責結構確認
+- OR volume baseline 則明確加重了量能壓縮
+- 兩個 blocked family 並沒有互相取代，而是一起保留下來
+
+### 研究結論
+
+1. **`full bar above range + OR average volume baseline` 是目前台股 aligned baseline 上最強的已測組合。**
+   - 它不只優於 baseline，也優於單獨的 `full bar above range` 與單獨的 `OR average volume baseline`。
+
+2. **`OR average volume baseline` 不應再只被視為 full-bar 之下的弱 benchmark。**
+   - 單獨看時，它是次層 trade-compression benchmark。
+   - 但和 `full bar above range` 疊加時，它又回到有實質增量的互補 refinement。
+
+3. **台股 ORB 的目前排序要再精煉成「baseline / primary refinement / stacked refinement」三層。**
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+   - `OR average volume baseline`
+   - `OR retest`
+
+### 下一步
+
+1. 下一輪若進入 review，應先判斷：`full bar + OR volume baseline` 是否值得升成台股新的主 benchmark。
+2. 下一輪若進入執行或分析，新的台股 refinement 應至少同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+
 ## 2026-05-21 Code Review：台股 full bar above range 與現有 benchmark 的優先級收斂
 
 ### Review 範圍
