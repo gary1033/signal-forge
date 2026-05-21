@@ -295,3 +295,14 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 3. 工程上它也比較適合目前 SignalForge 的 deterministic 邊界，因為只要維持 confirmed-bar-only 與既有 session contract，就能先做出可驗證版本。
 
 這不代表 retest confirmation 一定會把台股 ORB 直接翻成 `PASS`；它同樣可能只是另一種 trade-compression refinement。但以目前研究排序來看，它比 previous-day family 更適合作為下一個台股 market-specific refinement 候選。
+
+## OR retest / re-break confirmation 的目前工程邊界
+
+目前 `OR retest / re-break confirmation` 還不是已證明有效的台股主線條件，但它已先被收斂成可測試的研究 contract：
+
+- 只允許 **同 session** 內判定
+- 只接受 **confirmed bar close** 後的 reclaim
+- level reference 固定是 **opening range high reclaim**
+- 目前不混入 previous-day / higher-timeframe data
+
+這個邊界的意義是：後續若真的把它拿去和 `TWSE_2330_5M aligned baseline` 比較，我們先能保證測的不是一個混了 premarket、prior-day 或 intrabar probe 的模糊版本，而是一個比較乾淨、可重複的 OR 結構確認假設。

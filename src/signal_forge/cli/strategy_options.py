@@ -208,7 +208,22 @@ def build_strategy_from_args(args: argparse.Namespace) -> Strategy:
 
 def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dict[str, str]:
     """
-    ?券?瘚?嚗??CLI strategy 靘??祕雿?蝔晞hase 1 long-only ????豢蕪蝬脰身摰?撖怠 entry-edge reporting嚗???蝑憿??甇?Ⅱ???賣?雿?閮剖潘??踹? ORB ?撱?breakout volume gate 鋡怨炊閮?憭惜 wrapper ??閮剖??賂?銝行???VWAP slope ??撌脤?蝝?甈∟? refinement ??隞嗆?蝣箸?蝷箏 artifact 銝准?    ?嚗rgs ??CLI ?賢?蝛粹?嚗trategy ?臬歇撱箇????交? wrapper 撖虫?嚗撘???ORB ??session?ession end/timezone metadata?WAP slope confirmation?WAP slope refinement tier?MA trend confirmation?MA inside-range gate?ignal window?ange gate?reakout distance?ull-bar breakout?reakout body strength?resh-breakout gate???文?????baseline ??蝛園???雿萄神??deterministic spec??    ??隤歹?? deterministic dict[str, str]嚗?霈??獢?憭???    """
+    用途與流程：將 CLI 解析後的策略設定整理成 deterministic `strategy_spec`，
+    供 entry-edge / phase summary / markdown / comparison artifact 共用。這裡只負責
+    報表與 validator 需要的研究語意，不改變任何實際交易邏輯。
+
+    參數：
+    - `args`：CLI 命名空間，包含 strategy 名稱、ORB session 設定、各種 refinement
+      開關與已知樣本路徑。
+    - `strategy`：已由 `build_strategy_from_args()` 建立完成的策略實例，用來回填實際
+      採用的 strategy implementation 名稱。
+
+    回傳與錯誤：
+    - 回傳 `dict[str, str]`，其中每個欄位都必須可穩定寫入 artifact，避免同一設定在不
+      同報表中被解讀成不同語意。
+    - 若當前策略是 ORB，函式最後會觸發 ORB contract validator；若 same-session、
+      retest 或 known-sample metadata 發生 drift，會拋出 `ValueError`。
+    """
     defaults = STRATEGY_PARAMETER_DEFAULTS[args.strategy]
     volume_window, volume_multiplier = _strategy_level_volume_reporting_defaults(args)
     spec = {
@@ -233,6 +248,10 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         if getattr(args, "orb_retest_confirmation", False)
         else "disabled",
         "orb_retest_rule": "long entries wait for breakout, OR-high retest, and close-confirmed reclaim when enabled",
+        "orb_retest_scope": "same_session_only",
+        "orb_retest_signal_basis": "confirmed_bar_close_only",
+        "orb_retest_level_reference": "opening_range_high_reclaim",
+        "orb_retest_data_family": "no_previous_day_or_higher_timeframe_context",
         "orb_opening_range_minutes": str(
             _arg_or_default(
                 args,
@@ -331,6 +350,7 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
     if getattr(args, "strategy", "") == "orb-volume-vwap":
         spec.update(_orb_known_sample_market_clock_metadata(args, spec))
         _validate_orb_same_session_contract(spec)
+        _validate_orb_retest_contract(spec)
     return spec
 
 
@@ -459,6 +479,52 @@ def _validate_orb_prior_day_close_contract(contract: dict[str, str]) -> None:
     ):
         raise ValueError(
             "prior-day close contract must mark first-session values as unavailable"
+        )
+
+
+def _validate_orb_retest_contract(contract: dict[str, str]) -> None:
+    """
+    用途與流程：驗證 OR retest / re-break confirmation 目前仍被限制在同 session、
+    confirmed-bar-only 的研究邊界，避免後續在沒有明確產品決策時，悄悄把 previous-day
+    或 higher-timeframe 語意混入 retest refinement。
+
+    參數：
+    - `contract`：ORB `strategy_spec` 的 metadata dict，至少需包含 retest 的 state、
+      scope、signal basis、level reference 與 data family 欄位。
+
+    回傳與錯誤：
+    - 回傳 `None`。
+    - 若 retest contract 遺失必要欄位，或其值偏離目前鎖定的研究邊界，拋出
+      `ValueError`。
+    """
+    required = (
+        "orb_retest_confirmation",
+        "orb_retest_scope",
+        "orb_retest_signal_basis",
+        "orb_retest_level_reference",
+        "orb_retest_data_family",
+    )
+    missing = [key for key in required if key not in contract]
+    if missing:
+        raise ValueError(
+            f"ORB retest contract is missing required keys: {', '.join(missing)}"
+        )
+    if contract["orb_retest_scope"] != "same_session_only":
+        raise ValueError("ORB retest contract must stay within same_session_only")
+    if contract["orb_retest_signal_basis"] != "confirmed_bar_close_only":
+        raise ValueError(
+            "ORB retest contract must use confirmed_bar_close_only signal basis"
+        )
+    if contract["orb_retest_level_reference"] != "opening_range_high_reclaim":
+        raise ValueError(
+            "ORB retest contract must reference opening_range_high_reclaim"
+        )
+    if (
+        contract["orb_retest_data_family"]
+        != "no_previous_day_or_higher_timeframe_context"
+    ):
+        raise ValueError(
+            "ORB retest contract must stay outside previous-day and higher-timeframe context"
         )
 
 

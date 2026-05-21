@@ -4109,3 +4109,28 @@ git diff --check
 
 1. 若進入執行輪，優先把 `OR retest / re-break confirmation` 定義成同 session、confirmed-bar-only 的研究假設，不要先引入 previous-day / higher-timeframe data。
 2. 若進入後續分析輪，應直接拿它對照 `TWSE_2330_5M aligned baseline` 與 `OR average volume baseline`，看它是否只是另一種 trade compression，或真的改善 follow-through 品質。
+
+## 2026-05-21 執行：把 OR retest refinement 先收斂成 same-session / confirmed-bar-only contract
+
+### 本輪修改
+
+- `strategy_spec_from_args(...)` 現在會固定輸出 OR retest 的 machine-readable contract：
+  - `orb_retest_scope=same_session_only`
+  - `orb_retest_signal_basis=confirmed_bar_close_only`
+  - `orb_retest_level_reference=opening_range_high_reclaim`
+  - `orb_retest_data_family=no_previous_day_or_higher_timeframe_context`
+- 新增 `_validate_orb_retest_contract(...)`，直接拒絕 scope、signal basis 或 data family drift。
+- 補 direct unit tests，讓 retest hypothesis 在還沒真正變成交易邏輯前，先有 deterministic artifact boundary。
+
+### 為什麼先做這一刀
+
+- 這輪的目標不是直接宣稱 OR retest 一定有 edge，而是先把研究假設鎖在一個低風險、可驗證的工程邊界內。
+- 如此一來，後續若真的進入比較輪，至少可以確定我們測的是：
+  - 同 session 的 ORH reclaim
+  - 收盤確認後才算有效
+  - 不混 previous-day / HTF data
+
+### 結論
+
+- OR retest 現在已經從「研究想法」升級成 **可測的 artifact / validator contract**。
+- 但它仍不是正式策略績效結論；下一輪若要比較，應站在 `TWSE_2330_5M aligned baseline` 上，直接拿它對照 `aligned baseline` 與 `OR average volume baseline`。

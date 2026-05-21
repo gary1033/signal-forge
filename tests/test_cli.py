@@ -17,6 +17,7 @@ from signal_forge.cli import (
 )
 from signal_forge.cli.strategy_options import (
     _validate_orb_prior_day_close_contract,
+    _validate_orb_retest_contract,
     _validate_orb_same_session_contract,
 )
 from signal_forge.data_fetch import FetchDataResult
@@ -196,6 +197,67 @@ class CliTests(unittest.TestCase):
             aligned_spec["orb_known_sample_market_clock_baseline_note"],
             "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
         )
+
+    def test_strategy_spec_from_args_locks_orb_retest_contract(self) -> None:
+        """
+        用途與流程：直接驗證 ORB retest refinement 的 artifact contract 已固定在
+        same-session、confirmed-bar-only 邊界，避免後續在沒有正式產品決策時，把
+        previous-day 或 higher-timeframe 語意悄悄混進 strategy spec。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "data/processed/TWSE_2330_5M.csv",
+                "--strategy",
+                "orb-volume-vwap",
+                "--orb-retest-confirmation",
+            ]
+        )
+        strategy = build_strategy_from_args(args)
+        spec = strategy_spec_from_args(args, strategy)
+
+        self.assertEqual(spec["orb_retest_confirmation"], "enabled")
+        self.assertEqual(spec["orb_retest_scope"], "same_session_only")
+        self.assertEqual(
+            spec["orb_retest_signal_basis"], "confirmed_bar_close_only"
+        )
+        self.assertEqual(
+            spec["orb_retest_level_reference"], "opening_range_high_reclaim"
+        )
+        self.assertEqual(
+            spec["orb_retest_data_family"],
+            "no_previous_day_or_higher_timeframe_context",
+        )
+
+    def test_validate_orb_retest_contract_rejects_data_family_drift(self) -> None:
+        """
+        用途與流程：直接驗證 ORB retest contract validator 會拒絕 scope、signal basis
+        或 data family 漂移，避免新研究假設還沒正式定義前，就把 retest 邊界擴成
+        previous-day / HTF family。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        contract = {
+            "orb_retest_confirmation": "enabled",
+            "orb_retest_scope": "same_session_only",
+            "orb_retest_signal_basis": "confirmed_bar_close_only",
+            "orb_retest_level_reference": "opening_range_high_reclaim",
+            "orb_retest_data_family": "no_previous_day_or_higher_timeframe_context",
+        }
+        _validate_orb_retest_contract(contract)
+
+        bad_family = dict(contract)
+        bad_family["orb_retest_data_family"] = "includes_previous_day_context"
+        bad_basis = dict(contract)
+        bad_basis["orb_retest_signal_basis"] = "intrabar_probe"
+
+        with self.assertRaisesRegex(ValueError, "previous-day"):
+            _validate_orb_retest_contract(bad_family)
+        with self.assertRaisesRegex(ValueError, "confirmed_bar_close_only"):
+            _validate_orb_retest_contract(bad_basis)
 
     def test_validate_orb_same_session_contract_rejects_previous_day_surface(self) -> None:
         """
