@@ -3594,3 +3594,104 @@ git diff --check
 
 1. 若進入分析輪，直接比較 `TWSE_2330_5M` 的 `mismatch` 與 `aligned` 版本。
 2. 若後續發現研究流程仍經常誤用 defaults，再考慮把這個 metadata 升級成更強的 validator。
+
+## 2026-05-21 分析輪：比較 `TWSE_2330_5M` 的 market-clock mismatch vs aligned 結果
+
+這輪不開新 filter，也不動 previous-day family；只做一個更有判斷力的 A/B：同樣的 ORB 主線、同樣的台積電 5m 樣本，只比較 market-clock 是不是對齊。
+
+### 比較對象
+
+- Strategy：
+  - `orb-volume-vwap --orb-reject-ema-inside-range`
+- Sample：
+  - `data/processed/TWSE_2330_5M.csv`
+- Version A（mismatch）：
+  - 沿用既有 defaults
+- Version B（aligned）：
+  - `orb_session_start = 09:00`
+  - `orb_session_end = 13:30`
+  - `orb_session_timezone = Asia/Taipei`
+
+### 產出 artifact
+
+- `reports/generated/tsmc-orb-ema-box-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-phase-20260521_trace_summary.json`
+- `reports/generated/tsmc-orb-ema-box-aligned-holdcmp-20260521_hold_comparison.json`
+- `reports/generated/tsmc-orb-ema-box-aligned-phase-20260521_trace_summary.json`
+- `reports/generated/tsmc-orb-ema-box-market-clock-ab-20260521.md`
+- `reports/generated/tsmc-orb-ema-box-market-clock-ab-20260521.json`
+
+### Hold comparison
+
+#### mismatch
+
+- hold 1：PF `0.083` / Trades `20` / Win rate `5.00%` / Avg net PnL `-10.20` / Max DD `-2.039%`
+- hold 3：PF `0.236`
+- hold 5：PF `0.248`
+- hold 10：PF `0.927`
+
+#### aligned
+
+- hold 1：PF `0.513` / Trades `21` / Win rate `23.81%` / Avg net PnL `-7.47` / Max DD `-2.880%`
+- hold 3：PF `0.538`
+- hold 5：PF `0.685`
+- hold 10：PF `0.309`
+
+### Trace summary 對照
+
+#### mismatch
+
+- accepted：`20`
+- hold：`396`
+- blocked：`2017`
+- blocked reasons：
+  - `below_or_high(1855)`
+  - `ema_inside_opening_range(86)`
+  - `breakout_volume_blocked(69)`
+  - `volume_warmup(7)`
+
+#### aligned
+
+- accepted：`21`
+- hold：`500`
+- blocked：`2266`
+- blocked reasons：
+  - `below_or_high(2087)`
+  - `ema_inside_opening_range(86)`
+  - `breakout_volume_blocked(80)`
+  - `volume_warmup(13)`
+
+### 關鍵判讀
+
+1. **market-clock 對齊是有實質影響的。**
+   - hold 1 的 PF 從 `0.083 -> 0.513`
+   - hold 3 的 PF 從 `0.236 -> 0.538`
+   - hold 5 的 PF 從 `0.248 -> 0.685`
+   - 這代表先前 2330 的失敗，確實有一部分來自 session/timezone mismatch。
+
+2. **但 market-clock 對齊後，策略仍然沒有翻成 pass。**
+   - aligned 版本的所有 hold 設定仍是 `FAIL`
+   - 所以 2330 的弱表現不能完全歸咎於 market-clock 錯位；台股樣本本身對這條 ORB 主線的相容性仍然偏弱。
+
+3. **對齊後，訊號分布變得更像「同一個市場真正的 regular session」了。**
+   - session group count 從 `708` 降到 `354`
+   - hold count 從 `396` 升到 `500`
+   - 這說明對齊後，更多 bar 被放進了真正應該分析的 regular session 區段，而不是被錯誤時鐘切碎。
+
+4. **`EMA inside-range` 仍然不是 2330 的主要失敗來源。**
+   - `ema_inside_opening_range` 在 mismatch / aligned 都是 `86`
+   - 也就是說，這條 gate 本身沒有因 market-clock 對齊而成為主因；真正變化最大的是 OR 與 session slicing 本身。
+
+### 結論
+
+- `TWSE_2330_5M` 的 market-clock alignment 是必要修正，不是可有可無的 metadata。
+- 但 alignment 只能把結果從「明顯失真」拉回「較合理但仍偏弱」，還不足以把這條 ORB 主線翻成有效。
+- 因此下一步不該直接跳去 previous-day family；更合理的是承認：
+  1. market-clock mismatch 確實扭曲了 2330 結果；
+  2. 即使修正後，這條主線在台股樣本上仍不夠強。
+
+### 下一步
+
+1. 若要再做台股 ORB 比較，今後應以 `aligned` 版作為 canonical 基線，不再沿用 mismatch defaults。
+2. 在這個基線上，再決定下一步是比較其他 ORB refinement，還是把台股樣本暫時視為「現有主線不適配」。
+3. 目前仍不建議直接把注意力轉去 previous-day / gap bias；先把 same-session 主線在第二份樣本上的表現邊界定清楚。
