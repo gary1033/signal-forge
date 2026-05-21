@@ -5146,3 +5146,46 @@ phase hold 1 blocked reasons：
    - `aligned baseline`
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
+
+## 2026-05-21 執行：把台股 `one-and-done` 候選收斂成 machine-readable contract
+
+### 本輪修改
+
+- ORB `strategy_spec` 現在固定輸出：
+  - `orb_one_and_done_mode=research_candidate_only`
+  - `orb_one_and_done_scope=same_session_only`
+  - `orb_one_and_done_signal_basis=confirmed_bar_close_only`
+  - `orb_one_and_done_position_effect=first_entry_only_no_force_flatten`
+  - `orb_one_and_done_reset_rule=reset_on_next_session_start`
+  - `orb_one_and_done_data_family=no_previous_day_or_higher_timeframe_context`
+- 新增 `_validate_orb_one_and_done_contract(...)`，直接拒絕：
+  - cross-session cooldown drift
+  - intrabar drift
+  - force-flatten drift
+  - previous-day / higher-timeframe data family drift
+- 補 direct unit tests，讓 `one-and-done` 的研究邊界可以在 `strategy_spec` 建構點被鎖住，而不是等到後續真的接進回測語意後才發現 drift。
+
+### 為什麼先做這一刀
+
+- 目前台股 session family 已經明確分成：
+  - `signal window`：已知 `60` 分鐘版本過度壓縮
+  - `one-and-done`：下一個更值得正式比較的候選
+- 在還沒決定 `one-and-done` 具體交易語意之前，先把它的 contract 鎖成 deterministic metadata，能避免後續把：
+  - same-session entry count control
+  - cross-session cooldown
+  - after-cutoff force flatten
+
+  這幾種完全不同的 session control 混在一起。
+
+### 結論
+
+- 這輪只是把 `one-and-done` 候選正式收斂成 **same-session、confirmed-bar-only、entry-count-control** 的 machine-readable contract。
+- 它不代表 `one-and-done` 已經被接受為新的交易語意，也不代表它已經優於：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+
+### 下一步
+
+1. 若進入分析輪，直接用 `TWSE_2330_5M aligned` 比較 `one-and-done` 與上述三層 canonical anchors。
+2. 若進入 review 輪，優先檢查這個 contract 是否已足夠穩定，不必急著再擴成更重的 schema。

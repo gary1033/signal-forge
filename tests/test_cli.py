@@ -16,6 +16,7 @@ from signal_forge.cli import (
     strategy_spec_from_args,
 )
 from signal_forge.cli.strategy_options import (
+    _validate_orb_one_and_done_contract,
     _validate_orb_prior_day_close_contract,
     _validate_orb_retest_contract,
     _validate_orb_signal_window_contract,
@@ -324,6 +325,77 @@ class CliTests(unittest.TestCase):
             _validate_orb_signal_window_contract(bad_scope)
         with self.assertRaisesRegex(ValueError, "entry_cutoff_only_no_force_flatten"):
             _validate_orb_signal_window_contract(bad_effect)
+
+    def test_strategy_spec_from_args_locks_orb_one_and_done_contract(self) -> None:
+        """
+        用途與流程：直接驗證 ORB one-and-done 候選已被 strategy spec 固定成
+        same-session、confirmed-bar-only 的 entry-count-control contract，避免後續還沒正式
+        進入交易語意修改前，就把它和 signal window、cross-session cooldown 或強制平倉混在一起。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "data/processed/TWSE_2330_5M.csv",
+                "--strategy",
+                "orb-volume-vwap",
+            ]
+        )
+        strategy = build_strategy_from_args(args)
+        spec = strategy_spec_from_args(args, strategy)
+
+        self.assertEqual(spec["orb_one_and_done_mode"], "research_candidate_only")
+        self.assertEqual(spec["orb_one_and_done_scope"], "same_session_only")
+        self.assertEqual(
+            spec["orb_one_and_done_signal_basis"], "confirmed_bar_close_only"
+        )
+        self.assertEqual(
+            spec["orb_one_and_done_position_effect"],
+            "first_entry_only_no_force_flatten",
+        )
+        self.assertEqual(
+            spec["orb_one_and_done_reset_rule"], "reset_on_next_session_start"
+        )
+        self.assertEqual(
+            spec["orb_one_and_done_data_family"],
+            "no_previous_day_or_higher_timeframe_context",
+        )
+
+    def test_validate_orb_one_and_done_contract_rejects_scope_and_reset_drift(
+        self,
+    ) -> None:
+        """
+        用途與流程：直接驗證 ORB one-and-done contract validator 會拒絕 scope、position
+        effect、reset rule 或 data family 漂移，避免 session family 尚未正式實作前，就把
+        cross-session cooldown、force-flatten 或 higher-timeframe 語意偷偷帶進 metadata。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        contract = {
+            "orb_one_and_done_mode": "research_candidate_only",
+            "orb_one_and_done_scope": "same_session_only",
+            "orb_one_and_done_signal_basis": "confirmed_bar_close_only",
+            "orb_one_and_done_position_effect": "first_entry_only_no_force_flatten",
+            "orb_one_and_done_reset_rule": "reset_on_next_session_start",
+            "orb_one_and_done_data_family": "no_previous_day_or_higher_timeframe_context",
+        }
+        _validate_orb_one_and_done_contract(contract)
+
+        bad_scope = dict(contract)
+        bad_scope["orb_one_and_done_scope"] = "cross_session_cooldown"
+        bad_reset = dict(contract)
+        bad_reset["orb_one_and_done_reset_rule"] = "manual_rearm_required"
+        bad_effect = dict(contract)
+        bad_effect["orb_one_and_done_position_effect"] = "force_flatten_after_first_entry"
+
+        with self.assertRaisesRegex(ValueError, "same_session_only"):
+            _validate_orb_one_and_done_contract(bad_scope)
+        with self.assertRaisesRegex(ValueError, "reset_on_next_session_start"):
+            _validate_orb_one_and_done_contract(bad_reset)
+        with self.assertRaisesRegex(ValueError, "first_entry_only_no_force_flatten"):
+            _validate_orb_one_and_done_contract(bad_effect)
 
     def test_validate_orb_same_session_contract_rejects_previous_day_surface(self) -> None:
         """

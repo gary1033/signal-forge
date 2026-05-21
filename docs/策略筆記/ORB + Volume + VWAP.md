@@ -710,3 +710,37 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
   - cross-session cool-down
   - higher-timeframe bias
   - after-cutoff force flatten
+
+## `one-and-done` 的 contract 邊界
+
+在還沒真的把 `one-and-done` 接進 ORB 交易語意前，目前較合理的做法，是先把它收斂成 machine-readable contract。這樣後續不管是回測比較、報表閱讀，還是 code review，都能先確定大家談的是同一種 session control，而不是混到別的 family。
+
+### 目前應鎖住的欄位
+
+- `orb_one_and_done_mode = research_candidate_only`
+- `orb_one_and_done_scope = same_session_only`
+- `orb_one_and_done_signal_basis = confirmed_bar_close_only`
+- `orb_one_and_done_position_effect = first_entry_only_no_force_flatten`
+- `orb_one_and_done_reset_rule = reset_on_next_session_start`
+- `orb_one_and_done_data_family = no_previous_day_or_higher_timeframe_context`
+
+### 這組欄位的實際意思
+
+- 它只在 **同一個 session** 內生效。
+- 它只接受 **已收 K 棒** 的 breakout，不做 intrabar probe。
+- 它的工作是 **限制後續新 entry**，不是在第一筆 entry 後強制把持倉平掉。
+- 它的 reset 單位是 **下一個 session 開始**，不是跨多天 cooldown。
+- 它目前不應帶入：
+  - previous-day bias
+  - higher-timeframe context
+  - premarket / overnight family
+
+### 為什麼這樣切
+
+這樣的 contract 可以把 `one-and-done` 穩定固定在 **session control**，而不是讓它和：
+
+- `signal window`
+- `full bar / close-confirmation breakout`
+- `OR average volume baseline`
+
+這些完全不同的 refinement 類型混在一起。

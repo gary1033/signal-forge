@@ -329,6 +329,13 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         "orb_signal_window_signal_basis": "confirmed_bar_close_only",
         "orb_signal_window_cutoff_reference": "session_start_elapsed_minutes",
         "orb_signal_window_position_effect": "entry_cutoff_only_no_force_flatten",
+        "orb_one_and_done_mode": "research_candidate_only",
+        "orb_one_and_done_rule": "when enabled in future research, only the first close-confirmed long breakout accepted within the current session should remain eligible; later same-session breakout attempts stay blocked until the next session reset",
+        "orb_one_and_done_scope": "same_session_only",
+        "orb_one_and_done_signal_basis": "confirmed_bar_close_only",
+        "orb_one_and_done_position_effect": "first_entry_only_no_force_flatten",
+        "orb_one_and_done_reset_rule": "reset_on_next_session_start",
+        "orb_one_and_done_data_family": "no_previous_day_or_higher_timeframe_context",
         "orb_session_scope": ORB_SESSION_SCOPE_CONTRACT,
         "orb_extended_hours_policy": ORB_EXTENDED_HOURS_POLICY_CONTRACT,
         "orb_min_range_pct": f"{_arg_or_default(args, 'orb_min_range_pct', defaults.orb_min_range_pct):.4f}",
@@ -356,6 +363,7 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         _validate_orb_same_session_contract(spec)
         _validate_orb_retest_contract(spec)
         _validate_orb_signal_window_contract(spec)
+        _validate_orb_one_and_done_contract(spec)
     return spec
 
 
@@ -576,6 +584,61 @@ def _validate_orb_signal_window_contract(contract: dict[str, str]) -> None:
     ):
         raise ValueError(
             "ORB signal-window contract must stay as entry_cutoff_only_no_force_flatten"
+        )
+
+
+def _validate_orb_one_and_done_contract(contract: dict[str, str]) -> None:
+    """
+    用途與流程：驗證 ORB one-and-done 候選目前仍被限制在同 session、confirmed-bar-only 的
+    entry-count-control 邊界，避免後續在沒有正式產品決策時，把 cross-session cooldown、
+    intrabar probe、force-flatten 或 previous-day / higher-timeframe 語意混進 strategy spec。
+
+    參數：
+    - `contract`：ORB `strategy_spec` 的 metadata dict，至少需包含 one-and-done 的 mode、
+      scope、signal basis、position effect、reset rule 與 data family 欄位。
+
+    回傳與錯誤：
+    - 回傳 `None`。
+    - 若 one-and-done contract 遺失必要欄位，或其值偏離目前鎖定的研究邊界，拋出
+      `ValueError`。
+    """
+    required = (
+        "orb_one_and_done_mode",
+        "orb_one_and_done_scope",
+        "orb_one_and_done_signal_basis",
+        "orb_one_and_done_position_effect",
+        "orb_one_and_done_reset_rule",
+        "orb_one_and_done_data_family",
+    )
+    missing = [key for key in required if key not in contract]
+    if missing:
+        raise ValueError(
+            f"ORB one-and-done contract is missing required keys: {', '.join(missing)}"
+        )
+    if contract["orb_one_and_done_mode"] != "research_candidate_only":
+        raise ValueError(
+            "ORB one-and-done contract must stay as research_candidate_only"
+        )
+    if contract["orb_one_and_done_scope"] != "same_session_only":
+        raise ValueError("ORB one-and-done contract must stay within same_session_only")
+    if contract["orb_one_and_done_signal_basis"] != "confirmed_bar_close_only":
+        raise ValueError(
+            "ORB one-and-done contract must use confirmed_bar_close_only signal basis"
+        )
+    if contract["orb_one_and_done_position_effect"] != "first_entry_only_no_force_flatten":
+        raise ValueError(
+            "ORB one-and-done contract must stay as first_entry_only_no_force_flatten"
+        )
+    if contract["orb_one_and_done_reset_rule"] != "reset_on_next_session_start":
+        raise ValueError(
+            "ORB one-and-done contract must reset_on_next_session_start"
+        )
+    if (
+        contract["orb_one_and_done_data_family"]
+        != "no_previous_day_or_higher_timeframe_context"
+    ):
+        raise ValueError(
+            "ORB one-and-done contract must stay outside previous-day and higher-timeframe context"
         )
 
 
