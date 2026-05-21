@@ -183,3 +183,4 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 若 `session close exit` 之後真的要做，也應該建立新的 reason / reporting contract，明確區分「時間邊界 metadata」與「出場規則」。
 - `wick/high-low trigger mode` 仍放後面，避免把策略從 close-confirmed 推向 intrabar 語意。
 - `VWAP slope` 目前更適合留在 compare-first / optional refinement 的位置；除非後續第二份 intraday 樣本顯示它能穩定提供獨立資訊，否則不應再把更多主線 surface 配額用在它身上。
+- `orb_vwap_slope_rule` 現在已改成靜態規則描述，enabled / disabled 狀態交由 `orb_vwap_slope_confirmation` 單獨表達。這次 wording cleanup 已確認只改善 artifact 可讀性，不改變 ORB runtime 行為或回測指標。

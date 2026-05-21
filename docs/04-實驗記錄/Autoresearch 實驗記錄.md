@@ -2277,3 +2277,70 @@ git diff --check
 
 1. 下一輪若進入分析輪，可確認 wording cleanup 後，artifact 的 disabled/enabled 可讀性是否已足夠，不需要再擴新欄位。
 2. 若之後仍要對齊其他 rule wording，優先看 `orb_ema_trend_rule` 是否也值得改成同樣的靜態描述風格。
+
+## 2026-05-21 分析輪：`orb_vwap_slope_rule` wording cleanup 改善可讀性，但不改變 ORB runtime artifact
+
+這輪不新增策略條件，也不改 backtest schema；只驗證上一輪把 `orb_vwap_slope_rule` 從 `when enabled, ...` 改成靜態規則描述之後，是否真的只影響人類可讀性，而不改變 ORB runtime 行為。
+
+### 比較設定
+
+- 資料來源：`data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+- 比較組合：
+  1. `EMA inside-range`
+  2. `EMA inside-range + VWAP slope`
+- 本輪新產生的 entry-edge artifact：
+  - `reports/generated/msft-orb-wordingcheck-20260521-ema-box.{md,json}`
+  - `reports/generated/msft-orb-wordingcheck-20260521-ema-box-vslope.{md,json}`
+- 參照既有 attribution 比較：
+  - `reports/generated/msft-orb-vslope-on-ema-box-20260521.json`
+
+### 結果
+
+- wording cleanup 後，兩條路徑的 `orb_vwap_slope_rule` 都已改成同一個**靜態規則描述**：
+  - `this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session`
+- `enabled / disabled` 狀態仍由 `orb_vwap_slope_confirmation` 單獨表達：
+  - `EMA inside-range`：`disabled`
+  - `EMA inside-range + VWAP slope`：`enabled`
+- runtime metrics 與 cleanup 前維持一致：
+  - `EMA inside-range`
+    - PF `4.452`
+    - Trades `13`
+    - Win rate `38.46%`
+    - Avg net PnL `16.27`
+    - Max DD `-0.29%`
+    - blocked `1754`
+    - hold `873`
+  - `EMA inside-range + VWAP slope`
+    - PF `4.546`
+    - Trades `13`
+    - Win rate `38.46%`
+    - Avg net PnL `16.37`
+    - Max DD `-0.29%`
+    - blocked `1762`
+    - hold `865`
+- 因此這次 wording cleanup 的效果是：
+  1. **artifact 更容易閱讀**
+  2. **runtime 行為不變**
+  3. **不需要為這個欄位再擴 schema**
+
+### 解讀
+
+- 先前 disabled 路徑會同時出現：
+  - `orb_vwap_slope_confirmation=disabled`
+  - `orb_vwap_slope_rule=when enabled, ...`
+- 這在機器層面沒有錯，但在人讀 artifact 時容易把 state 與 rule 混在一起。
+- 現在 cleanup 後，欄位責任更清楚：
+  - state：`orb_vwap_slope_confirmation`
+  - tier：`orb_vwap_slope_tier`
+  - rule：`orb_vwap_slope_rule`
+- 由於 PF、trades、blocked、hold 都和 cleanup 前一致，代表這次變更是**純 contract readability 修補**，不是策略行為調整。
+
+### 下一步
+
+1. `VWAP slope` 這條線目前已經有：
+   - CLI artifact regression
+   - disabled/default regression
+   - `strategy_spec_from_args(...)` 窄範圍 contract test
+   - wording cleanup 後的 runtime 不變驗證
+2. 在沒有新策略語意變更前，不需要再為 `VWAP slope rule` 單獨重跑更多同型分析。
+3. 若後續還要擴 `tier/role` contract，優先看 `EMA trend` 是否值得補對稱表達；若沒有，就把分析輪配額留給新的策略或新的 filter family。
