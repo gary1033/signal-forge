@@ -325,6 +325,10 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
             )
         ),
         "orb_signal_window_rule": "when configured, new ORB breakouts are only accepted before orb_signal_window_minutes from session start; existing long positions are not force-flattened by this cutoff",
+        "orb_signal_window_scope": "same_session_only",
+        "orb_signal_window_signal_basis": "confirmed_bar_close_only",
+        "orb_signal_window_cutoff_reference": "session_start_elapsed_minutes",
+        "orb_signal_window_position_effect": "entry_cutoff_only_no_force_flatten",
         "orb_session_scope": ORB_SESSION_SCOPE_CONTRACT,
         "orb_extended_hours_policy": ORB_EXTENDED_HOURS_POLICY_CONTRACT,
         "orb_min_range_pct": f"{_arg_or_default(args, 'orb_min_range_pct', defaults.orb_min_range_pct):.4f}",
@@ -351,6 +355,7 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         spec.update(_orb_known_sample_market_clock_metadata(args, spec))
         _validate_orb_same_session_contract(spec)
         _validate_orb_retest_contract(spec)
+        _validate_orb_signal_window_contract(spec)
     return spec
 
 
@@ -525,6 +530,52 @@ def _validate_orb_retest_contract(contract: dict[str, str]) -> None:
     ):
         raise ValueError(
             "ORB retest contract must stay outside previous-day and higher-timeframe context"
+        )
+
+
+def _validate_orb_signal_window_contract(contract: dict[str, str]) -> None:
+    """
+    用途與流程：驗證 ORB signal window 目前仍被限制在同 session、confirmed-bar-only 的
+    entry cutoff contract，避免後續在沒有正式產品決策時，把 intrabar、force-flatten、
+    previous-day 或其他更重的 session 控制語意悄悄混進 strategy spec。
+
+    參數：
+    - `contract`：ORB `strategy_spec` 的 metadata dict，至少需包含 signal window 的分鐘、
+      scope、signal basis、cutoff reference 與 position effect 欄位。
+
+    回傳與錯誤：
+    - 回傳 `None`。
+    - 若 signal window contract 遺失必要欄位，或其值偏離目前鎖定的研究邊界，拋出
+      `ValueError`。
+    """
+    required = (
+        "orb_signal_window_minutes",
+        "orb_signal_window_scope",
+        "orb_signal_window_signal_basis",
+        "orb_signal_window_cutoff_reference",
+        "orb_signal_window_position_effect",
+    )
+    missing = [key for key in required if key not in contract]
+    if missing:
+        raise ValueError(
+            f"ORB signal-window contract is missing required keys: {', '.join(missing)}"
+        )
+    if contract["orb_signal_window_scope"] != "same_session_only":
+        raise ValueError("ORB signal-window contract must stay within same_session_only")
+    if contract["orb_signal_window_signal_basis"] != "confirmed_bar_close_only":
+        raise ValueError(
+            "ORB signal-window contract must use confirmed_bar_close_only signal basis"
+        )
+    if contract["orb_signal_window_cutoff_reference"] != "session_start_elapsed_minutes":
+        raise ValueError(
+            "ORB signal-window contract must reference session_start_elapsed_minutes"
+        )
+    if (
+        contract["orb_signal_window_position_effect"]
+        != "entry_cutoff_only_no_force_flatten"
+    ):
+        raise ValueError(
+            "ORB signal-window contract must stay as entry_cutoff_only_no_force_flatten"
         )
 
 

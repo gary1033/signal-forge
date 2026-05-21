@@ -18,6 +18,7 @@ from signal_forge.cli import (
 from signal_forge.cli.strategy_options import (
     _validate_orb_prior_day_close_contract,
     _validate_orb_retest_contract,
+    _validate_orb_signal_window_contract,
     _validate_orb_same_session_contract,
 )
 from signal_forge.data_fetch import FetchDataResult
@@ -258,6 +259,71 @@ class CliTests(unittest.TestCase):
             _validate_orb_retest_contract(bad_family)
         with self.assertRaisesRegex(ValueError, "confirmed_bar_close_only"):
             _validate_orb_retest_contract(bad_basis)
+
+    def test_strategy_spec_from_args_locks_orb_signal_window_contract(self) -> None:
+        """
+        用途與流程：直接驗證 ORB signal window refinement 的 artifact contract 已固定在
+        same-session、confirmed-bar-only 的 entry cutoff 邊界，避免後續把它誤改成
+        force-flatten、intrabar 或其他更重的 session control 語意。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "data/processed/TWSE_2330_5M.csv",
+                "--strategy",
+                "orb-volume-vwap",
+                "--orb-signal-window-minutes",
+                "15",
+            ]
+        )
+        strategy = build_strategy_from_args(args)
+        spec = strategy_spec_from_args(args, strategy)
+
+        self.assertEqual(spec["orb_signal_window_minutes"], "15")
+        self.assertEqual(spec["orb_signal_window_scope"], "same_session_only")
+        self.assertEqual(
+            spec["orb_signal_window_signal_basis"], "confirmed_bar_close_only"
+        )
+        self.assertEqual(
+            spec["orb_signal_window_cutoff_reference"],
+            "session_start_elapsed_minutes",
+        )
+        self.assertEqual(
+            spec["orb_signal_window_position_effect"],
+            "entry_cutoff_only_no_force_flatten",
+        )
+
+    def test_validate_orb_signal_window_contract_rejects_position_effect_drift(
+        self,
+    ) -> None:
+        """
+        用途與流程：直接驗證 ORB signal window contract validator 會拒絕 scope、signal
+        basis、cutoff reference 或 position effect 漂移，避免新研究假設還沒正式定義前，
+        就把 intrabar 或 force-flatten 語意帶進台股 session refinement。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        contract = {
+            "orb_signal_window_minutes": "15",
+            "orb_signal_window_scope": "same_session_only",
+            "orb_signal_window_signal_basis": "confirmed_bar_close_only",
+            "orb_signal_window_cutoff_reference": "session_start_elapsed_minutes",
+            "orb_signal_window_position_effect": "entry_cutoff_only_no_force_flatten",
+        }
+        _validate_orb_signal_window_contract(contract)
+
+        bad_scope = dict(contract)
+        bad_scope["orb_signal_window_scope"] = "cross_session_window"
+        bad_effect = dict(contract)
+        bad_effect["orb_signal_window_position_effect"] = "force_flatten_after_cutoff"
+
+        with self.assertRaisesRegex(ValueError, "same_session_only"):
+            _validate_orb_signal_window_contract(bad_scope)
+        with self.assertRaisesRegex(ValueError, "entry_cutoff_only_no_force_flatten"):
+            _validate_orb_signal_window_contract(bad_effect)
 
     def test_validate_orb_same_session_contract_rejects_previous_day_surface(self) -> None:
         """

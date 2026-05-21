@@ -599,3 +599,25 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 
 - 若規則只依賴 OR 結束後的已確認 K 棒與 session clock，則 repaint / lookahead 風險相對低。
 - 但它可能會和 `one trade per session`、`re-arm after close`、`late breakout suppression` 混在一起，所以實作前要先把 contract 定義清楚。
+
+### 目前已鎖住的 contract 邊界
+
+這條候選線目前已先收斂成 machine-readable contract，固定為：
+
+- `same_session_only`
+- `confirmed_bar_close_only`
+- cutoff reference = `session_start_elapsed_minutes`
+- position effect = `entry_cutoff_only_no_force_flatten`
+
+這代表它現在只是 **session 內 entry cutoff 候選**，不是：
+
+- cross-session window
+- intrabar probe
+- after-cutoff 強制平倉規則
+
+後續若要真正進回測比較，應直接對照：
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+4. `signal window / one-and-done`

@@ -4962,3 +4962,37 @@ phase hold 1 blocked reasons：
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
    - `signal window / one-and-done` 候選
+
+## 2026-05-21 執行：把台股 signal window 候選收斂成 machine-readable contract
+
+### 本輪修改
+
+- ORB `strategy_spec` 現在固定輸出：
+  - `orb_signal_window_scope=same_session_only`
+  - `orb_signal_window_signal_basis=confirmed_bar_close_only`
+  - `orb_signal_window_cutoff_reference=session_start_elapsed_minutes`
+  - `orb_signal_window_position_effect=entry_cutoff_only_no_force_flatten`
+- 新增 `_validate_orb_signal_window_contract(...)`，直接拒絕：
+  - scope drift
+  - signal basis drift
+  - cutoff reference drift
+  - 把 signal window 誤升成 force-flatten 規則
+- 補 direct unit tests，讓 signal window contract 的失敗更靠近 `strategy_spec` 建構點，而不是只靠 CLI 端到端 summary 才發現 drift。
+
+### 為什麼先做這一刀
+
+- `signal window / one-and-done` 已被研究收斂成較值得測的台股下一個候選，但目前還不適合直接進回測語意修改。
+- 先把它鎖成 deterministic contract，比較能避免後續在沒有明確產品判斷時，偷偷混入：
+  - intrabar probe
+  - cross-session window
+  - after-cutoff force flatten
+
+### 結論
+
+- 這輪只是把 **台股 session refinement 候選** 先收斂成可測試、可追溯的 metadata contract。
+- 它不代表已經接受 `signal window / one-and-done` 的交易語意，也不代表已經優於 `full bar above range + OR average volume baseline`。
+
+### 下一步
+
+1. 若進入分析輪，再用 `TWSE_2330_5M aligned` 比較 signal window 候選和目前三層 canonical anchors。
+2. 若進入 review 輪，優先檢查這個 contract 是否已足夠穩定，不需要再把它擴成更重的 schema。
