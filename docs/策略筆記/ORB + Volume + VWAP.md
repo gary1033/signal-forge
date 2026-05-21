@@ -173,6 +173,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
   - `EMA inside-range`（`orb_vwap_slope_confirmation=disabled`）
   - `EMA inside-range + VWAP slope`（`orb_vwap_slope_confirmation=enabled`）
   上一輪補的 disabled/default regression 並沒有改變 artifact 內容，只是把這個 deterministic contract 正式鎖進測試。
+- 進一步對照公開 ORB 腳本後，`VWAP slope` 最合理的定位仍是 **direction/trend refinement**，而不是所有 optional filter 的統一模板。`EMA trend` 和它屬同層；但 `OR size`、`OR volume baseline`、`gap fill`、`signal window` 比較像不同 family 的條件，因此後續若要擴 artifact contract，應優先走 `role/family`，不要把全部欄位都標成同一個 `secondary_refinement`。
 - 在繼續增加 stop loss、take profit、trailing stop 或 session close exit 前，應先補 ORB filter attribution / rejection summary，讓 artifact 能直接看出各個 filter 擋掉多少候選突破，以及它們是否只是重複擋掉同一批弱訊號。
 - `orb_filter_attribution` 現在已寫進 `*_trace_summary.json`；若這批 run 屬於 ORB 語意，artifact 會直接列出 `accepted / hold / session / range / structure / trend / volume / retest / other` 的 group counts，以及真正屬於 filter rejection 的 blocked reasons。
 - 因此下一步不該先再堆新 filter，而應進入分析比較：用既有資料與 artifacts 對照不同 ORB filter 組合，確認 `EMA inside-range`、`EMA trend`、`VWAP slope`、`OR volume baseline` 等條件到底補到什麼資訊。

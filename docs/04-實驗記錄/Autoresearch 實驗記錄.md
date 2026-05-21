@@ -2036,3 +2036,47 @@ git diff --check
 2. 若下一輪進入執行輪，最合理的單點修復是二選一：
    - 補 `strategy_spec_from_args(...)` 的窄範圍 contract test；
    - 或把 disabled 狀態下的 `orb_vwap_slope_rule` 文案改成較中性的靜態描述。
+
+## 2026-05-21 研究輪：`tier/role` contract 應該擴成通用規則，還是停在 `VWAP slope` 特例
+
+這輪不改程式，也不重跑新的 ORB filter 組合。研究問題只有一個：既然 `orb_vwap_slope_tier=secondary_refinement` 已經落地，下一步到底應該把這個 contract 推成通用規則，還是停在單一特例，避免 `strategy_spec` 再膨脹。
+
+### 來源
+
+- TradingView `Opening Range Breakout`
+  https://www.tradingview.com/script/tZtCD3TM-Opening-Range-Breakout/
+- TradingView `NeuraEdge ORB - Opening Range Breakout Indicator`
+  https://www.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+- TradingView `Opening Range Breakout + VWAP + Volume [ORB Strategy]`
+  https://www.tradingview.com/script/hapKLoXr-Opening-Range-Breakout-VWAP-Volume-ORB-Strategy/
+- TradingView `Opening Range Breakout (ORB)`
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView `BORTORB - Opening Range Breakout Indicator`
+  https://www.tradingview.com/script/bDkeiwBg-BORTORB-Opening-Range-Breakout-Indicator/
+
+### 外部研究重點
+
+- `Opening Range Breakout` 直接把 **EMA 趨勢向上、價格在 EMA 上方、EMA 位於 OR high 上方** 當成 breakout trend confirmation；這說明 `EMA trend` 與 `VWAP slope / VWAP alignment` 在外部腳本裡常屬同一層「方向確認」。
+- `NeuraEdge ORB` 與 `Opening Range Breakout + VWAP + Volume` 都把 **EMA filter**、**VWAP filter**、**volume confirmation** 分開列成獨立可切換條件，顯示公開 ORB 腳本慣例本來就比較像 **family / role 分組**，不是單一平面 tier。
+- `Opening Range Breakout (ORB)` 又再加上 **ORB size** 與 **Gap Fill**。這兩者的語意和 trend confirmation 明顯不同：前者是 session-shape gate，後者是 prior-day context gate。
+- `BORTORB` 也把 **volume、VWAP、bar-close quality、golden-hour time window** 並列。這再次說明：optional filters 雖然都可關閉，但本質上屬於不同家族，不適合粗暴塞進同一個 `secondary_refinement` 桶。
+
+### 研究結論
+
+- `tier/role` contract **不適合直接擴成單一通用 tier 規則**。
+- 更合理的方向是：
+  1. 保留 `VWAP slope` 目前的 `secondary_refinement`，因為它已經對外明確標示成次要條件；
+  2. 若要繼續擴，下一個最合理的對象是 `EMA trend`，因為它和 `VWAP slope` 真正同層，都是 breakout 後的 trend/direction refinement；
+  3. `OR size`、`OR volume baseline`、`gap fill`、`signal window` 這些應該視為不同 **role/family**，而不是同一個 tier。
+
+### 對下一輪的含義
+
+- 不建議下一輪直接幫所有 ORB optional keys 補一串 `*_tier=secondary_refinement`。
+- 若要推 contract，應該先有明確規則：
+  - 同層的 direction/trend refinement 才進 tier；
+  - 其他不同語意的條件改走 role/family。
+
+### 下一步
+
+1. 下一輪若進入執行輪，最合理的單點修復仍是補 `strategy_spec_from_args(...)` 的窄範圍 contract test，先穩住目前 tier surface。
+2. 若之後真的要擴 contract，優先考慮 `EMA trend`，不要先把 `OR size`、`OR volume baseline`、`gap fill` 也塞進 `secondary_refinement`。
