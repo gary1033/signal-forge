@@ -4238,3 +4238,39 @@ git diff --check
 
 1. 若進入執行輪，可考慮在台股 comparison 報表補一個更明確的 benchmark hint，說明新 refinement 應同時對照 `aligned baseline` 與 `OR average volume baseline`。
 2. 若進入研究輪，應轉向新的台股 market-specific refinement，而不是再把 `OR retest` 升格成主線候選。
+
+## 2026-05-21 研究：公開 ORB 腳本通常把 retest 放在較保守的 entry style，而不是 baseline 主線
+
+### 研究問題
+
+在 `TWSE_2330_5M aligned` 上，我們已知：
+
+- `OR retest / re-break confirmation` 不是零增量，但整體弱於 `OR average volume baseline`。
+- `OR average volume baseline` 雖未翻成 pass，但至少是目前更有資訊的台股 benchmark。
+
+本輪研究想確認：**公開 ORB 腳本通常如何定位 retest？它更像 baseline 主線，還是較保守的 entry style / confirmation mode？**
+
+### 外部參考
+
+- TradingView `RPFXBYDAN - ORB`：把 breakout trigger modes 與 optional retest filter 一起放在可切換的 signal mode，而不是把 retest 當唯一主線。
+- TradingView `NeuraEdge ORB - Opening Range Breakout Indicator`：明確把 `Retest Mode` 描述成「先突破、再回踩觸碰 range level 後才進場」的較保守模式。
+- 多篇公開 ORB 腳本與討論都把 retest 放在 classic breakout / pullback / retest setup 的同層切換關係，而不是先驗預設。
+- TradingView 官方 `Sessions` 仍支持先把 session / market-clock 定義成一級 contract，再談 entry style 的嚴格度差異。
+
+### 研究結論
+
+1. **公開 ORB 腳本更常把 retest 視為較保守的 entry style，而不是 baseline 主線。**
+   - 這代表目前 SignalForge 在台股上把 retest 放在 compare-only / confirmation 候選，方向是合理的。
+
+2. **這也支持我們目前的台股排序。**
+   - `aligned baseline`：主比較基準。
+   - `OR average volume baseline`：目前更有資訊的台股 trade-compression benchmark。
+   - `OR retest`：較保守的結構確認 style，暫不應升成主線改善。
+
+3. **因此下一步若要補工程提示，比較合理的是 benchmark / mode hint，而不是再把 retest 往主線 schema 推。**
+   - 對台股報表來說，更需要的是讓人看懂「這是 baseline、benchmark、還是 compare-only entry style」，而不是再增加一層 retest surface。
+
+### 下一步
+
+1. 若進入執行輪，可優先補 comparison / reporting 的 benchmark hint，把台股 refinement 分成 baseline、benchmark、compare-only style。
+2. 若進入後續研究輪，新的台股 refinement 應優先對照 `aligned baseline` 與 `OR average volume baseline`，不要再把 retest 當主線優先候選。

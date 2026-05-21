@@ -326,3 +326,20 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 但目前偏向**過度壓縮**，還不足以成為比 `OR average volume baseline` 更合理的下一個主線改善方向。
 
 因此目前較合理的定位是：**台股 compare-only structure refinement 候選**。後續若要測新的台股 refinement，應優先拿它對照 `aligned baseline` 與 `OR average volume baseline`，而不是把 retest 本身再升成主要研究軸。
+
+## 公開 ORB 腳本對 retest 的常見定位
+
+從公開 ORB 腳本的做法來看，`retest / re-break confirmation` 更常被放在：
+
+- 可切換的 entry style
+- 或較保守的 confirmation mode
+
+而不是 baseline 主線本身。
+
+這個觀察和目前台股樣本的結果是對齊的：
+
+- `OR retest` 在 `TWSE_2330_5M aligned` 上確實有新資訊；
+- 但它更像一種偏保守、偏壓縮交易數的結構確認；
+- 因此目前較合理的角色不是主線改善，而是 compare-only entry style 候選。
+
+也就是說，後續若還要研究新的台股 refinement，`OR retest` 比較像用來做風格對照，而不是拿來取代 `aligned baseline` 或 `OR average volume baseline` 的主要比較地位。
