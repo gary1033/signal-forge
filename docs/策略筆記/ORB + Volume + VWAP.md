@@ -768,3 +768,47 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
   1. `aligned baseline`
   2. `full bar above range`
   3. `full bar above range + OR average volume baseline`
+
+## `one-and-done` 的 guard 範圍要先拆清楚
+
+公開 ORB 腳本雖然常用 `one trade per day`、`first breakout only` 這類說法，但實際上常見的是兩種不同 guard：
+
+1. **per-direction / per-side**
+   - 例如第一個 long breakout 成立後，同 session 不再接受第二個 long breakout
+2. **entire-session**
+   - 只要 session 內已經成交一筆，就不再接受任何新 entry
+
+### 對 SignalForge 的意義
+
+目前 SignalForge 的台股主線仍是 **long-only ORB entry edge**。因此若未來真的要把 `one-and-done` 接進交易語意，較低風險的第一刀應先從：
+
+- long-only
+- per-direction
+- first-entry guard
+
+開始，而不是直接做整個 session 的 one-trade lockout。
+
+### 為什麼要先走這條
+
+- 它和目前的 long-only baseline 較一致。
+- 它不會把未研究的 short-side 或反向 breakout 行為一起混進來。
+- 它仍維持在：
+  - same-session
+  - confirmed-bar-only
+  - 不使用 `request.security()`
+  - 不依賴 previous-day / higher-timeframe context
+
+### 目前最合理的解讀
+
+因此現在談 `one-and-done` 時，應先明確說是哪一種：
+
+- `per-direction first-entry guard`
+- 或 `entire-session one-trade guard`
+
+在這個 guard 範圍沒先定清楚前，不應直接把 `one-and-done` 的後續回測結果拿來和：
+
+1. `aligned baseline`
+2. `full bar above range`
+3. `full bar above range + OR average volume baseline`
+
+做同層級結論。

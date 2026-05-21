@@ -5296,3 +5296,56 @@ phase hold 1 blocked reasons：
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
 3. 在那之前，不要把 `one-and-done` 提升成新的台股 benchmark，也不要把 contract-only 中性結果誤讀成策略有效性證據。
+
+## 2026-05-21 研究：公開 ORB 的 `one-and-done` 更常是 direction-scoped guard，不一定是整個 session 只准一筆
+
+### 外部參照
+
+- TradingView `Opening Range Breakout (ORB)` 提到「only 1 trade of the first break and close of the ORB」。
+- TradingView `ORB Breakout` 提到「fires once per day per direction, independently」。
+- TradingView `ORB Strategy [LuciTech]` 提到「Only the first confirmed breakout per day is traded — one long signal and one short signal maximum per ORB session」。
+- TradingView `RPFXBYDAN - ORB (Opening Range Breakout)` 也明講它有 `one-signal-per-side-per-day guard`。
+
+### 主要研究結論
+
+1. 公開 ORB 的 `one-and-done` 常見的其實不是單一版本，而是至少兩種語意：
+   - **per-side / per-direction guard**
+   - **entire-session one-trade guard**
+
+2. 這代表目前 SignalForge 把 `one-and-done` 先收斂成 `entry-count-control` 是對的，但還不夠精確。
+   - 下一步真正要落策略語意前，應先決定：
+     - 是 `first long breakout only`
+     - 還是 `session 內只要成交一次就全部關閉後續 entry`
+
+3. 以目前台股主線 `TWSE_2330_5M aligned` 而言，**較低風險的第一刀應先從 per-direction / long-only guard 開始**。
+   - 原因是目前研究主線本來就是 long-only ORB entry edge。
+   - 如果直接做整個 session one-trade guard，會把尚未研究的 short-side 與反向 breakout 行為一起混進來。
+
+### 為什麼這個差異重要
+
+- `per-direction guard` 比較像：
+  - 第一個有效 long breakout 成立後，不再接受同 session 的第二個 long breakout
+- `entire-session guard` 比較像：
+  - 只要 session 內已經成交一筆，就不再接受任何新 entry
+
+這兩者都叫 `one-and-done`，但它們對交易數、後續 blocked reasons 與台股 session 結構的影響完全不同。若不先切清楚，後續分析很容易把 guard 範圍誤當成策略有效性。
+
+### repaint / lookahead / MTF 風險判斷
+
+- 這個 family 目前仍可以維持在：
+  - same-session
+  - confirmed-bar-only
+  - 不使用 `request.security()`
+  - 不依賴 previous-day / higher-timeframe context
+
+- 因此它的主要風險不是 repaint，而是 **session control 語意是否定義清楚**。
+
+### 下一步
+
+1. 若進入執行輪，應先把 `one-and-done` contract 再收斂成：
+   - `per_direction`
+   - 或 `entire_session`
+
+   其中一種，不要兩種一起做。
+2. 對目前台股主線，建議優先從 **long-only / per-direction first-entry guard** 開始。
+3. 在 guard 範圍沒先定清楚前，不要直接把 `one-and-done` 接進 runtime 再拿結果做大結論。
