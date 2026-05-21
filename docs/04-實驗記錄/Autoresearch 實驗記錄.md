@@ -2844,3 +2844,51 @@ git diff --check
 
 1. 研究輪優先轉向 previous-day family 的資料邊界定義，而不是直接討論新 CLI 參數。
 2. 執行輪若還要做 ORB，先留給 reporting / validator 題或其他更成熟的 filter family，不要提前把 previous-day family 推進主線。
+
+## 2026-05-21 研究輪：previous-day family 的最低風險第一刀，應先選 prior-day close / gap bias，不是直接上 PDH/PDL + premarket
+
+這輪不改程式，只在 `previous-day / higher-timeframe` family 裡再往前收斂一步：**如果未來真的要替 ORB 落第一個前日脈絡條件，最合理的第一刀不是 `PDH/PDL + premarket` 全家桶，而是先做 `prior-day close / gap bias`。**
+
+### 來源
+
+- TradingView `Opening Range Breakout (ORB)`
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView `Previous Day, Pre Market and ORB Levels`
+  https://www.tradingview.com/script/p8veK3iB-Previous-Day-Pre-Market-and-ORB-Levels/
+- TradingView Pine Script docs：`Sessions`
+  https://www.tradingview.com/pine-script-docs/concepts/sessions/
+- TradingView Pine Script docs：`Extended and regular sessions`
+  https://www.tradingview.com/pine-script-docs/v4/essential/extended-and-regular-sessions/
+
+### 外部研究重點
+
+- `Opening Range Breakout (ORB)` 這類策略已經示範一種較窄的 previous-day family 寫法：只用 `prior day's close` 來表達 gap fill bias，要求 long breakout 只能發生在價格仍位於前日收盤下方時。
+- `Previous Day, Pre Market and ORB Levels` 則是一個更完整的 family：同時引入 `PDH/PDL`、`PDC`、premarket high/low、5m / 15m ORB，並明講這些資料是靠 `request.security` 與明確的 session logic 取回。
+- TradingView 官方 `Sessions` 文件也指出，`regular` / `extended` 並不是所有商品都共用同一個語意，甚至不同市場會有不同的 named session。
+- 舊版但仍有參考價值的 `Extended and regular sessions` 文件則更直接點出：若要取 extended session 或其他 session 類型資料，必須透過 session-aware ticker / `security` 邏輯，不是單純多一條線就好。
+
+### 研究結論
+
+- 若要在目前 SignalForge ORB contract 上落第一個 previous-day family 條件，`prior-day close / gap bias` 的工程風險明顯低於 `PDH/PDL + premarket`：
+  1. 它只需要一個前日 scalar（前收），不需要同時管理前高、前低、premarket 高低與其跨 session reset。
+  2. 它比較像現有 ORB optional filter 的延伸，而不是整組新的結構圖層。
+  3. 它比較容易先寫成 artifact / validator / reporting contract，再決定要不要往更完整的 previous-day structure family 擴。
+- 相對地，若直接上 `PDH/PDL + premarket`，會一次打開：
+  - previous-day regular vs full-session 邊界；
+  - premarket 是否納入；
+  - `request.security` / session-specific ticker 的資料對齊；
+  - 多條前日線在 artifact 與 phase report 要怎麼表示。
+
+### 對 SignalForge 的含義
+
+- 這不代表 `prior-day close / gap bias` 應立即進入執行輪；它仍是研究結論，不是產品決策。
+- 但若後續真的要替 ORB 試一個前日脈絡 filter，它比 `PDH/PDL + premarket` 更適合當第一個可驗證切片。
+- 因此 previous-day family 現在的較合理排序應是：
+  1. `prior-day close / gap bias`
+  2. `PDH/PDL`
+  3. `premarket / overnight range`
+
+### 下一步
+
+1. 若下一輪還研究 previous-day family，優先定義 `prior-day close` 的 session 邊界，而不是直接設計 `PDH/PDL` 欄位。
+2. 若未來進入執行輪，應先確認第二份 intraday 樣本與前收來源定義，再決定是否值得落第一個 gap-bias filter。
