@@ -1397,3 +1397,61 @@ git diff --check
 - keep
 - 這次改動的價值不是再疊一個新 filter，而是把 ORB 目前已經存在的 filter stack 變成更容易比較、歸因與 audit 的 artifact contract。
 - 下一輪較合理的方向是進入 **第 3 輪分析比較**：拿既有資料與 artifacts 比較不同 ORB filter 組合，確認 `EMA inside-range`、`EMA trend`、`VWAP slope`、`OR volume baseline` 等條件，到底是在補不同資訊，還是只是重複擋掉同一批弱突破。
+
+## 2026-05-21 分析輪：MSFT 5m ORB filter 組合比較
+
+這輪依照上一輪留下的 attribution contract，直接用 repo 內現成的 `data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv` 比較 5 組 ORB 變體：`base`、`VWAP slope`、`EMA trend`、`EMA inside-range`、`OR volume baseline`。這次不再新增策略邏輯，只用同一份 5 分鐘資料回答兩個問題：
+
+1. 哪些 filter 真的改變了 entry-edge 結果；
+2. 哪些 filter 只是增加 blocked count，但沒有換來更好的 PF / drawdown。
+
+### 資料與流程
+
+- 資料檔：`C:\Projects\signal-forge\data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+- 範圍：`2026-04-21T04:00:00` -> `2026-05-20T19:55:00`
+- bar 數：`4224`
+- 每組都同時跑：
+  - `entry-edge`
+  - `phase --mode backtest`
+- 產出：
+  - `C:\Projects\signal-forge\reports\generated\msft-orb-filter-analysis-20260521.md`
+  - `C:\Projects\signal-forge\reports\generated\msft-orb-filter-analysis-20260521.json`
+
+### 比較摘要
+
+| Config | Decision | PF | Trades | Win rate | Avg net PnL | Max DD | Overlap | Blocked | Accepted | Hold |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| base | FAIL | 0.255 | 14 | 42.86% | -26.59 | -4.63% | 0 | 1462 | 14 | 1164 |
+| vwap-slope | FAIL | 0.255 | 14 | 42.86% | -26.59 | -4.63% | 0 | 1462 | 14 | 1164 |
+| ema-trend | FAIL | 0.264 | 14 | 50.00% | -26.20 | -4.63% | 0 | 1483 | 14 | 1143 |
+| ema-inside-range | PASS | 4.452 | 13 | 38.46% | 16.27 | -0.29% | 0 | 1754 | 13 | 873 |
+| or-volume-baseline | FAIL | 0.069 | 12 | 41.67% | -40.09 | -4.95% | 0 | 2023 | 12 | 605 |
+
+### attribution 解讀
+
+- `base` 與 `VWAP slope` 完全一樣：這份 MSFT 樣本裡，`VWAP slope confirmation` 沒有額外擋到任何新訊號，代表它在這個資料窗內只是名義上存在，沒有新增辨識力。
+- `EMA trend` 有新增效果，但很弱：只多擋了 `7` 根 `breakout_below_ema`，PF 只從 `0.255` 升到 `0.264`，最大回撤完全沒改善。
+- `EMA inside-range` 是唯一明顯改變風險收益輪廓的條件：
+  - PF 直接從 `0.255` 拉到 `4.452`
+  - 平均淨損益轉正
+  - 最大回撤從 `-4.63%` 壓到 `-0.29%`
+  - 它主要新增了 `126` 根 `ema_inside_opening_range` blocked signals，且同時把 hold bars 從 `1164` 壓到 `873`
+- `OR volume baseline` 雖然更貼近 ORB 語意，但在這份樣本上明顯過嚴：
+  - `breakout_volume_blocked` 從 `72` 暴增到 `556`
+  - PF 掉到 `0.069`
+  - 平均淨損益與最大回撤都更差
+
+### 研究結論
+
+- 目前最值得保留並往後推進的 ORB refinement，不是 `VWAP slope`，也不是 `OR volume baseline`，而是 **`EMA inside-range`**。
+- 在這份 MSFT 5m demo 樣本上，`EMA inside-range` 看起來不是和 `EMA trend`、`VWAP slope` 重複擋掉同一批弱突破，而是明確擋下另一群「趨勢基線仍卡在 OR 盒子內」的結構模糊訊號。
+- `VWAP slope` 在這份樣本上暫時沒有證據顯示它值得獨立保留；除非換資料後有不同 blocked attribution，否則它目前更像冗餘 gate。
+- `OR volume baseline` 目前應視為高風險可選分支，不適合提升成主線預設。
+
+### 下一步
+
+1. 下一輪若進入 code review，優先檢查：
+   - `VWAP slope` 是否值得繼續保留在目前主線；
+   - ORB filter 命名與 spec 是否開始過度膨脹。
+2. 若下一輪回到執行輪，較合理的聚焦改動不是再加新 filter，而是把 `EMA inside-range` 的分析結論更明確寫進 reporting / docs，或補一個 compare helper 讓這種 attribution 比較不用每次手動組命令。
+3. 若下一輪回到研究輪，應優先找第二份 intraday 樣本驗證 `EMA inside-range` 是否只是在這份 MSFT demo 上偶然有效。

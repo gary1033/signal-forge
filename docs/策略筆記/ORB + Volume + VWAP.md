@@ -165,6 +165,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 在繼續增加 stop loss、take profit、trailing stop 或 session close exit 前，應先補 ORB filter attribution / rejection summary，讓 artifact 能直接看出各個 filter 擋掉多少候選突破，以及它們是否只是重複擋掉同一批弱訊號。
 - `orb_filter_attribution` 現在已寫進 `*_trace_summary.json`；若這批 run 屬於 ORB 語意，artifact 會直接列出 `accepted / hold / session / range / structure / trend / volume / retest / other` 的 group counts，以及真正屬於 filter rejection 的 blocked reasons。
 - 因此下一步不該先再堆新 filter，而應進入分析比較：用既有資料與 artifacts 對照不同 ORB filter 組合，確認 `EMA inside-range`、`EMA trend`、`VWAP slope`、`OR volume baseline` 等條件到底補到什麼資訊。
+- 目前第一份用 repo 內 `MSFT 5m demo` 做的 attribution 比較顯示：`EMA inside-range` 是唯一把 ORB 從 `FAIL` 拉到 `PASS` 的 refinement，且同時大幅壓低最大回撤；相對地，`VWAP slope` 在這份樣本上沒有新增辨識力，`OR volume baseline` 則過度保守。
 - stop / target / session close exit 都是合理候選，但它們屬於 Phase 2 持有與出場 policy；若要實作，應同步設計 execution assumption、fill rule、reason / reporting contract 與 regression tests，而不是把它當成單純 entry filter。
 - 若 `session close exit` 之後真的要做，也應該建立新的 reason / reporting contract，明確區分「時間邊界 metadata」與「出場規則」。
 - `wick/high-low trigger mode` 仍放後面，避免把策略從 close-confirmed 推向 intrabar 語意。
