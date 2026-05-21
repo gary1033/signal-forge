@@ -2892,3 +2892,26 @@ git diff --check
 
 1. 若下一輪還研究 previous-day family，優先定義 `prior-day close` 的 session 邊界，而不是直接設計 `PDH/PDL` 欄位。
 2. 若未來進入執行輪，應先確認第二份 intraday 樣本與前收來源定義，再決定是否值得落第一個 gap-bias filter。
+
+## 2026-05-21 執行輪：先把 previous-day family 仍在 ORB contract 外這件事，補成窄範圍 regression
+
+這輪不改 ORB 策略語意，也不新增任何 `previous-day / gap / overnight` 欄位；只做一個窄範圍的 contract test，把目前 ORB surface 的邊界鎖住。
+
+### 本輪修改
+
+- 在 `tests/test_cli.py` 新增 `test_strategy_spec_from_args_keeps_previous_day_family_outside_orb_contract(...)`。
+- 直接驗證目前 `strategy_spec_from_args(...)` 產出的 ORB spec：
+  - 仍明確宣告 `orb_session_scope=regular-session research contract only`
+  - 仍明確宣告 `orb_extended_hours_policy=extended-hours bars are outside the current ORB research contract until session/data boundaries are defined explicitly`
+  - 不會偷偷長出 `orb_previous_day_*`、`orb_gap_*`、`orb_overnight_*` 這類新 family key
+
+### 為什麼先做這一刀
+
+- 目前 previous-day family 只有研究結論，還沒有資料邊界、validator 與 artifact contract。
+- 若未來有人直接在 ORB `strategy_spec` 上加前收 / gap / overnight 欄位，這個測試會先爆掉，迫使實作者先面對 contract decision，而不是讓 surface 默默膨脹。
+- 這比現在就急著落第一個 previous-day filter 更符合目前 repo 的夜間 automation 邊界。
+
+### 下一步
+
+1. 若還要推進 previous-day family，先定義 `prior-day close` 的資料來源與 session 邊界。
+2. 在那之前，ORB contract 仍維持 same-session only，不把 previous-day family 提前納入正式 surface。

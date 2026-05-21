@@ -85,6 +85,40 @@ class CliTests(unittest.TestCase):
             "this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         )
 
+    def test_strategy_spec_from_args_keeps_previous_day_family_outside_orb_contract(
+        self,
+    ) -> None:
+        """
+        用途與流程：直接驗證目前 ORB 的 strategy spec 仍只描述同 session 的研究 contract，不會提前洩漏 previous-day、gap 或 overnight family 欄位，避免研究題尚未定義完成就悄悄膨脹成正式 surface。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "sample.csv",
+                "--strategy",
+                "orb-volume-vwap",
+            ]
+        )
+        strategy = build_strategy_from_args(args)
+        spec = strategy_spec_from_args(args, strategy)
+
+        self.assertEqual(
+            spec["orb_session_scope"],
+            "regular-session research contract only",
+        )
+        self.assertEqual(
+            spec["orb_extended_hours_policy"],
+            "extended-hours bars are outside the current ORB research contract until session/data boundaries are defined explicitly",
+        )
+        for forbidden_prefix in ("orb_previous_day_", "orb_gap_", "orb_overnight_"):
+            self.assertFalse(
+                any(key.startswith(forbidden_prefix) for key in spec),
+                f"unexpected previous-day family surface leaked into ORB contract: {forbidden_prefix}",
+            )
+
     def test_phase_command_accepts_minimal_strategy_invocation(self) -> None:
         """
         用途與流程：驗證 phase CLI 可只指定 CSV、mode 與 strategy，策略參數全部使用 default，不需要在一般呼叫時輸入長串參數。
