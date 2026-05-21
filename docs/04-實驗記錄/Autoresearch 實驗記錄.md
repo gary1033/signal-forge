@@ -3197,3 +3197,60 @@ git diff --check
 
 1. 研究輪若再碰 previous-day family，優先把正面 contract 草案寫得更像 validator / schema，而不只是 prose。
 2. 執行輪若真的要動 previous-day family，先補 unavailable regression，不要先寫 gap-bias filter。
+
+## 2026-05-21 研究輪：`prior_day_close_regular_session` 的最小正面 contract 草案
+
+這輪不改 ORB 策略語意，只把前幾輪一直提到的「正面 contract」再往前推一步：**如果未來真的要讓 previous-day family 有第一個可落地的 scalar，它的最小 schema 應該長什麼樣。**
+
+### 外部依據
+
+- TradingView `Sessions`
+  https://www.tradingview.com/pine-script-docs/v5/concepts/sessions/
+- TradingView `Other timeframes and data`
+  https://www.tradingview.com/pine-script-docs/v5/concepts/other-timeframes-and-data/
+- TradingView `Opening Range Bias + Prev Day Close`
+  https://www.tradingview.com/script/EtcLGkoo-Opening-Range-Bias-Prev-Day-Close/
+- TradingView `Previous Day's Close Indicator (Regular Hours)`
+  https://www.tradingview.com/script/Pokd5BKi-Previous-Day-s-Close-Indicator-Regular-Hours/
+- TradingView `Opening Range Breakout (ORB)`
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+
+### 研究結論
+
+公開腳本與官方文件支持一個更窄、更可驗證的第一刀：**先把 previous-day family 縮成單一 scalar `prior_day_close_regular_session`，而不是直接展開成一組 `PDH/PDL/gap/overnight` surface。**
+
+其中最重要的不是欄位名稱，而是它背後要同時鎖住三件事：
+
+1. 它來自 **前一個已完成的 regular session**。
+2. 它是 **confirmed close**，不是 developing HTF bar。
+3. 若資料集第一個 session 沒有 prior close，狀態必須是 **unavailable**，而不是補值。
+
+### 最小正面 contract 草案
+
+若未來要讓這個 family 進入 validator / schema 層，第一版應至少有以下概念：
+
+- `prior_day_close_regular_session`
+  - 定義：前一個已完成 regular session 的最後確認 close。
+- `prior_day_close_source_session = regular_session`
+  - 明講它不是 full-session、premarket、postmarket 或 overnight。
+- `prior_day_close_timezone = orb_session_timezone`
+  - 明講它和 ORB 現有的 market-clock contract 綁在一起，不允許獨立漂移。
+- `prior_day_close_availability = available | unavailable_first_session`
+  - 明講第一個沒有 prior close 的 session 是 unavailable，不做 implicit fallback。
+- `prior_day_close_fill_policy = no_forward_fill`
+  - 明講不得偷補前值。
+
+### 為什麼這樣比直接做 gap bias 更合理
+
+- 這份 contract 是資料層 / artifact 層的最小切片，還不是策略行為。
+- 它能先把最容易漂移的地方固定下來：
+  - 來源是 regular session 還是 full session；
+  - 時區跟誰綁；
+  - 第一個 session 如何處理；
+  - 是否允許補值。
+- 一旦這四件事沒先鎖住，後面的 `gap bias` filter 其實只是把模糊資料假設包成策略參數。
+
+### 下一步
+
+1. 若進入執行輪，優先補 `unavailable_first_session` regression 或 dedicated validator helper。
+2. 在這個最小資料 contract 沒有變成測試前，不要直接新增 `orb_previous_day_close` 或 `orb_gap_bias` CLI surface。

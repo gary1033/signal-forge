@@ -196,3 +196,4 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 工程上，repo 現在不只用文件與 regression 說明這個邊界，還在 `strategy_spec` 建構點加了 same-session contract validator：任何 `orb_previous_day_*`、`orb_gap_*`、`orb_overnight_*` 類欄位若在 previous-day family 尚未正式定義前混入 ORB surface，都應視為 contract drift，而不是正常擴充。
 - 目前 repo 仍只有一份真正可供 ORB 使用的 intraday processed 樣本：`ALPHAVANTAGE_MSFT_5M_demo.csv`。`TWSE_2330_1D.csv` 屬日線資料，`phase1_demo_ohlcv.csv` 屬 fixture 性質示範資料，兩者都不應被視為第二份獨立 ORB 驗證樣本。
 - 因此，現階段還不能把 `prior-day close / gap bias` 視為已具備跨樣本證據支持的下一刀；更合理的順序仍是先補第二份獨立 intraday 樣本，再決定 previous-day family 是否值得真正落地。
+- 若未來真的要讓 previous-day family 進入 ORB，第一個正面 contract 應優先是單一 scalar `prior_day_close_regular_session`，而不是直接展開成 `PDH/PDL/gap/overnight` 一整組 surface。它至少要綁住三件事：來源是前一個已完成 regular session、值必須是 confirmed close、資料集第一個沒有 prior close 的 session 必須明確標成 unavailable。
