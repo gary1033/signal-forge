@@ -3786,3 +3786,42 @@ git diff --check
 
 1. 若進入分析輪，直接比較 `TWSE_2330_5M` 在 aligned baseline 上的下一個 refinement，不要再重複驗證 market-clock 本身。
 2. 若之後還需要更強的 guard，再考慮把這個 baseline 提示升級成流程性 validator，而不是單純 metadata。
+
+## 2026-05-21 分析輪：TWSE aligned baseline 上的 VWAP slope 沒有新增資訊
+
+這輪直接站在台股 canonical baseline `Asia/Taipei 09:00-13:30 aligned` 上，比較：
+
+1. `orb-volume-vwap --orb-reject-ema-inside-range`
+2. `orb-volume-vwap --orb-reject-ema-inside-range --orb-vwap-slope-confirmation`
+
+資料集固定為 `TWSE_2330_5M.csv`，因此這輪不再討論 market-clock 本身，而是只回答：**在台股 aligned baseline 上，`VWAP slope` 這個 secondary refinement 有沒有新增辨識力。**
+
+### 比較結果
+
+- 兩組 `hold 1 / 3 / 5 / 10` 的結果完全相同：
+  - hold 1：PF `0.513`、Trades `21`、Win rate `23.81%`、Avg net PnL `-7.47`、Max DD `-2.88%`
+  - hold 3：PF `0.538`、Trades `21`、Win rate `47.62%`、Avg net PnL `-11.04`、Max DD `-3.52%`
+  - hold 5：PF `0.685`、Trades `21`、Win rate `38.10%`、Avg net PnL `-9.07`、Max DD `-4.84%`
+  - hold 10：PF `0.309`、Trades `20`、Win rate `30.00%`、Avg net PnL `-35.61`、Max DD `-8.20%`
+- `phase` hold 1 artifact 也完全一致：
+  - accepted `21`
+  - blocked `2266`
+  - hold `500`
+  - overlap `0`
+  - ignored short `0`
+  - blocked reasons：`below_or_high(2087)`、`ema_inside_opening_range(86)`、`breakout_volume_blocked(80)`、`volume_warmup(13)`
+
+### 結論
+
+- 對 `TWSE_2330_5M aligned` 這份樣本而言，`VWAP slope` **沒有新增資訊**。
+- 這不是「改善很小」，而是 artifact 與回測指標都完全不變；也就是說，在這份樣本上它目前等價於零增量 refinement。
+- 因此後續若要繼續用台股 baseline 比較 ORB refinement，優先順序不應再放在 `VWAP slope`，而應：
+  1. 直接承認它在台股 aligned baseline 上暫時沒有研究價值；
+  2. 或把分析配額轉給其他 refinement / market-specific 假設。
+
+### 產出報表
+
+- `reports/generated/twse-orb-aligned-emabox_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-vslope_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-phase.md`
+- `reports/generated/twse-orb-aligned-emabox-vslope-phase.md`

@@ -208,3 +208,22 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 因此目前更合理的做法是：把 `Asia/Taipei 09:00-13:30` 視為台股 ORB 的 canonical 基線，之後若還要比較 `EMA inside-range` 或其他 refinement，都應建立在這個 aligned 版本之上；不要再拿 `mismatch` 版結果去推導新的 previous-day family。
 - 從公開 ORB 腳本的 UI 慣例來看，跨市場版本通常不只允許設定 session / timezone，還會把 **active preset / active market-clock** 直接顯示給使用者看。這表示對 SignalForge 而言，下一個較合理的小改動不是再堆 filter，而是讓 artifact / reporting 更明白地提示：`TWSE_2330_5M` 的 canonical baseline 是 `Asia/Taipei 09:00-13:30 aligned`。
 - repo 現在已把這個提示往前推進到 artifact：對已知的 `TWSE_2330_5M.csv`，`strategy_spec` 會固定補一行 `orb_known_sample_market_clock_baseline_note`，直接說明台股 ORB 的 canonical baseline 與本次 run 的 aligned / mismatch 狀態。
+
+## 台股 aligned baseline 上的次要 refinement 結論
+
+以 `TWSE_2330_5M.csv` 的 canonical baseline `Asia/Taipei 09:00-13:30 aligned` 重新比較後，可以先固定一個很直接的結論：
+
+- `EMA inside-range` 仍然是這條 ORB 主線在台股樣本上的主要結構 gate。
+- `VWAP slope confirmation` 在這份樣本上沒有新增資訊。
+
+具體來說，以下兩組在 `hold 1 / 3 / 5 / 10` 的回測結果完全相同：
+
+1. `ORB + Volume + VWAP + EMA inside-range`
+2. `ORB + Volume + VWAP + EMA inside-range + VWAP slope`
+
+這代表在 `TWSE_2330_5M aligned` 上，`VWAP slope` 目前不是「弱但有幫助」的次要 refinement，而是**零增量 refinement**。它沒有增加新的 blocked reason，也沒有改變 accepted / blocked / hold 分布；因此若後續要繼續研究台股 ORB，優先順序不應再放在 `VWAP slope`，而應轉向：
+
+- 其他更有機會補到市場差異的 refinement；
+- 或直接承認現有 ORB 主線對台股 regular session 的適配度有限。
+
+換句話說，`VWAP slope` 目前仍可保留在美股樣本的 compare-only 位置，但不應再被當成台股 baseline 上值得優先討論的主題。
