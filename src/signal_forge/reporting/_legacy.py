@@ -1865,6 +1865,7 @@ def _markdown_report(
         lines.append("- Data validation was not provided.")
 
     lines.extend(_build_known_sample_baseline_lines(strategy_spec))
+    lines.extend(_build_twse_refinement_benchmark_lines(strategy_spec))
     lines.extend(["", "## Strategy Spec (Distilled)", ""])
     if strategy_spec:
         for key, value in strategy_spec.items():
@@ -1965,6 +1966,7 @@ def _entry_edge_comparison_markdown(
         lines.append("- Data validation was not provided.")
 
     lines.extend(_build_known_sample_baseline_lines(strategy_spec))
+    lines.extend(_build_twse_refinement_benchmark_lines(strategy_spec))
     lines.extend(["", "## Strategy Spec (Distilled)", ""])
     if strategy_spec:
         for key, value in strategy_spec.items():
@@ -2010,6 +2012,49 @@ def _build_known_sample_baseline_lines(
     rule = strategy_spec.get("orb_known_sample_market_clock_rule")
     if rule:
         lines.append(f"- Interpretation: {rule}")
+    return lines
+
+
+def _build_twse_refinement_benchmark_lines(
+    strategy_spec: dict[str, str] | None,
+) -> list[str]:
+    """
+    用途與流程：根據既有 strategy spec 中的台股已知樣本 baseline metadata 與 refinement 開關，為 entry-edge 類報表補上台股 benchmark 提示，讓後續比較能直接看出目前應以 aligned baseline 還是 OR 平均量基準作為對照，而不必回頭翻研究筆記。
+    參數：strategy_spec（dict[str, str] | None）為策略 artifact 的 distilled metadata；可為 None。函式只依賴既有的 known-sample market-clock 與 ORB refinement key，不新增任何新的策略語意欄位。
+    回傳與錯誤：回傳 list[str]，可直接插入 markdown lines；若不是 TWSE_2330_5M aligned baseline，回傳空 list，不主動拋出例外。
+    """
+    if not strategy_spec:
+        return []
+    baseline_note = strategy_spec.get("orb_known_sample_market_clock_baseline_note", "")
+    alignment = strategy_spec.get("orb_known_sample_market_clock_alignment")
+    if "TWSE_2330_5M.csv" not in baseline_note or alignment != "aligned":
+        return []
+
+    lines = [
+        "",
+        "## TWSE Refinement Benchmark",
+        "",
+        "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
+    ]
+    if (
+        strategy_spec.get("orb_use_opening_range_volume_baseline") == "enabled"
+    ):
+        lines.append(
+            "- Current run uses the OR average volume baseline benchmark; treat it as the trade-compression reference for later Taiwan refinements."
+        )
+    else:
+        lines.append(
+            "- Current benchmark refinement: OR average volume baseline improves hold-1 quality, but weakens multi-hold robustness."
+        )
+
+    if strategy_spec.get("orb_retest_confirmation") == "enabled":
+        lines.append(
+            "- Current run uses the compare-only OR retest / re-break style; read it against both the aligned baseline and the OR average volume baseline benchmark."
+        )
+    else:
+        lines.append(
+            "- OR retest / re-break confirmation remains a compare-only entry style candidate, not a higher-priority baseline upgrade."
+        )
     return lines
 
 

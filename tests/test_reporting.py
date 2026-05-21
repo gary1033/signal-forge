@@ -977,6 +977,8 @@ class ReportingTests(unittest.TestCase):
                     "orb_known_sample_market_clock_expected_session_end": "13:30",
                     "orb_known_sample_market_clock_rule": "Use the aligned Asia/Taipei 09:00-13:30 baseline when reading TWSE_2330_5M conclusions.",
                     "orb_known_sample_market_clock_baseline_note": "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
+                    "orb_use_opening_range_volume_baseline": "enabled",
+                    "orb_retest_confirmation": "disabled",
                 },
             )
             markdown_text = paths.markdown.read_text(encoding="utf-8")
@@ -990,6 +992,18 @@ class ReportingTests(unittest.TestCase):
                     "- Current alignment: aligned",
                     "- Expected market clock: Asia/Taipei 09:00-13:30",
                     "- Interpretation: Use the aligned Asia/Taipei 09:00-13:30 baseline when reading TWSE_2330_5M conclusions.",
+                ]
+            ),
+            markdown_text,
+        )
+        self.assertIn(
+            "\n".join(
+                [
+                    "## TWSE Refinement Benchmark",
+                    "",
+                    "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
+                    "- Current run uses the OR average volume baseline benchmark; treat it as the trade-compression reference for later Taiwan refinements.",
+                    "- OR retest / re-break confirmation remains a compare-only entry style candidate, not a higher-priority baseline upgrade.",
                 ]
             ),
             markdown_text,
@@ -1023,12 +1037,14 @@ class ReportingTests(unittest.TestCase):
                 data_validation=validate_bars(bars),
                 strategy_spec={
                     "entry_side": "long_only",
-                    "orb_known_sample_market_clock_alignment": "mismatch",
+                    "orb_known_sample_market_clock_alignment": "aligned",
                     "orb_known_sample_market_clock_expected_timezone": "Asia/Taipei",
                     "orb_known_sample_market_clock_expected_session_start": "09:00",
                     "orb_known_sample_market_clock_expected_session_end": "13:30",
-                    "orb_known_sample_market_clock_rule": "Prefer the aligned Asia/Taipei 09:00-13:30 baseline before treating TWSE_2330_5M mismatch results as canonical.",
-                    "orb_known_sample_market_clock_baseline_note": "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is mismatch.",
+                    "orb_known_sample_market_clock_rule": "Use the aligned Asia/Taipei 09:00-13:30 baseline when reading TWSE_2330_5M conclusions.",
+                    "orb_known_sample_market_clock_baseline_note": "TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
+                    "orb_use_opening_range_volume_baseline": "disabled",
+                    "orb_retest_confirmation": "enabled",
                 },
             )
             markdown_text = paths.markdown.read_text(encoding="utf-8")
@@ -1038,10 +1054,22 @@ class ReportingTests(unittest.TestCase):
                 [
                     "## Known Sample Baseline",
                     "",
-                    "- TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is mismatch.",
-                    "- Current alignment: mismatch",
+                    "- TWSE_2330_5M.csv uses Asia/Taipei 09:00-13:30 as the canonical ORB baseline; current run is aligned.",
+                    "- Current alignment: aligned",
                     "- Expected market clock: Asia/Taipei 09:00-13:30",
-                    "- Interpretation: Prefer the aligned Asia/Taipei 09:00-13:30 baseline before treating TWSE_2330_5M mismatch results as canonical.",
+                    "- Interpretation: Use the aligned Asia/Taipei 09:00-13:30 baseline when reading TWSE_2330_5M conclusions.",
+                ]
+            ),
+            markdown_text,
+        )
+        self.assertIn(
+            "\n".join(
+                [
+                    "## TWSE Refinement Benchmark",
+                    "",
+                    "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
+                    "- Current benchmark refinement: OR average volume baseline improves hold-1 quality, but weakens multi-hold robustness.",
+                    "- Current run uses the compare-only OR retest / re-break style; read it against both the aligned baseline and the OR average volume baseline benchmark.",
                 ]
             ),
             markdown_text,

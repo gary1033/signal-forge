@@ -4274,3 +4274,35 @@ git diff --check
 
 1. 若進入執行輪，可優先補 comparison / reporting 的 benchmark hint，把台股 refinement 分成 baseline、benchmark、compare-only style。
 2. 若進入後續研究輪，新的台股 refinement 應優先對照 `aligned baseline` 與 `OR average volume baseline`，不要再把 retest 當主線優先候選。
+
+## 2026-05-21 執行：在 entry-edge markdown 補台股 refinement benchmark hint
+
+### 本輪修改
+
+- 在 entry-edge 單次報表與 hold comparison markdown 中，沿用既有 `TWSE_2330_5M` known-sample market-clock metadata，再補一層 `TWSE Refinement Benchmark` 區塊。
+- 這個區塊不新增策略語意，只用既有 `strategy_spec` 推導：
+  - `TWSE_2330_5M aligned baseline` 是主比較基準
+  - `OR average volume baseline` 是目前台股 refinement benchmark
+  - `OR retest / re-break confirmation` 仍是 compare-only entry style 候選
+
+### 為什麼先做這個
+
+- 目前 repo 已經有：
+  - canonical baseline note
+  - aligned / mismatch metadata
+  - `OR average volume baseline` 與 `OR retest` 的研究排序
+- 缺的是更靠近 artifact 的提示，讓後續閱讀單次報表或 hold comparison 時，不用回頭翻長篇研究筆記才知道台股 refinement 應該怎麼解讀。
+
+### 驗證
+
+- readiness score：`110`
+- unit tests：`139 tests OK`
+- `git diff --check`：clean
+
+### 結論
+
+- 這輪是 **reporting contract 補強**，不是策略邏輯更新。
+- 後續新的台股 refinement，應直接對照：
+  - `TWSE_2330_5M aligned baseline`
+  - `OR average volume baseline`
+- 不應再把 `OR retest` 或 `VWAP slope` 當成同優先級主線候選。

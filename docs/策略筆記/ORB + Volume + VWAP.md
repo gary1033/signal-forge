@@ -343,3 +343,18 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 因此目前較合理的角色不是主線改善，而是 compare-only entry style 候選。
 
 也就是說，後續若還要研究新的台股 refinement，`OR retest` 比較像用來做風格對照，而不是拿來取代 `aligned baseline` 或 `OR average volume baseline` 的主要比較地位。
+
+## 台股報表目前的 benchmark 解讀順序
+
+在 `TWSE_2330_5M` 這個台股樣本上，entry-edge 報表現在應該固定用同一個順序解讀：
+
+1. 先確認是否為 `Asia/Taipei 09:00-13:30 aligned` baseline。
+2. 若是台股 market-specific refinement，比較時先對照 aligned baseline。
+3. 再對照 `OR average volume baseline`，因為它目前是最有資訊的台股 benchmark。
+4. `OR retest / re-break confirmation` 則先停在 compare-only entry style 候選，不應和 baseline 或 benchmark 放在同一優先級。
+
+這個排序的作用不是宣告哪個條件已經夠好可以上主線，而是避免後續閱讀台股報表時，把不同層級的 refinement 混成同一種訊號：
+
+- `aligned baseline`：主比較基準
+- `OR average volume baseline`：有資訊、但帶明顯 tradeoff 的 benchmark
+- `OR retest`：偏保守、偏壓縮交易數的 style 候選
