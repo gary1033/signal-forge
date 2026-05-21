@@ -168,6 +168,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 進一步用 `MSFT 5m demo` 比較 `EMA inside-range` 與 `EMA inside-range + VWAP slope` 後，`VWAP slope` 顯示出**微弱但非零**的增量：PF 從 `4.452` 小幅升到 `4.546`，hold bars 從 `873` 降到 `865`，並新增 `2` 根 `breakout_vwap_slope_blocked`。這代表它不是完全冗餘，但仍不足以升回主線核心條件。
 - 因此目前較合理的定位是：`VWAP slope` 保持可選、可比較，但仍屬次要 refinement，而不是 ORB 主線的第一層結構 gate。
 - 進一步對照公開腳本後，這個排序更明確：`ORB + Volume + VWAP Breakout` 與 `Opening Range Breakout + VWAP + Volume` 這類腳本的主線通常停在 `price relative to VWAP`，`VWAP slope` 若存在，也多半只是額外 direction filter；因此 SignalForge 沒必要再擴大它的主線 CLI / artifact surface。
+- 目前 repo 也已把這個排序正式寫進 artifact：`strategy_spec` 會用 `orb_vwap_slope_tier=secondary_refinement` 明示 `VWAP slope` 的層級。後續回看 JSON / markdown 時，不用再靠實驗紀錄猜它是不是主線條件。
 - 在繼續增加 stop loss、take profit、trailing stop 或 session close exit 前，應先補 ORB filter attribution / rejection summary，讓 artifact 能直接看出各個 filter 擋掉多少候選突破，以及它們是否只是重複擋掉同一批弱訊號。
 - `orb_filter_attribution` 現在已寫進 `*_trace_summary.json`；若這批 run 屬於 ORB 語意，artifact 會直接列出 `accepted / hold / session / range / structure / trend / volume / retest / other` 的 group counts，以及真正屬於 filter rejection 的 blocked reasons。
 - 因此下一步不該先再堆新 filter，而應進入分析比較：用既有資料與 artifacts 對照不同 ORB filter 組合，確認 `EMA inside-range`、`EMA trend`、`VWAP slope`、`OR volume baseline` 等條件到底補到什麼資訊。

@@ -1767,3 +1767,51 @@ git diff --check
 
 1. 下一輪若進入分析輪，可直接比較「保留這個 secondary refinement 標示」後，artifact 是否更容易讀出主次層級。
 2. 下一輪若進入 review 輪，可檢查 `EMA trend`、`EMA inside-range`、`OR volume baseline` 是否也需要類似的 tier 分層。
+
+## 2026-05-21 分析輪：`orb_vwap_slope_tier` 是否真的提升 artifact 可讀性
+
+這輪不研究新策略，也不再調整 ORB filter。目標只有一個：確認上一輪加進去的 `orb_vwap_slope_tier=secondary_refinement`，是否在**不改績效結論**的前提下，讓 artifact 更容易看出 `VWAP slope` 的主次層級。
+
+### 本輪重跑配置
+
+資料來源固定：
+
+- `data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+
+重跑兩組：
+
+1. `EMA inside-range`
+2. `EMA inside-range + VWAP slope`
+
+產出報表：
+
+- `reports\generated\msft-orb-vwap-slope-tier-readability-20260521.md`
+- `reports\generated\msft-orb-vwap-slope-tier-readability-20260521.json`
+
+### 比較摘要
+
+| Config | PF | Trades | Win rate | Avg net PnL | Max DD | Overlap | Blocked | Accepted | Hold | VWAP slope flag | VWAP slope tier |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| ema-inside-range | 4.452 | 13 | 38.46% | 16.27 | -0.29% | 0 | 1754 | 13 | 873 | disabled | secondary_refinement |
+| ema-inside-range + vwap-slope | 4.546 | 13 | 38.46% | 16.37 | -0.29% | 0 | 1762 | 13 | 865 | enabled | secondary_refinement |
+
+### 與前一份比較報表的關係
+
+- 對照先前的 `msft-orb-vslope-on-ema-box-20260521.json`：
+  - `EMA inside-range` 的 PF、交易數、勝率、平均淨損益、最大回撤都**完全相同**
+  - `EMA inside-range + VWAP slope` 的 PF、交易數、勝率、平均淨損益、最大回撤也**完全相同**
+- 代表上一輪加入的 `orb_vwap_slope_tier` 沒有偷偷改動策略行為；它只改變 artifact 語意。
+
+### 分析結論
+
+- `orb_vwap_slope_tier=secondary_refinement` 是有價值的：
+  - 它不改績效結論；
+  - 但它讓閱讀 summary JSON / markdown 的人不用再從實驗紀錄反推，直接就知道 `VWAP slope` 是第二層條件。
+- 目前 ORB 的 artifact 可讀性因此變得更一致：
+  - `EMA inside-range` 仍是主線結構 gate；
+  - `VWAP slope` 仍保留，但被正確標成 compare-first / optional 的次要 refinement。
+
+### 下一步
+
+1. 下一輪若進入 review 輪，可檢查 `EMA trend`、`OR volume baseline` 是否也需要類似 tier 標示。
+2. 下一輪若進入執行輪，不應再擴 `VWAP slope` 的 surface；較合理的是把同樣的層級語意套用到其他 optional filter。
