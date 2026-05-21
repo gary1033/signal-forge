@@ -2164,3 +2164,39 @@ git diff --check
 
 1. 下一輪若進入 review，可判斷 `EMA trend` 對稱 contract 與 disabled rule wording，哪一個債更值得優先處理。
 2. 若下一輪進入研究輪，應該把 focus 從 `VWAP slope tier` 移開，改成 `EMA trend` / role-family 邊界。
+
+## 2026-05-21 Code Review：下一個單點修復應優先處理 disabled rule wording，而不是先擴 `EMA trend` 對稱 contract
+
+這輪是 review-only，不改 ORB 策略語意。目標是把最近幾輪收斂出來的兩個小債排出先後順序：
+
+1. disabled 狀態下的 `orb_vwap_slope_rule` 文案仍寫成 `when enabled, ...`
+2. `EMA trend` 是否要補成和 `VWAP slope` 對稱的 tier / role contract
+
+### Finding 1：disabled rule wording 是目前 artifact 的直接可讀性問題
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\cli\strategy_options.py`
+- 現況：即使 `orb_vwap_slope_confirmation=disabled`，artifact 仍固定輸出 `orb_vwap_slope_rule: when enabled, this secondary refinement ...`
+- 風險：機器層面沒有歧義，但人類讀 phase / entry-edge artifact 時，容易把它誤解成「規則仍在生效，只是前面補了一句 when enabled」。
+- 建議修法：下一個執行輪優先把 `rule` 文案改成較中性的靜態描述，或把規則描述與 state/effective 狀態拆開。
+
+### Finding 2：`EMA trend` 對稱 contract 是更廣的 schema 決策，不適合先於 wording cleanup
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\cli\strategy_options.py`、`tests\test_cli.py`
+- 現況：研究上已經確認 `EMA trend` 最接近 `VWAP slope` 的同層 refinement，但是否要補 `*_tier` / `*_role` 不只是文案修正，而是 schema 擴張。
+- 風險：若現在直接補 `EMA trend` 對稱 contract，會把目前的單點可讀性修補推進成更廣的 surface 設計，容易在還沒定清楚 role/family 規則前又增加平面欄位。
+- 建議修法：把這件事留到後續研究或單點設計決策，確認是否真的要從 `VWAP slope` 擴成一個更通用的 role/tier contract。
+
+### 排序結論
+
+- **下一個單點修復應優先處理 disabled rule wording。**
+- 理由：
+  1. 它是當前 artifact 的直接閱讀問題，今天就會影響人。
+  2. 修法局部、風險低，符合夜間 automation 的單點修復邊界。
+  3. `EMA trend` 對稱 contract 則是更廣的 schema 問題，應在 wording cleanup 之後再決定要不要做。
+
+### 下一步
+
+1. 下一輪若進入執行輪，優先把 disabled 狀態下的 `orb_vwap_slope_rule` 改成較中性的靜態描述。
+2. wording cleanup 完成後，再回頭評估 `EMA trend` 是否值得補對稱 contract，並決定那時要走單一 tier 還是 role/family。
