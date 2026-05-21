@@ -3867,3 +3867,40 @@ git diff --check
 
 1. 若進入執行輪，優先補一個更靠近 CLI / reporting 的 **aligned baseline flow hint**，而不是再加 filter。
 2. 若進入研究或分析輪，直接把配額轉去其他台股假設；不要再對 `VWAP slope` 或 market-clock 做同題重跑。
+
+## 2026-05-21 研究輪：public ORB 較偏好 active preset 提示，而不是 hard reject
+
+這輪不研究新 filter，也不回頭重跑 `TWSE_2330_5M` market-clock A/B；只確認一件工程排序問題：**若已知樣本存在 canonical market-clock，下一步應該做 hard validator，還是先做更明顯的 active baseline / flow hint。**
+
+### 外部依據
+
+1. `RAWPIPSFXBYDAN - ORB (Opening Range Breakout)`
+   - 腳本直接把 **Market** 當成主設定，並讓這個設定同時驅動 session timezone 與 default windows。
+   - 它還提供右上角 **info panel**，直接顯示 active market、market timezone、local timezone 與 resolved windows。
+   - 這種設計重點是「把 active preset 說清楚」，而不是在使用者沒對齊時直接阻止運行。
+
+2. `15-Min Opening Range Indicator & Breakout Targets (ORB)- Willy`
+   - 腳本同樣把多市場 / 多 session 場景的第一步放在 **local timezone adjustment** 與 **custom start hour/minute**。
+   - 這說明 public ORB 通常先解決「你現在看的是哪個市場時鐘」，再談 breakout refinement。
+
+3. TradingView 官方 `Sessions`
+   - 官方文件把 session 判定與 `session.isfirstbar_regular` 這種 regular-session 概念當成一級語意。
+   - 這支持我們把台股 `09:00-13:30` 視為 canonical baseline。
+
+4. TradingView 官方 `Repainting` / `Other timeframes and data`
+   - 官方明確提醒，當腳本開始依賴跨 timeframe / intrabar request 時，repaint 與 realtime / historical 不一致風險會上升。
+   - 這也代表目前更低風險的下一步，仍應優先是 **same-session artifact 提示**，而不是再往更重的 previous-day / higher-timeframe family 推進。
+
+### 結論
+
+- 以公開 ORB 腳本的做法來看，SignalForge 下一步若要強化 `TWSE_2330_5M aligned baseline`，較合理的是：
+  1. 先做更靠近 CLI / reporting 的 **active baseline flow hint**；
+  2. 而不是立刻升級成 hard reject。
+- 原因很直接：
+  - 我們仍需要保留 `mismatch` run 作為審計與比較證據；
+  - 但也不該讓後續讀 artifact 的人忽略 canonical baseline。
+
+### 下一步
+
+1. 若進入執行輪，應優先補一個 **更顯眼但不阻斷流程** 的 aligned baseline 提示。
+2. 若未來台股 ORB artifact 仍反覆被誤讀，再考慮把這個提示升級成更強的 validator 或 warning contract。

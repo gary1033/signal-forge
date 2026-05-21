@@ -227,3 +227,14 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 或直接承認現有 ORB 主線對台股 regular session 的適配度有限。
 
 換句話說，`VWAP slope` 目前仍可保留在美股樣本的 compare-only 位置，但不應再被當成台股 baseline 上值得優先討論的主題。
+
+## 台股 baseline 的提示方式
+
+針對 `TWSE_2330_5M.csv` 這類已知有 canonical market-clock 的樣本，公開 ORB 腳本比較常見的做法，不是直接阻止使用者執行，而是把 **active market / session / timezone** 顯示得非常清楚。
+
+這對目前的 ORB 主線有兩個直接含義：
+
+1. `TWSE_2330_5M` 的 canonical baseline 仍應固定是 `Asia/Taipei 09:00-13:30 aligned`。
+2. 下一步若要繼續補工程邊界，較合理的是讓 artifact / reporting 更顯眼地提示這件事，而不是直接把 `mismatch` run 變成不可執行。
+
+原因是 `mismatch` run 仍有研究價值：它能幫助我們理解 market-clock 是否扭曲結果；但正式比較與結論應明確站在 aligned baseline 上。
