@@ -277,3 +277,21 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 
 - `VWAP slope` 在台股樣本上是零增量；
 - `OR average volume baseline` 則是**有資訊、但帶明顯 tradeoff** 的市場特化 refinement 候選。
+
+## 台股樣本上的下一個優先研究方向
+
+針對 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline，目前較合理的下一個 refinement，不是直接跳去 previous-day family，而是先看 **OR retest / re-break confirmation**。
+
+原因很直接：
+
+- 台股樣本目前暴露的問題，比較像「第一次突破後 follow-through 不夠穩」；
+- `VWAP slope` 在這份樣本上是零增量；
+- `OR average volume baseline` 雖然有資訊，但更像透過量能把交易壓少，主要只改善最短持有期。
+
+相較之下，`OR retest / re-break confirmation` 的研究價值在於：
+
+1. 它是**同 session 內的價格結構確認**，不需要先把 previous-day / higher-timeframe data 拉進來。
+2. 它對應的是「突破後回測 OR 高點/低點，再重新站回去才算有效」，這比單純加嚴量能更接近 follow-through 本身。
+3. 工程上它也比較適合目前 SignalForge 的 deterministic 邊界，因為只要維持 confirmed-bar-only 與既有 session contract，就能先做出可驗證版本。
+
+這不代表 retest confirmation 一定會把台股 ORB 直接翻成 `PASS`；它同樣可能只是另一種 trade-compression refinement。但以目前研究排序來看，它比 previous-day family 更適合作為下一個台股 market-specific refinement 候選。

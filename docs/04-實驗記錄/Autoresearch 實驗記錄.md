@@ -4072,3 +4072,40 @@ git diff --check
 
 1. 若進入執行輪，可考慮在 entry-edge / comparison 報表補一個更明確的 benchmark hint，說明台股後續 refinement 應對照 `aligned baseline` 與 `OR average volume baseline`。
 2. 若進入研究輪，應轉向新的台股 market-specific refinement，而不是再圍繞 `VWAP slope` 或 market-clock 做重複驗證。
+
+## 2026-05-21 研究：台股下一個較值得測的 refinement 先看 OR retest / re-break confirmation
+
+### 研究問題
+
+在 `TWSE_2330_5M aligned` baseline 上，現在已知：
+
+- `VWAP slope` 是零增量 refinement。
+- `OR average volume baseline` 有資訊，但比較像 trade-compression refinement，且只改善 hold 1。
+
+因此本輪研究改問另一題：**下一個更值得測的台股 market-specific refinement，是不是應該先看同 session 的 OR retest / re-break confirmation，而不是直接跳去 previous-day family？**
+
+### 外部參考
+
+- TradingView `Opening Range Retest`：把 OR retest 視為獨立策略，重點是「突破後回測 opening range」再進場，而不是第一次穿越就觸發。它也明講這種邏輯比較適合 regular market open 活躍的 equity open。
+- TradingView `Opening Range with Breakouts & Targets`：直接提供 `Confirm Retest`，要求完整 retest 後再 re-break 才發信號，並且特別加入 `session.ismarket` guard，避免 premarket 汙染 OR levels。
+- TradingView 官方 `Sessions`：session / regular / subsession 邊界本來就是一級 contract，代表這類 refinement 可以先維持在同 session 內處理，不必一開始就引入 previous-day / HTF 資料。
+- TradingView 官方 `Repainting` 與 `Other timeframes and data`：一旦把 refinement 做成 `request.security()` 型 higher-timeframe / previous-day 邏輯，就要額外處理 confirmed-value 與 repaint 風險。
+
+### 研究結論
+
+1. **對目前台股主線來說，OR retest / re-break confirmation 比 previous-day family 更值得先測。**
+   - 它直接對準 `TWSE_2330_5M aligned` 現在暴露出的問題：首次突破後 follow-through 弱。
+   - 它和 `OR average volume baseline` 一樣，都屬於 trade-compression 類，但更偏向價格結構確認，而不是純量能壓縮。
+
+2. **它的工程風險低於 previous-day family。**
+   - 若只用同 session 的 ORH / ORL、已確認 close、以及 breakout 後回測再突破條件，就不必先引入 `prior_day_close_regular_session`、`request.security()` 或 premarket 定義。
+   - 這表示它更適合 SignalForge 現在的 deterministic artifact 與 validator 邊界。
+
+3. **它仍然不是無條件推薦，而是下一個較合理的比較候選。**
+   - retest confirmation 很可能也會壓縮交易數，和 `OR average volume baseline` 一樣有 tradeoff。
+   - 但至少從公開 ORB 腳本來看，這條 refinement 是常見且結構上合理的 follow-through 修補方式。
+
+### 下一步
+
+1. 若進入執行輪，優先把 `OR retest / re-break confirmation` 定義成同 session、confirmed-bar-only 的研究假設，不要先引入 previous-day / higher-timeframe data。
+2. 若進入後續分析輪，應直接拿它對照 `TWSE_2330_5M aligned baseline` 與 `OR average volume baseline`，看它是否只是另一種 trade compression，或真的改善 follow-through 品質。
