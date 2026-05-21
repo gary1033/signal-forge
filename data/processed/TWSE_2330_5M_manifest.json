@@ -1,0 +1,16 @@
+{
+  "source": "Yahoo Finance chart API",
+  "symbol": "2330.TW",
+  "market": "TWSE",
+  "output_csv": "C:\\Projects\\signal-forge\\data\\processed\\TWSE_2330_5M.csv",
+  "raw_json": "C:\\Projects\\signal-forge\\data\\raw\\TWSE_2330_5M_yahoo_raw.json",
+  "interval": "5m",
+  "requested_range": "60d",
+  "timezone": "Asia/Taipei",
+  "currency": "TWD",
+  "downloaded_at": "2026-05-21T18:03:42+08:00",
+  "row_count": 3141,
+  "first_timestamp": "2026-02-23T09:00:00+08:00",
+  "last_timestamp": "2026-05-21T13:30:00+08:00",
+  "csv_contract": "timestamp,open,high,low,close,volume"
+}

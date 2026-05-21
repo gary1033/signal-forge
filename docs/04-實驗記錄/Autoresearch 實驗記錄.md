@@ -3344,3 +3344,47 @@ git diff --check
 
 1. 若還要推進 previous-day family，分析配額應優先轉向第二份獨立 intraday 樣本。
 2. 在沒有第二份樣本與 reporting 分工前，不要再為這個 helper 擴 schema 或加 gap-bias filter。
+
+## 2026-05-21 執行輪：正式收編 `TWSE_2330_5M` 為第二份 ORB-capable intraday 樣本
+
+這輪不改 ORB 策略語意，也不新增 previous-day / gap filter；只處理一個更基礎的 repo 邊界問題：**`TWSE_2330_5M.*` 其實已經被台積電延伸研究、ORB 策略筆記與 `reports/generated/tsmc-*` 報表實際使用，因此不應再被視為懸空工作樹，而應正式承認它是 repo 內第二份 ORB-capable intraday 樣本。**
+
+### 這輪收編的檔案
+
+- `data/processed/TWSE_2330_5M.csv`
+- `data/processed/TWSE_2330_5M_manifest.json`
+- `data/raw/TWSE_2330_5M_yahoo_raw.json`
+- `docs/04-實驗記錄/台積電四策略延伸研究.md`
+
+### 樣本身份結論
+
+1. `TWSE_2330_5M.csv` 符合目前 ORB intraday research contract：
+   - CSV contract 為 `timestamp,open,high,low,close,volume`
+   - bar 具時間資訊與時區偏移，例如 `2026-02-23T09:00:00+08:00`
+   - sample manifest 已明寫：
+     - `source = Yahoo Finance chart API`
+     - `interval = 5m`
+     - `timezone = Asia/Taipei`
+     - `row_count = 3141`
+     - `first_timestamp = 2026-02-23T09:00:00+08:00`
+     - `last_timestamp = 2026-05-21T13:30:00+08:00`
+2. 它不是 fixture，也不是純筆記附件；repo 已存在對應實驗輸出：
+   - `reports/generated/tsmc-orb-5m-20260521.json`
+   - `reports/generated/tsmc-orb-5m-20260521.md`
+   - `reports/generated/tsmc-orb-5m-20260521_hold_comparison.json`
+   - `reports/generated/tsmc-orb-5m-20260521_hold_comparison.md`
+3. 因此，先前「repo 目前只有一份 ORB-capable intraday 樣本」的結論，應視為在這批未提交檔案尚未被正式收編前成立；**從這輪開始，repo 應以 `ALPHAVANTAGE_MSFT_5M_demo.csv` 與 `TWSE_2330_5M.csv` 作為兩份已存在的 ORB intraday 樣本。**
+
+### 對 previous-day family 的含義
+
+- 這個收編動作**不等於** `prior-day close / gap bias` 已可直接落進 ORB contract。
+- 它只解除了一個較底層的阻塞：之後若要比較 previous-day family，至少不再被「repo 沒有第二份 intraday 樣本」這個說法卡住。
+- 真正還缺的仍然是：
+  1. `prior_day_close_regular_session` 的正面資料來源 contract；
+  2. `unavailable_first_session` 的 artifact / regression 行為；
+  3. phase / entry-edge reporting 對 previous-day metadata 的責任分層。
+
+### 下一步
+
+1. 之後若要再進 previous-day family，不要重複盤點「有沒有第二份 intraday 樣本」；直接進入正面資料 contract 與 reporting boundary 設計。
+2. 若 `TWSE_2330_5M` 後續要被用作 canonical 台股 ORB 樣本，應維持目前 `Asia/Taipei 09:00-13:30` regular-session metadata，不要再把它混回美股預設 market-clock。
