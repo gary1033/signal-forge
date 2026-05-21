@@ -1815,3 +1815,55 @@ git diff --check
 
 1. 下一輪若進入 review 輪，可檢查 `EMA trend`、`OR volume baseline` 是否也需要類似 tier 標示。
 2. 下一輪若進入執行輪，不應再擴 `VWAP slope` 的 surface；較合理的是把同樣的層級語意套用到其他 optional filter。
+
+## 2026-05-21 Code Review：`orb_vwap_slope_tier` 落地後的殘餘 surface 問題
+
+這輪是 review-only，不改 ORB 策略語意。重點不是質疑 `orb_vwap_slope_tier` 本身，而是檢查它落地後，artifact / CLI / tests 是否真的形成一致 contract。
+
+### Findings
+
+#### 1. tier 語意目前只補到 `VWAP slope`，同層 optional filter 仍然沒有對齊
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\cli\strategy_options.py`
+- 現況：`orb_vwap_slope_tier` 已存在，但同樣屬於 optional refinement 的 `EMA trend`、`OR volume baseline`、`range gate` 等條件，仍只保留 `enabled/disabled + rule`，沒有對應的 tier / role 語意。
+- 風險：artifact 會形成不對稱 contract，看起來像只有 `VWAP slope` 需要解釋層級，其他條件卻默認都是主線，這會讓後續比較與閱讀再次漂移。
+- 建議修法：若要保留 tier contract，下一輪應該選一組真正同層的 optional filters 一起對齊；否則 `VWAP slope` 會變成特例，而不是通用 contract。
+
+#### 2. `strategy_spec` 仍然是平面 key 擴張，tier 只是再加一層欄位，不是收斂結構
+
+- 嚴重度：中
+- 受影響檔案：`src\signal_forge\cli\strategy_options.py`
+- 現況：`strategy_spec_from_args(...)` 目前仍把 session、range、volume、trend、structure 全部攤平成單一 dict；`orb_vwap_slope_tier` 的加入讓語意更清楚，但資料結構本身沒有變得更乾淨。
+- 風險：只要繼續沿這個模式前進，每新增一個 tier / role key，都會讓平面 namespace 更擁擠，最後又回到「知道比較多，但更難掃讀」的狀態。
+- 建議修法：下一輪若再碰 artifact contract，優先考慮 grouping helper 或小型結構分區，而不是一路往平面 `strategy_spec` 疊新欄位。
+
+#### 3. CLI regression 只鎖住 enabled 路徑，沒有鎖住 disabled/default tier contract
+
+- 嚴重度：中
+- 受影響檔案：`tests\test_cli.py`
+- 現況：目前只有 `test_entry_edge_command_accepts_orb_vwap_slope_confirmation(...)` 直接驗證 `orb_vwap_slope_tier=secondary_refinement`，但沒有對應測試鎖住「未啟用 VWAP slope 時，tier 仍固定存在」的 disabled/default contract。
+- 風險：未來若有人把 disabled 路徑的 `orb_vwap_slope_tier` 拿掉、改名，或只在 enabled 時才輸出，現有測試不一定會立刻擋下來。
+- 建議修法：若下一輪要穩這個 contract，應補一個 disabled/default case，確認 tier 是 deterministic presence，而不是 conditional field。
+
+#### 4. `strategy_name` 與 `strategy_spec` 的層級語意仍不一致
+
+- 嚴重度：低
+- 受影響檔案：`tests\test_cli.py`、相關 ORB strategy naming
+- 現況：artifact 已把 `VWAP slope` 標成 `secondary_refinement`，但 `strategy_name` 仍把 `vslope` 直接嵌進主體名稱中，視覺上和 `emabox`、`ema10` 等條件並列。
+- 風險：summary JSON 的 `strategy_name` 與 `strategy_spec` 會傳遞兩種不同層級訊號：前者像主線組件，後者說它只是次要 refinement。
+- 建議修法：這不需要立刻改，但若之後真的要做更完整的 role/tier contract，就該決定 `strategy_name` 是否也要反映主次層級，或刻意維持 name 只表「有無啟用」而不表「層級」。
+
+### Review 結論
+
+- `orb_vwap_slope_tier` 本身是正確方向，因為它確實提升了 artifact 可讀性。
+- 但目前它還只是 **單點語意補丁**，不是完整的 surface contract。
+- 若要繼續沿這條路走，下一步應該是：
+  1. 選擇是否把 tier/role contract 推成通用規則；
+  2. 若要推，先補 disabled/default test，再選一組同層 optional filters 對齊；
+  3. 若不推，就應避免再為其他單一 filter 各自新增一套特例欄位。
+
+### 下一步
+
+1. 下一輪若進入研究輪，可先整理 ORB 現有 optional filters 的真正分層，避免憑感覺擴 tier。
+2. 下一輪若進入執行輪，最合理的單點修復是補 `orb_vwap_slope_tier` 的 disabled/default regression test。
