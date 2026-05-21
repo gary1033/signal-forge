@@ -9,7 +9,12 @@ import unittest
 from unittest.mock import patch
 
 from signal_forge import MarketDataValidationError
-from signal_forge.cli import build_parser, build_strategy_from_args, main
+from signal_forge.cli import (
+    build_parser,
+    build_strategy_from_args,
+    main,
+    strategy_spec_from_args,
+)
 from signal_forge.data_fetch import FetchDataResult
 from signal_forge.strategies import ConfluenceScoreStrategy
 
@@ -35,6 +40,50 @@ class CliTests(unittest.TestCase):
 
         self.assertIsInstance(strategy, ConfluenceScoreStrategy)
         self.assertEqual(strategy.slow_window, 50)
+
+    def test_strategy_spec_from_args_locks_orb_vwap_slope_tier_contract(self) -> None:
+        """
+        用途與流程：直接驗證 strategy_spec_from_args 在 ORB 的 disabled 與 enabled 兩條 VWAP slope 路徑都會穩定輸出 state、tier 與 rule，避免每次都只能靠 CLI 端到端 artifact 才發現 metadata drift。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        disabled_args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "sample.csv",
+                "--strategy",
+                "orb-volume-vwap",
+            ]
+        )
+        disabled_strategy = build_strategy_from_args(disabled_args)
+        disabled_spec = strategy_spec_from_args(disabled_args, disabled_strategy)
+
+        enabled_args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "sample.csv",
+                "--strategy",
+                "orb-volume-vwap",
+                "--orb-vwap-slope-confirmation",
+            ]
+        )
+        enabled_strategy = build_strategy_from_args(enabled_args)
+        enabled_spec = strategy_spec_from_args(enabled_args, enabled_strategy)
+
+        self.assertEqual(disabled_spec["orb_vwap_slope_confirmation"], "disabled")
+        self.assertEqual(disabled_spec["orb_vwap_slope_tier"], "secondary_refinement")
+        self.assertEqual(
+            disabled_spec["orb_vwap_slope_rule"],
+            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+        )
+        self.assertEqual(enabled_spec["orb_vwap_slope_confirmation"], "enabled")
+        self.assertEqual(enabled_spec["orb_vwap_slope_tier"], "secondary_refinement")
+        self.assertEqual(
+            enabled_spec["orb_vwap_slope_rule"],
+            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+        )
 
     def test_phase_command_accepts_minimal_strategy_invocation(self) -> None:
         """

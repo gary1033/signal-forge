@@ -2080,3 +2080,29 @@ git diff --check
 
 1. 下一輪若進入執行輪，最合理的單點修復仍是補 `strategy_spec_from_args(...)` 的窄範圍 contract test，先穩住目前 tier surface。
 2. 若之後真的要擴 contract，優先考慮 `EMA trend`，不要先把 `OR size`、`OR volume baseline`、`gap fill` 也塞進 `secondary_refinement`。
+
+## 2026-05-21 執行輪：補上 `strategy_spec_from_args(...)` 的窄範圍 tier contract test
+
+這輪不改 ORB 策略語意，也不改 artifact schema；只做一個聚焦修補：把 `orb_vwap_slope_tier` 從 CLI 端到端測試，再往內收一層，直接鎖到 `strategy_spec_from_args(...)`。
+
+### 修改內容
+
+- `tests\test_cli.py`
+  - 新增 `test_strategy_spec_from_args_locks_orb_vwap_slope_tier_contract(...)`
+  - 直接建立：
+    - disabled 路徑：`orb-volume-vwap`
+    - enabled 路徑：`orb-volume-vwap --orb-vwap-slope-confirmation`
+  - 再驗證兩條路徑的：
+    - `orb_vwap_slope_confirmation`
+    - `orb_vwap_slope_tier`
+    - `orb_vwap_slope_rule`
+
+### 這輪解決的風險
+
+- 先前所有 `orb_vwap_slope_tier` 驗證都掛在 CLI artifact regression；若只是 `strategy_spec` metadata drift，failure localization 會偏外層。
+- 補上這個窄範圍 test 後，未來若是 parser / strategy builder / spec assembler 的邊界出錯，會更容易直接定位到 `strategy_spec_from_args(...)` contract。
+
+### 下一步
+
+1. 下一輪若進入分析輪，可確認這個 unit-level contract test 是否已足夠降低 metadata drift 風險。
+2. 若之後仍要擴 tier/role contract，優先考慮 `EMA trend` 是否要補對稱欄位，而不是先碰 `OR size` 或 `OR volume baseline`。
