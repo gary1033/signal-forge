@@ -1455,3 +1455,56 @@ git diff --check
    - ORB filter 命名與 spec 是否開始過度膨脹。
 2. 若下一輪回到執行輪，較合理的聚焦改動不是再加新 filter，而是把 `EMA inside-range` 的分析結論更明確寫進 reporting / docs，或補一個 compare helper 讓這種 attribution 比較不用每次手動組命令。
 3. 若下一輪回到研究輪，應優先找第二份 intraday 樣本驗證 `EMA inside-range` 是否只是在這份 MSFT demo 上偶然有效。
+
+## 2026-05-21 Code Review 輪：ORB filter stack 技術債盤點
+
+這輪是 review-only，不改策略語意，也不順手補功能。重點是把最近幾輪自動化累積下來的 ORB strategy / reporting / CLI / tests 技術債整理成下一輪可執行的單點修復清單。
+
+### review 範圍
+
+- `src\signal_forge\strategies\orb_volume_vwap.py`
+- `src\signal_forge\reporting\_legacy.py`
+- `src\signal_forge\cli\strategy_options.py`
+- `tests\test_reporting.py`
+
+### findings
+
+1. **高：`OrbVolumeVwapStrategy` 已經同時承載 naming、session context 建構與長串 filter gating，維護邊界開始模糊。**
+   - 參考位置：`orb_volume_vwap.py:30-83`, `85-249`, `251-373`
+   - 問題不是單一條件錯，而是單一 strategy class 現在同時負責：
+     - strategy name 組裝；
+     - intraday session / OR / VWAP / EMA / retest state 預計算；
+     - breakout gate 的順序與 blocked reason contract。
+   - 這會讓後續任何一個 filter 調整都同時碰到 artifact naming、state machine 與決策邏輯，debug 成本偏高。
+
+2. **中：generic reporting 層開始直接吸收 ORB 專屬 attribution taxonomy，策略耦合正在往 `_legacy.py` 擴散。**
+   - 參考位置：`_legacy.py:27-68`, `127-189`
+   - `_ORB_GROUP_KEYS`、`_ORB_BLOCKED_GROUP_KEYS`、`_ORB_REASON_GROUPS` 與 `_build_orb_filter_attribution(...)` 都放在通用 reporting 檔案裡。
+   - 現在還可控，但如果下一步再幫其他策略加類似 attribution，generic reporting 很容易退化成「每個策略各自塞一段特例」。
+
+3. **中：CLI / artifact 的 ORB spec surface 正在快速膨脹，平面 key contract 越來越難讀。**
+   - 參考位置：`strategy_options.py:13-147`, `150-193`, `196-369`
+   - 單一 ORB 策略現在已經把 session、signal window、range gate、breakout gate、body strength、fresh breakout、volume baseline、EMA/VWAP filters、observed range 摘要都寫成平面欄位。
+   - 這讓 summary JSON 很完整，但也提高了：
+     - key 命名漂移風險；
+     - spec 向後相容成本；
+     - 使用者判讀 artifact 的負擔。
+
+4. **低：reporting exact-text regression tests 已經開始偏脆，後續小文案變更的維護成本會升高。**
+   - 參考位置：`tests\test_reporting.py:947-990`, `1085-1180`
+   - 這些測試對 markdown / JSON 的完整字串做鎖定，對 artifact contract 很有用，但也代表：
+     - 小幅 wording 調整就要改大段 golden text；
+     - 當 reporting 同時承載更多 ORB 專屬欄位時，測試噪音會跟著放大。
+
+### review 結論
+
+- 目前最該優先處理的不是再加新 filter，而是把 **ORB filter stack 的程式結構與 artifact contract 邊界穩住**。
+- 這次 review 沒看到立即性的 correctness bug，也沒有看到會破壞 `live dry-run only` 的風險。
+- 但從可維護性角度來看，ORB 已經接近「功能還能加，但每再加一個 gate，維護成本就會比訊號價值上升更快」的臨界點。
+
+### 建議下一步
+
+1. **下一個執行輪**：優先抽出 ORB blocked reason / group mapping helper，至少先把 strategy decision chain 與 reporting attribution taxonomy 的共識邊界固定下來。
+2. **下一個分析輪**：延續這次 `EMA inside-range` 的比較，確認 `VWAP slope` 是否應降級成次要分支或移出主線 CLI surface。
+3. **後續若再擴 artifact**：優先考慮把 ORB 專屬 reporting 結構收斂成巢狀欄位或策略子區塊，不要無限制增加平面 key。
+4. **若要修測試債**：只在 reporting contract 穩住後，再考慮把一部分 exact-text test 改成「結構 + 關鍵文案」混合驗證，避免每次小字串變更都重刷大段 golden。
