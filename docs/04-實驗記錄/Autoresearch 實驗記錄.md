@@ -5253,3 +5253,46 @@ phase hold 1 blocked reasons：
 
 1. 若進入 review 輪，應把 `one-and-done` 先定性成 **contract-ready but semantics-not-enabled**。
 2. 若之後真的要分析 `one-and-done`，需要先做一個執行輪，把它正式接進 ORB 的 entry-count-control 語意，再和三層 canonical anchors 比較。
+
+## 2026-05-21 Review：台股 `one-and-done` 應固定定性為 contract-ready but semantics-not-enabled
+
+### Findings
+
+1. **中等嚴重度 - `one-and-done` 現在不應被提升成新的台股 benchmark。**
+   - 目前 repo 已經有 `one-and-done` 的 machine-readable contract 與 validator tests。
+   - 但最新分析同時證明，這些欄位目前只會增加 metadata，不會改變 `TWSE_2330_5M aligned` 上最強 stacked profile 的 runtime。
+   - 因此目前能成立的最強結論只有：它已經 **contract-ready**，但仍 **semantics-not-enabled**。
+
+2. **中等嚴重度 - session family 必須明確區分 contract readiness 與實際交易語意。**
+   - 如果不先切開這兩件事，後續很容易把：
+     - `signal window 60` 的 over-compression，
+     - `one-and-done` 的 contract-only 狀態，
+     - 以及真正啟用 entry-count-control 之後的交易結果
+
+     混成同一類 session refinement 討論。
+   - 這會直接污染台股 refinement 的位階判讀。
+
+3. **低嚴重度 - 目前 reporting hint 已足夠，不需要為 `one-and-done` 額外新增 machine-readable ranking。**
+   - 現有台股 comparison hints 已經能固定三層 canonical anchors：
+     1. `aligned baseline`
+     2. `full bar above range`
+     3. `full bar above range + OR average volume baseline`
+   - 在 `one-and-done` 還沒真正接進 breakout entry-count-control 前，沒有必要再為它長出新的 benchmark schema。
+
+### 結論
+
+- `one-and-done` 現在最合理的正式定性是 **contract-ready but semantics-not-enabled**。
+- 在新的策略語意實作與回測證據出來前，台股 canonical comparison anchors 維持不變：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+- 因此這條線下一步若要繼續，不應再做 metadata / wording 類驗證，而應直接進入真正的 entry-count-control 語意實作。
+
+### 下一步
+
+1. 若進入執行輪，優先把 `one-and-done` 真正接進 ORB breakout 的 entry-count-control。
+2. 啟用後的第一輪分析，固定同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+3. 在那之前，不要把 `one-and-done` 提升成新的台股 benchmark，也不要把 contract-only 中性結果誤讀成策略有效性證據。
