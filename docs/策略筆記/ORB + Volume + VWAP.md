@@ -74,7 +74,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 
 - `opening_range_minutes`：預設 `30`，代表 session 開始後前 30 分鐘用來建立 OR high / OR low。
 - `session_start_hour` / `session_start_minute`：預設 `09:30`，目前先以美股 regular session 為基準；現在也可以從 CLI 用 `--orb-session-start-hour`、`--orb-session-start-minute` 覆寫。
-- 若要把這個策略用在台積電 `2330` 的 regular-session 研究，market-clock metadata 應改成 `Asia/Taipei 09:00-13:30`，而不是沿用美股預設。
+- 若要把這個策略用在台積電 `2330` 的 regular-session 研究，market-clock metadata 應改成 `Asia/Taipei 09:00-13:30`，而不是沿用美股預設；目前 repo 已有一份手動匯入的台積電 intraday 檔 `C:\Projects\signal-forge\data\processed\TWSE_2330_5M.csv` 可供這種研究使用。
 - `volume_window`：預設 `20`，用來計算平均量能。
 - `volume_multiplier`：預設 `1.5`，代表 breakout bar 的量能至少要是最近平均量的 1.5 倍。
 - `require_vwap_confirmation`：預設 `True`，要求 breakout bar close 站上 session VWAP。
@@ -194,7 +194,8 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 進一步把 `MSFT 5m demo` 的第一個 session 拿掉後（模擬「先不讓沒有 in-sample prior close 的第一天影響結論」），`EMA inside-range` 主線仍維持 `PASS`，而且 PF 從 `4.452` 升到 `6.423`。這表示目前唯一的 5m 樣本，還不足以支持「應該立刻把 prior-day family 落進 ORB contract」；更合理的下一步仍是先補第二份 intraday 樣本與 prior-close 邊界定義。
 - 若未來真的要讓 `prior-day close / gap bias` 落第一刀，最小資料邊界應先固定成：`prior_day_close_regular_session = 前一個已完成 regular session 的最後確認 close`。它必須和 ORB 現有的 `session start / end / timezone` 屬於同一套 market-clock 定義，且在資料集第一個沒有 prior close 的 session 上明確標成 unavailable，而不是補值或偷用當日資料。
 - 工程上，repo 現在不只用文件與 regression 說明這個邊界，還在 `strategy_spec` 建構點加了 same-session contract validator：任何 `orb_previous_day_*`、`orb_gap_*`、`orb_overnight_*` 類欄位若在 previous-day family 尚未正式定義前混入 ORB surface，都應視為 contract drift，而不是正常擴充。
-- 目前 repo 仍只有一份真正可供 ORB 使用的 intraday processed 樣本：`ALPHAVANTAGE_MSFT_5M_demo.csv`。`TWSE_2330_1D.csv` 屬日線資料，`phase1_demo_ohlcv.csv` 屬 fixture 性質示範資料，兩者都不應被視為第二份獨立 ORB 驗證樣本。
+- 目前 repo 已有兩份真正可供 ORB 使用的 intraday processed 樣本：`ALPHAVANTAGE_MSFT_5M_demo.csv` 與手動匯入的 `TWSE_2330_5M.csv`。`TWSE_2330_1D.csv` 屬日線資料，`phase1_demo_ohlcv.csv` 屬 fixture 性質示範資料，兩者都不應被視為 ORB intraday 驗證樣本。
 - 因此，現階段還不能把 `prior-day close / gap bias` 視為已具備跨樣本證據支持的下一刀；更合理的順序仍是先補第二份獨立 intraday 樣本，再決定 previous-day family 是否值得真正落地。
 - 若未來真的要讓 previous-day family 進入 ORB，第一個正面 contract 應優先是單一 scalar `prior_day_close_regular_session`，而不是直接展開成 `PDH/PDL/gap/overnight` 一整組 surface。它至少要綁住三件事：來源是前一個已完成 regular session、值必須是 confirmed close、資料集第一個沒有 prior close 的 session 必須明確標成 unavailable。
 - 工程上，這個 previous-day family 的第一個落地動作也不應直接是 gap-bias filter，而應先把 `prior_day_close_regular_session` 的最小 validator contract 寫成可測試 helper：來源固定 `regular_session`、timezone 對齊 `orb_session_timezone`、availability 只允許 `available | unavailable_first_session`、fill policy 固定 `no_forward_fill`，而且 `unavailable_first_session` 時不得再偷放數值。
+- 進一步把這個 helper 與現有 ORB 主線重新比對後，可以確認它目前仍是純 contract guard，不會改變 `EMA inside-range` 主線的 PF、交易數、blocked reasons 或 same-session artifact surface。也就是說，repo 現在多的是「未來 previous-day family 該遵守什麼邊界」，不是「今天已經把 previous-day 語意接進 ORB」。

@@ -3288,3 +3288,59 @@ git diff --check
 
 1. 若後續還要推 previous-day family，先補第二份獨立 intraday 樣本。
 2. 在 phase / entry-edge reporting 分工沒有先定義前，不要讓這個 helper 直接外溢成 ORB artifact surface。
+
+## 2026-05-21 分析輪：確認 prior-day close validator helper 對 ORB 主線是 runtime-neutral
+
+這輪不再開新 filter，也不再對同一份樣本做更多 previous-day 切片；只做一個更重要的確認：**上一輪補進 repo 的 `prior_day_close_regular_session` validator helper，是否影響目前 ORB 主線 runtime 行為。**
+
+### 比較對象
+
+- Baseline：
+  - `reports/generated/msft-orb-dayboundary-full-entry.json`
+  - `reports/generated/msft-orb-dayboundary-full-phase_trace_summary.json`
+- Current：
+  - `reports/generated/msft-orb-priorday-contractcheck-20260521-ema-box-entry.json`
+  - `reports/generated/msft-orb-priorday-contractcheck-20260521-ema-box-phase_trace_summary.json`
+- Strategy：
+  - `orb-volume-vwap --orb-reject-ema-inside-range`
+- Data：
+  - `data/processed/ALPHAVANTAGE_MSFT_5M_demo.csv`
+
+### 分析結果
+
+- PF：`4.452 -> 4.452`
+- Trades：`13 -> 13`
+- Win rate：`38.46% -> 38.46%`
+- Avg net PnL：`16.27 -> 16.27`
+- Max DD：`-0.290% -> -0.290%`
+- blocked：`1754 -> 1754`
+- accepted：`13 -> 13`
+- hold：`873 -> 873`
+- blocked reasons 也完全一致：
+  - `below_or_high(1480)`
+  - `breakout_volume_blocked(148)`
+  - `ema_inside_opening_range(126)`
+
+### Artifact boundary check
+
+- `orb_session_scope` 仍是 `regular-session research contract only`
+- `orb_extended_hours_policy` 仍是既有 same-session boundary 說明
+- current `strategy_spec` 仍然沒有任何：
+  - `orb_previous_day_*`
+  - `orb_gap_*`
+  - `orb_overnight_*`
+
+### 結論
+
+這代表上一輪新增的 `prior_day_close_regular_session` helper 目前仍是 **contract-only change**：
+
+- 它沒有改到 ORB trade selection。
+- 它沒有改到 blocked / accepted / hold attribution。
+- 它也沒有把 previous-day family 偷帶進目前 same-session artifact surface。
+
+這是現階段最合理的結果。repo 現在多了一個正面 validator helper，但 previous-day family 仍未正式進入 ORB runtime contract。
+
+### 下一步
+
+1. 若還要推進 previous-day family，分析配額應優先轉向第二份獨立 intraday 樣本。
+2. 在沒有第二份樣本與 reporting 分工前，不要再為這個 helper 擴 schema 或加 gap-bias filter。
