@@ -509,6 +509,49 @@ class CliTests(unittest.TestCase):
             "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
         )
 
+    def test_entry_edge_command_keeps_orb_vwap_slope_tier_when_disabled(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 在未啟用 ORB 的 VWAP slope confirmation 時，仍會固定輸出 disabled 狀態與 secondary refinement tier，避免 strategy spec 只在 enabled 路徑才帶出 tier 欄位。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-vwap-slope-disabled-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-vwap-slope-disabled-cli.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_vwap_slope_confirmation"], "disabled"
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_vwap_slope_tier"],
+            "secondary_refinement",
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_vwap_slope_rule"],
+            "when enabled, this secondary refinement only accepts breakouts if session VWAP is rising versus the previous bar in the same session",
+        )
+
     def test_entry_edge_command_accepts_orb_ema_trend_confirmation(self) -> None:
         """
         用途與流程：驗證 entry-edge CLI 可啟用 ORB 的 EMA trend confirmation，並把 rolling EMA 視窗與 entry-quality 規則寫入 strategy spec。

@@ -1912,3 +1912,25 @@ git diff --check
 
 1. 下一輪若進入執行輪，先補 `orb_vwap_slope_tier` 的 disabled/default regression test。
 2. 若之後要擴充層級 contract，優先研究 `orb_ema_trend_*` 是否應補成和 `VWAP slope` 對稱的 role/tier 欄位。
+
+## 2026-05-21 執行輪：補上 `orb_vwap_slope_tier` 的 disabled/default regression
+
+這輪不改 ORB 策略語意，也不擴 artifact schema；只做一個聚焦修補：把 `orb_vwap_slope_tier` 的 disabled/default contract 補進 CLI regression。
+
+### 修改內容
+
+- 在 `tests\test_cli.py` 新增 `test_entry_edge_command_keeps_orb_vwap_slope_tier_when_disabled(...)`。
+- 測試直接驗證未啟用 `--orb-vwap-slope-confirmation` 時：
+  - `orb_vwap_slope_confirmation=disabled`
+  - `orb_vwap_slope_tier=secondary_refinement`
+  - `orb_vwap_slope_rule` 仍固定存在
+
+### 這輪解決的風險
+
+- 先前只有 enabled 路徑會驗 `orb_vwap_slope_tier`，若未來有人把 disabled 路徑的 tier 欄位移除、改名，現有測試不一定會立刻擋下來。
+- 補上這個 regression 後，`orb_vwap_slope_tier` 會被鎖成 deterministic presence，而不是 conditional field。
+
+### 下一步
+
+1. 下一輪若進入分析輪，可確認 disabled/default tier contract 補齊後，artifact 可讀性是否已足夠。
+2. 若之後要擴 tier/role contract，優先考慮 `EMA trend`，不要直接把 `OR size` 或 `OR volume baseline` 也塞進同一層。
