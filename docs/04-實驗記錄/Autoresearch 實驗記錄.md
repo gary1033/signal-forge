@@ -3096,3 +3096,38 @@ git diff --check
    - CLI regression
    - `strategy_spec_from_args(...)` direct test
    - 以及本輪新增的內建 validator
+
+## 2026-05-21 分析輪：確認 repo 目前沒有第二份 ORB-capable intraday 樣本
+
+這輪不再對同一份 `MSFT 5m demo` 做更多 wording 驗證或細碎切片，而是直接回答一個更基礎的研究問題：**repo 目前是否已經有第二份可用來驗證 ORB / previous-day family 的獨立 intraday 樣本？**
+
+### 樣本盤點結果
+
+- `data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+  - 目前唯一明確符合 ORB 研究需求的 processed intraday 樣本。
+- `data\processed\TWSE_2330_1D.csv`
+  - 只有日線，不是 intraday；無法拿來驗 opening range、same-session VWAP、fresh breakout、hold bars 或 prior-close intraday bias。
+- `data\sample\phase1_demo_ohlcv.csv`
+  - 屬於 Phase / fixture 性質的小型示範資料，不應拿來當第二份獨立 ORB 研究樣本。
+
+### 分析結論
+
+1. **目前 repo 只有一份真正可拿來驗 ORB 的 intraday processed 樣本：`ALPHAVANTAGE_MSFT_5M_demo.csv`。**
+2. 因此，現階段還不能把 `prior-day close / gap bias` 當成「已有跨樣本證據支持、可以自然落地」的下一刀。
+3. 這也解釋了為什麼先前把第一個沒有 in-sample prior close 的 session 移除後，雖然 PF 從 `4.452` 升到 `6.423`，但仍不足以支持 previous-day family 直接進入 ORB contract：那只是**同一份樣本內的敏感度分析**，不是第二份獨立驗證。
+
+### 工程含意
+
+- 下一步若要推進 previous-day family，應優先補：
+  1. 第二份真正獨立的 intraday 樣本。
+  2. `prior_day_close_regular_session` 的資料來源與 validator contract。
+- 在那之前，repo 現在已有充分 guardrail 支持「**不要提前把 `orb_previous_day_*` / `orb_gap_*` / `orb_overnight_*` 長進 ORB surface**」：
+  - phase markdown 邊界說明
+  - CLI regression
+  - `strategy_spec_from_args(...)` direct unit test
+  - same-session validator
+
+### 下一步
+
+1. 若要繼續 previous-day family，先定義第二份 intraday 樣本的最低資料需求與來源。
+2. 在沒有第二份樣本前，不要直接新增 `prior-day close / gap bias` filter、CLI 參數或 artifact schema。
