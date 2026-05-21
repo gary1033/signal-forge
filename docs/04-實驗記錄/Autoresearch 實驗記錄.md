@@ -1934,3 +1934,53 @@ git diff --check
 
 1. 下一輪若進入分析輪，可確認 disabled/default tier contract 補齊後，artifact 可讀性是否已足夠。
 2. 若之後要擴 tier/role contract，優先考慮 `EMA trend`，不要直接把 `OR size` 或 `OR volume baseline` 也塞進同一層。
+
+## 2026-05-21 分析輪：disabled/default tier regression 補齊後，artifact 可讀性是否真的有變
+
+這輪不再調整 ORB filter，也不改 artifact schema；只回答一個問題：上一輪補上的 `orb_vwap_slope_tier` disabled/default regression，是否讓 **runtime artifact** 本身變得更清楚，還是只是把原本已經存在的 contract 補進測試覆蓋。
+
+### 比較設定
+
+- 資料檔：`C:\Projects\signal-forge\data\processed\ALPHAVANTAGE_MSFT_5M_demo.csv`
+- 比較組合：
+  1. `EMA inside-range`
+  2. `EMA inside-range + VWAP slope`
+- 本輪新產物：
+  - `C:\Projects\signal-forge\reports\generated\msft-orb-vwap-slope-default-tier-analysis-20260521.md`
+  - `C:\Projects\signal-forge\reports\generated\msft-orb-vwap-slope-default-tier-analysis-20260521.json`
+
+### 結果摘要
+
+- `EMA inside-range`：
+  - PF `4.452`
+  - Trades `13`
+  - Win rate `38.46%`
+  - Avg net PnL `16.27`
+  - Max DD `-0.29%`
+  - blocked `1754`
+  - hold `873`
+  - `orb_vwap_slope_confirmation=disabled`
+  - `orb_vwap_slope_tier=secondary_refinement`
+- `EMA inside-range + VWAP slope`：
+  - PF `4.546`
+  - Trades `13`
+  - Win rate `38.46%`
+  - Avg net PnL `16.37`
+  - Max DD `-0.29%`
+  - blocked `1762`
+  - hold `865`
+  - `orb_vwap_slope_confirmation=enabled`
+  - `orb_vwap_slope_tier=secondary_refinement`
+
+### 關鍵判讀
+
+- 對照先前 `msft-orb-tiercheck-20260521-*.json` 基線，兩條路徑的 PF、trade count、win rate、average net PnL、max drawdown 與 `orb_vwap_slope_tier` 都完全一致。
+- 代表上一輪 `6bb52e1` 的改動**沒有改變 runtime artifact**；它只是把 disabled/default 路徑也正式納入 regression coverage。
+- 因此目前較準確的結論是：
+  - `orb_vwap_slope_tier` 的 **artifact 可讀性早就已經足夠**；
+  - 上一輪新增的價值是 **contract 信心**，不是新的 artifact 語意。
+
+### 下一步
+
+1. 若之後還要擴 tier/role contract，應優先看 `EMA trend` 這種真正同層的 refinement，而不是先碰 `OR size` 或 `OR volume baseline`。
+2. 下一輪若進入 review，可檢查是否需要把這種「disabled 也固定存在的 tier 欄位」推成通用規則。
