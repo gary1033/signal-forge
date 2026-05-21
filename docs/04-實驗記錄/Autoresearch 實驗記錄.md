@@ -1318,3 +1318,42 @@ git diff --check
 
 - keep
 - 這次改動讓 ORB 現在不只看「價格是否突破 OR high 並站上 EMA」，也能研究「EMA 本身相對 OR 盒子的位置是否仍然太模糊」。下一步應先比較它和 `EMA trend confirmation`、`VWAP slope`、`fresh breakout` 疊加後，到底是補到新的結構資訊，還是只是重複擋掉同一批弱突破。
+
+## 2026-05-21 研究輪：EMA inside-range 之後，先做 filter attribution，不直接做 stop / target / session close exit
+
+這輪依照 Codex 每 15 分鐘自動化 prompt 手動執行一次研究輪。結論是：**在 ORB 已經累積多個可選 entry-quality filter 之後，下一個最合理的低風險方向，不是立刻加入 stop loss、take profit、trailing stop 或 session close exit，而是先補 filter attribution / rejection summary，讓 artifact 能說清楚每個 filter 實際擋掉多少訊號。**
+
+### 來源
+
+- TradingView open-source：NeuraEdge ORB - Opening Range Breakout Indicator
+  https://www.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+- TradingView strategy：Opening Range Breakout (ORB)
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView indicator：ORB + Volume + VWAP Breakout
+  https://www.tradingview.com/script/7khuDtm8-ORB-Volume-VWAP-Breakout/
+- TradingView open-source：ORB Breakout Strategy with VWAP and Volume Filters
+  https://www.tradingview.com/script/wLSGHPUe-ORB-Breakout-Strategy-with-VWAP-and-Volume-Filters/
+- TradingView Pine Script 官方文件：Strategies FAQ
+  https://www.tradingview.com/pine-script-docs/faq/strategies/
+- TradingView Pine Script 官方文件：Repainting
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+
+### 研究結論
+
+- 多個 ORB 腳本都會把 stop loss、take profit、reward-to-risk、session close flat 當成完整 strategy 功能；例如有些版本會依 OR range 或 ATR 類概念畫出自動 SL/TP，也有版本會用 OR opposite side 當 stop。這些方向合理，但它們已經不是 entry-quality refinement，而是持有 / 出場 policy。
+- TradingView 官方 strategies 文件也把 stop loss / take profit 放在 `strategy.exit(...)` 的範圍，這代表一旦 SignalForge 開始納入 stop / target，就需要新的 execution model、fill assumption、reporting 欄位與 regression contract，而不能只在 `OrbVolumeVwapStrategy.decide_bar(...)` 多回傳一個 reason。
+- 目前 SignalForge ORB 已經有很多 entry-side filter：VWAP 位置、VWAP slope、EMA trend、EMA inside-range、range size、breakout distance、full-bar、body strength、fresh breakout、OR volume baseline、signal window。若再直接堆下一個 filter，很容易不知道新條件是真的補到新資訊，還是只是重複擋掉同一批弱突破。
+- 因此下一個較適合 automation 的小改動，是在不改交易語意的前提下，讓 backtest artifact 顯示 ORB filter attribution：例如各 reason count、各 filter-blocked count、accepted breakout count、hold count，或更聚焦地把 ORB blocked reasons 分群成 `session / range / structure / volume / trend / retest`。
+
+### 對 SignalForge 的含義
+
+- `filter attribution` 屬於 artifact 可驗證性，不是新策略語意，符合目前 autoresearch 主線「回測可驗證性」。
+- 它能回答下一輪真正需要的問題：`EMA inside-range`、`EMA trend`、`VWAP slope`、`fresh breakout` 到底是在補不同資訊，還是同質重複。
+- 它也能為之後是否加入 stop / target / session close exit 建立更乾淨的證據基礎。若連 entry filters 的實際阻擋分布都還不清楚，太早做出場 policy 會把問題變得更難歸因。
+
+### 建議排序
+
+1. 先補 ORB filter attribution / rejection summary，優先寫入 deterministic artifact，並用 regression test 鎖住 exact keys。
+2. 再用現有 MSFT 5m demo CSV 比較幾組 ORB filter 組合，確認各 filter 是否擋掉不同類型的弱突破。
+3. `stop loss / take profit / session close exit` 暫時留在 Phase 2 候選，等 entry-side attribution 清楚後，再一起設計 execution 與 reporting contract。
+4. `wick/high-low trigger mode` 仍放後面，避免把 close-confirmed 研究邊界推向 intrabar 語意。

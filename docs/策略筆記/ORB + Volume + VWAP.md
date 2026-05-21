@@ -162,5 +162,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - 若還要再補一個低風險、而且更貼近 ORB 幾何結構的 refinement，`EMA relative to opening range` 會比單純再堆一條 generic SMA 更合理。它的語意不是「再多一條均線」，而是直接問：**EMA 本身相對 OR 盒子在哪裡**，例如只在 `OR high` 位於 EMA 上方時接受 long，或當 EMA 落在 OR 盒子內部時直接不給訊號。
 - 這種 `EMA relative to OR` gate 仍然屬單時間框架、close-confirmed 的 entry-quality filter；它不像 gap fill bias 那樣需要把 prior-day close / session 邊界語意拉進來，也不像 `session close exit` 那樣直接進入持有 policy。
 - `EMA inside-range` 現在已可作為可選條件；下一步更合理的是比較它和 `EMA trend confirmation`、`VWAP slope`、`fresh breakout` 疊加後，是否真的補到新的結構資訊，而不是只重複擋掉同一批弱突破。
+- 在繼續增加 stop loss、take profit、trailing stop 或 session close exit 前，應先補 ORB filter attribution / rejection summary，讓 artifact 能直接看出各個 filter 擋掉多少候選突破，以及它們是否只是重複擋掉同一批弱訊號。
+- stop / target / session close exit 都是合理候選，但它們屬於 Phase 2 持有與出場 policy；若要實作，應同步設計 execution assumption、fill rule、reason / reporting contract 與 regression tests，而不是把它當成單純 entry filter。
 - 若 `session close exit` 之後真的要做，也應該建立新的 reason / reporting contract，明確區分「時間邊界 metadata」與「出場規則」。
 - `wick/high-low trigger mode` 仍放後面，避免把策略從 close-confirmed 推向 intrabar 語意。
