@@ -407,3 +407,11 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 2. `full bar above range` 作為高優先級 breakout qualification / benchmark
 3. `OR average volume baseline` 作為次層 trade-compression benchmark
 4. `OR retest` 作為 compare-only entry style
+
+目前 entry-edge 報表也應跟著用同一個順序提示：
+
+- `full bar above range`：primary structural benchmark
+- `OR average volume baseline`：secondary trade-compression benchmark
+- `OR retest`：compare-only entry style
+
+這樣後續在台股樣本上看 refinement，比較不會再把 volume baseline 誤讀成第一順位 benchmark。

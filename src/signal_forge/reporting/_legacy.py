@@ -2019,7 +2019,7 @@ def _build_twse_refinement_benchmark_lines(
     strategy_spec: dict[str, str] | None,
 ) -> list[str]:
     """
-    用途與流程：根據既有 strategy spec 中的台股已知樣本 baseline metadata 與 refinement 開關，為 entry-edge 類報表補上台股 benchmark 提示，讓後續比較能直接看出目前應以 aligned baseline 還是 OR 平均量基準作為對照，而不必回頭翻研究筆記。
+    用途與流程：根據既有 strategy spec 中的台股已知樣本 baseline metadata 與 refinement 開關，為 entry-edge 類報表補上台股 benchmark 提示，讓後續比較能直接看出目前應以 aligned baseline、full bar above range、OR 平均量基準或 compare-only retest 哪一層作為對照，而不必回頭翻研究筆記。
     參數：strategy_spec（dict[str, str] | None）為策略 artifact 的 distilled metadata；可為 None。函式只依賴既有的 known-sample market-clock 與 ORB refinement key，不新增任何新的策略語意欄位。
     回傳與錯誤：回傳 list[str]，可直接插入 markdown lines；若不是 TWSE_2330_5M aligned baseline，回傳空 list，不主動拋出例外。
     """
@@ -2036,22 +2036,41 @@ def _build_twse_refinement_benchmark_lines(
         "",
         "- Read Taiwan-specific refinements against the aligned TWSE_2330_5M baseline before promoting a market-specific tweak.",
     ]
+    if strategy_spec.get("orb_full_bar_above_range") == "enabled":
+        lines.append(
+            "- Current run uses the primary structural benchmark: full bar above range."
+        )
+        lines.append(
+            "- OR average volume baseline is now the secondary trade-compression benchmark for Taiwan refinements."
+        )
+    else:
+        lines.append(
+            "- Primary benchmark refinement: full bar above range is the current structural reference for Taiwan ORB comparisons."
+        )
+        if strategy_spec.get("orb_use_opening_range_volume_baseline") == "enabled":
+            lines.append(
+                "- Current run uses the secondary OR average volume baseline benchmark; treat it as the trade-compression reference against the stronger full-bar benchmark."
+            )
+        elif strategy_spec.get("orb_retest_confirmation") == "enabled":
+            lines.append(
+                "- Current run uses the compare-only OR retest / re-break style; read it against the aligned baseline, the full-bar benchmark, and the OR average volume baseline."
+            )
+        else:
+            lines.append(
+                "- OR average volume baseline remains the secondary trade-compression benchmark, while OR retest stays compare-only."
+            )
+
     if (
-        strategy_spec.get("orb_use_opening_range_volume_baseline") == "enabled"
+        strategy_spec.get("orb_full_bar_above_range") != "enabled"
+        and strategy_spec.get("orb_retest_confirmation") == "enabled"
     ):
         lines.append(
-            "- Current run uses the OR average volume baseline benchmark; treat it as the trade-compression reference for later Taiwan refinements."
+            "- OR retest / re-break confirmation remains a compare-only entry style candidate, not a higher-priority baseline upgrade."
         )
-    else:
-        lines.append(
-            "- Current benchmark refinement: OR average volume baseline improves hold-1 quality, but weakens multi-hold robustness."
-        )
-
-    if strategy_spec.get("orb_retest_confirmation") == "enabled":
-        lines.append(
-            "- Current run uses the compare-only OR retest / re-break style; read it against both the aligned baseline and the OR average volume baseline benchmark."
-        )
-    else:
+    elif (
+        strategy_spec.get("orb_full_bar_above_range") != "enabled"
+        and strategy_spec.get("orb_use_opening_range_volume_baseline") == "enabled"
+    ):
         lines.append(
             "- OR retest / re-break confirmation remains a compare-only entry style candidate, not a higher-priority baseline upgrade."
         )

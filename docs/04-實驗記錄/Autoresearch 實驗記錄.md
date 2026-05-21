@@ -4434,6 +4434,37 @@ git diff --check
    - `full bar above range`
    - `OR average volume baseline`
 
+## 2026-05-21 執行：把台股 refinement benchmark hint 升級為 full bar above range 優先
+
+### 本輪修改
+
+- `TWSE Refinement Benchmark` 區塊現在改以 `full bar above range` 為台股 ORB 的 **primary structural benchmark**。
+- `OR average volume baseline` 從原本的主 benchmark，降成 **secondary trade-compression benchmark**。
+- `OR retest` 則維持 **compare-only entry style**，不再和 benchmark 同層解讀。
+- 這輪同時補了一個新的 exact-text regression，直接鎖住 `full bar above range` 路徑的 benchmark hint。
+
+### 為什麼要改
+
+- 前一輪 review 已經收斂出：`full bar above range` 不只讓 hold 1 直接翻成 `PASS`，也比 `OR average volume baseline` 更像結構改善，而不是單純壓縮交易數。
+- 若報表仍沿用舊的 benchmark hint，後續台股 refinement 會繼續把 `OR average volume baseline` 誤讀成第一優先 benchmark，和最新比較結果不一致。
+
+### 結論
+
+- 這輪是 **comparison / reporting contract 對齊最新研究結論**，不改策略 trade logic。
+- 台股 ORB 的報表解讀順序現在應固定為：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `OR average volume baseline`
+  4. `OR retest`
+
+### 下一步
+
+1. 若進入分析輪，新的台股 refinement 應直接同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `OR average volume baseline`
+2. 若進入 review 輪，應檢查這個 benchmark hint 是否已經足夠穩定，不必再擴 machine-readable schema。
+
 ## 2026-05-21 研究：公開 ORB 腳本如何定位 full bar / close-confirmation breakout
 
 ### 研究問題
