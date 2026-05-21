@@ -4203,3 +4203,38 @@ git diff --check
 - 因此下一步不應把它升成主線改善，而應把後續台股 refinement 的比較基準固定在：
   - `aligned baseline`
   - `OR average volume baseline`
+
+## 2026-05-21 Code Review：台股 OR retest 與 OR average volume baseline 的優先級收斂
+
+### Review 範圍
+
+- `TWSE_2330_5M aligned baseline`
+- `ORB + EMA inside-range`
+- `ORB + EMA inside-range + OR average volume baseline`
+- `ORB + EMA inside-range + OR retest / re-break confirmation`
+
+### Findings
+
+1. **`OR retest` 已證明不是零增量條件，但目前只應停在 compare-only。**
+   - 它新增了 `retest_not_touched`、`waiting_for_retest_confirmation` 這類結構性 blocked reason，代表確實有新資訊。
+   - 但整體結果仍弱於 `OR average volume baseline`，也沒有把台股主線翻成 `PASS`。
+
+2. **台股目前已出現更清楚的 refinement priority。**
+   - `VWAP slope`：zero-increment，已經不值得繼續消耗輪次。
+   - `OR retest`：non-zero-increment，但目前過度壓縮，只適合 compare-only。
+   - `OR average volume baseline`：雖然仍未 pass，但至少在 hold 1 上有明確品質改善，因此比 retest 更值得保留為下一層 benchmark。
+
+3. **後續台股 refinement 的 benchmark 已經應該固定。**
+   - 新 refinement 不應再只對照 `aligned baseline`。
+   - 還應同時對照 `OR average volume baseline`，因為它是目前已知最有資訊、但 tradeoff 也最清楚的台股 market-specific 候選。
+
+### 結論
+
+- `OR retest / re-break confirmation` 目前較合理的定位是：**台股過度壓縮型的 compare-only structure refinement 候選**。
+- `OR average volume baseline` 則應暫時保留為台股 refinement benchmark，而不是直接當成主線改善。
+- 因此下一步若要做小修補，較合理的是在 comparison / reporting 補 benchmark hint，而不是再回頭對 retest 本身做新的 artifact surface 擴張。
+
+### 下一步
+
+1. 若進入執行輪，可考慮在台股 comparison 報表補一個更明確的 benchmark hint，說明新 refinement 應同時對照 `aligned baseline` 與 `OR average volume baseline`。
+2. 若進入研究輪，應轉向新的台股 market-specific refinement，而不是再把 `OR retest` 升格成主線候選。
