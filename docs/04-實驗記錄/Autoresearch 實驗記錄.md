@@ -2344,3 +2344,82 @@ git diff --check
    - wording cleanup 後的 runtime 不變驗證
 2. 在沒有新策略語意變更前，不需要再為 `VWAP slope rule` 單獨重跑更多同型分析。
 3. 若後續還要擴 `tier/role` contract，優先看 `EMA trend` 是否值得補對稱表達；若沒有，就把分析輪配額留給新的策略或新的 filter family。
+
+## 2026-05-21 Code Review：`VWAP slope wording` 收斂後，ORB surface 剩下的主要債是對稱性與 exact-text 維護成本
+
+這輪是 review-only，不改 ORB 策略語意。目標是確認上一輪 wording cleanup 完成後，還有哪些殘餘技術債值得排進後續單點修復。
+
+### Finding 1：`VWAP slope` 已有 tier，但 `EMA trend` 仍是同層卻沒有對稱表達
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\cli\strategy_options.py`
+  - `tests\test_cli.py`
+- 現況：
+  - `orb_vwap_slope_confirmation`
+  - `orb_vwap_slope_tier=secondary_refinement`
+  - `orb_vwap_slope_rule`
+  已形成完整的 state/tier/rule contract。
+  但 `orb_ema_trend_confirmation` 仍只有 state + rule，沒有任何層級語意。
+- 風險：
+  - 研究上已確認 `EMA trend` 與 `VWAP slope` 屬同層 direction/trend refinement。
+  - 現在 artifact 只替 `VWAP slope` 補 tier，會讓 surface 傳遞出「兩者層級不同」的假象。
+- 建議修法：
+  - 若之後決定保留 tier/role contract，下一個最合理的對象應是 `EMA trend`。
+  - 若不打算擴，則應明確承認 `VWAP slope` 目前只是單點特例，不再繼續平面欄位擴張。
+
+### Finding 2：phase markdown 仍看不到 `tier/role`，entry-edge 與 phase 的可讀 surface 不對稱
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\reporting\_legacy.py`
+- 現況：
+  - entry-edge markdown 會完整列出 `strategy_spec`，因此可以看到 `orb_vwap_slope_tier=secondary_refinement`。
+  - phase markdown 主體則沒有對應的人類可讀層級摘要。
+- 風險：
+  - 若後續使用者主要從 phase report 回看 ORB 結果，會不知道哪些 filter 是核心條件、哪些只是次要 refinement。
+  - 這不是 runtime bug，而是 reporting surface 不對稱。
+- 建議修法：
+  - 若未來繼續保留 `tier/role` contract，應決定 phase markdown 是否也要顯示最小必要的層級摘要。
+
+### Finding 3：`strategy_options.py` 的 ORB `strategy_spec` 仍然是平面 key 持續堆疊
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\cli\strategy_options.py`
+- 現況：
+  - ORB 相關欄位已包含 session、timezone、range gate、body strength、fresh breakout、OR volume baseline、EMA/VWAP refinement、tier 等大量平面 key。
+- 風險：
+  - 每次補一個欄位都需要同步更新 CLI regression、文字 contract、策略筆記與分析報表。
+  - schema 雖然還可控，但維護成本已經明顯高於早期 ORB 最小版本。
+- 建議修法：
+  - 短期內不要再為每個小 filter 任意補新平面欄位。
+  - 若未來要繼續擴，應先決定 role/family 是否值得抽象成較穩定的 grouping contract。
+
+### Finding 4：`tests\test_cli.py` 的 exact-text coverage 有價值，但 wording 類修補的維護成本偏高
+
+- 嚴重度：低
+- 受影響檔案：
+  - `tests\test_cli.py`
+- 現況：
+  - 這次只是把 `orb_vwap_slope_rule` 從 `when enabled, ...` 改成靜態描述，就需要同步改多個 exact-text assertion。
+- 風險：
+  - wording 類修補雖然能被完整鎖住，但每次小調整都會帶來較高的 golden text 維護成本。
+  - 若未來 `EMA trend`、`role/family` 也跟進，這個成本會繼續往上疊。
+- 建議修法：
+  - 保留 exact-text test 作為 artifact contract 防線，但對純 metadata wording 的擴張要更保守。
+  - 優先把分析輪配額用在真正有新資訊增量的 filter family，而不是繼續放大 wording surface。
+
+### Review 結論
+
+- 目前沒有發現新的 runtime regression 或 deterministic artifact 漂移。
+- 這批 ORB surface 的主要剩餘債已從「正確性」轉成「對稱性與維護成本」：
+  1. `EMA trend` 是否要補對稱 contract；
+  2. phase / entry-edge 的 tier 可讀性是否要對齊；
+  3. 平面 `strategy_spec` 是否還要繼續擴張；
+  4. exact-text wording 測試的維護成本是否值得。
+
+### 下一步
+
+1. 若下一輪進入研究輪，優先決定 `EMA trend` 是否真的值得補對稱 contract。
+2. 若下一輪進入執行輪，不建議先動 schema；較合理的是做更小的 reporting readability 修補，或直接把執行輪配額讓給新的 filter family 分析題。
