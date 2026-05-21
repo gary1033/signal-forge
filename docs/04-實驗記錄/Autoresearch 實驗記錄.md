@@ -4306,3 +4306,82 @@ git diff --check
   - `TWSE_2330_5M aligned baseline`
   - `OR average volume baseline`
 - 不應再把 `OR retest` 或 `VWAP slope` 當成同優先級主線候選。
+
+## 2026-05-21 分析：台股 aligned baseline 上的 OR full bar above range
+
+這輪直接把另一個同 session、confirmed-bar-only 的結構 refinement 放到 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 上，比較三組：
+
+1. `ORB + EMA inside-range`
+2. `ORB + EMA inside-range + OR average volume baseline`
+3. `ORB + EMA inside-range + full bar above range`
+
+### 報表
+
+- `reports/generated/twse-orb-aligned-emabox_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-orvol_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-fullbar_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-emabox-phase_trace_summary.json`
+- `reports/generated/twse-orb-aligned-emabox-orvol-phase_trace_summary.json`
+- `reports/generated/twse-orb-aligned-emabox-fullbar-phase_trace_summary.json`
+- `reports/generated/twse-orb-aligned-emabox-fullbar-comparison-20260521.md`
+- `reports/generated/twse-orb-aligned-emabox-fullbar-comparison-20260521.json`
+
+### 結果摘要
+
+#### OR full bar above range
+
+- hold 1：PF `1.672` / Trades `15` / Avg net PnL `5.14` / Max DD `-0.74%`
+- hold 3：PF `0.511`
+- hold 5：PF `0.788`
+- hold 10：PF `0.778`
+
+### Phase trace summary 對照
+
+#### OR full bar above range
+
+- accepted：`15`
+- blocked：`2510`
+- hold：`262`
+- blocked reasons：
+  - `below_or_high(2228)`
+  - `breakout_bar_reentered_range(131)`
+  - `breakout_volume_blocked(91)`
+  - `ema_inside_opening_range(44)`
+  - `volume_warmup(13)`
+  - `breakout_below_vwap(3)`
+
+### 關鍵判讀
+
+1. **`full bar above range` 不是零增量 refinement。**
+   - 它引入了 `breakout_bar_reentered_range(131)` 這個新的結構性 blocked reason。
+   - accepted trades 也從 baseline 的 `21` 壓到 `15`。
+
+2. **它是目前第一個把台股 hold 1 直接翻成 `PASS` 的 refinement。**
+   - hold 1 PF：`0.513 -> 1.672`
+   - hold 1 Avg net PnL：`-7.47 -> 5.14`
+   - hold 1 Max DD：`-2.88% -> -0.74%`
+
+3. **它比 `OR average volume baseline` 更像結構改善，而不是單純 trade compression。**
+   - `breakout_volume_blocked` 只小幅從 `80 -> 91`
+   - `ema_inside_opening_range` 反而從 `86 -> 44`
+   - 代表它主要是在過濾「突破 K 棒又回踩回區間內」的弱 follow-through，而不是只靠量能把交易數壓掉
+
+4. **它對較長 hold 也比目前 benchmark 更有韌性。**
+   - hold 5 PF：`0.685 -> 0.788`
+   - hold 10 PF：`0.309 -> 0.778`
+   - 雖然還沒翻成 pass，但明顯優於 `OR average volume baseline`
+
+### 結論
+
+- 在 `TWSE_2330_5M aligned` baseline 上，`full bar above range` 是目前測到最強的台股 ORB refinement 候選。
+- 它不只改善 hold 1，還讓 hold 5 / 10 的品質明顯優於 baseline 與 `OR average volume baseline`。
+- 這輪先把它定性成：**目前最強、但尚未完成跨 hold 穩定化的台股結構 refinement 候選**。
+- 是否要讓它正式取代 `OR average volume baseline` 成為後續台股 benchmark，留到下一輪 review 再收斂。
+
+### 下一步
+
+1. 若進入 review 輪，優先決定 `full bar above range` 是否應升成新的台股 refinement benchmark。
+2. 若進入後續分析輪，新的台股 refinement 應同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `OR average volume baseline`

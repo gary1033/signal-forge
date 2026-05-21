@@ -358,3 +358,24 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - `aligned baseline`：主比較基準
 - `OR average volume baseline`：有資訊、但帶明顯 tradeoff 的 benchmark
 - `OR retest`：偏保守、偏壓縮交易數的 style 候選
+
+## Full bar above range 在台股樣本上的角色
+
+在 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 上，`full bar above range` 目前是更強的結構 refinement 候選。
+
+它的重點不只是把交易數壓少，而是要求突破 K 棒的 **low 也必須站在 OR high 上方**，避免那種收盤雖然突破，但整根 K 棒仍明顯回插到 opening range 盒子內的情況。
+
+目前觀察到的結果是：
+
+- hold 1 已經直接翻成 `PASS`
+- hold 5 / 10 雖然還沒 pass，但比純 aligned baseline 與 `OR average volume baseline` 都穩
+- 新增的主要 blocked reason 是 `breakout_bar_reentered_range`，代表它更像在處理 follow-through 結構，而不是單純量能壓縮
+
+因此在台股這條線上，現在較合理的優先級應該改成：
+
+1. `aligned baseline`
+2. `full bar above range` 作為目前最強的結構 refinement 候選
+3. `OR average volume baseline` 作為次一層的 trade-compression benchmark
+4. `OR retest` 作為 compare-only entry style 候選
+
+這個排序仍然不表示 `full bar above range` 已經足夠升成所有台股 ORB 的正式主線；它只是目前在既有同 session refinement 裡，給出最好 hold 1 結果、且對較長 hold 也沒有明顯崩掉的候選。
