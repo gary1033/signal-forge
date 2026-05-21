@@ -1690,3 +1690,45 @@ git diff --check
 1. 下一輪若進入研究輪，可先研究 `VWAP slope` 是否值得退出主線 CLI surface，只保留 compare-only 分支。
 2. 下一輪若進入執行輪，最合理的單點改動是移除 `flatten_count` 死參數，或把 ORB attribution markdown builder 從 `_legacy.py` 抽離。
 3. 下一輪若進入分析輪，可比較 `VWAP slope` 保留在主線 surface 與降級為 compare-only 分支後，artifact 可讀性是否明顯改善。
+
+## 2026-05-21 研究輪：`VWAP slope` 是否值得留在主線 CLI surface
+
+這輪只研究一個排序問題：`VWAP slope` 應該繼續留在 ORB 主線 CLI / strategy surface，還是降級成 compare-only 的次要 refinement。
+
+### 來源
+
+- TradingView `ORB + Volume + VWAP Breakout`
+  https://www.tradingview.com/script/7khuDtm8-ORB-Volume-VWAP-Breakout/
+- TradingView `Opening Range Breakout + VWAP + Volume [ORB Strategy]`
+  https://www.tradingview.com/script/hapKLoXr-Opening-Range-Breakout-VWAP-Volume-ORB-Strategy/
+- TradingView `Opening Range Breakout (ORB)`
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView `ORB with 100 EMA`
+  https://www.tradingview.com/script/JHm0ftM9-ORB-with-100-EMA/
+
+### 外部研究重點
+
+- `ORB + Volume + VWAP Breakout` 與 `Opening Range Breakout + VWAP + Volume` 這類腳本，核心都是 **OR break + volume + price relative to VWAP**；`VWAP slope` 即使出現，也更像額外的 direction filter，而不是第一層結構條件。
+- `Opening Range Breakout (ORB)` 會把 `VWAP slope` 與 `price > VWAP` 並列成 optional trend filter，語意上仍屬「趨勢微調」，不是 OR 幾何本體。
+- `ORB with 100 EMA` 這類腳本則更直接把 `EMA` 與 OR 盒子的相對位置寫成主條件，代表公開 ORB 社群更常把 **結構 gate** 放在主線，把 slope / momentum filter 放在後面。
+
+### 與本地結果對照
+
+- 本地 `MSFT 5m demo` 比較顯示：
+  - `EMA inside-range` 能把 ORB 從 `FAIL` 拉到 `PASS`
+  - `VWAP slope` 在 `EMA inside-range` 主線上只有**微弱但非零**的增量
+- 這和外部腳本排序一致：`VWAP slope` 不是沒價值，但它更像第二層 refinement，而不是該長期佔用主線 surface 的核心條件。
+
+### 研究結論
+
+- 目前較合理的定位是：
+  1. `VWAP slope` 保留功能與比較能力；
+  2. 但在研究排序上，應降級成 **compare-first / optional refinement**；
+  3. 主線 CLI / artifact surface 應優先保留給 `EMA inside-range`、session 邊界、volume baseline 這類更接近 ORB 核心語意的條件。
+- 換句話說，`VWAP slope` 現在不是優先刪除目標，但也不應再擴它的 surface 或把它包裝成主線核心條件。
+
+### 下一步
+
+1. 下一輪若進入執行輪，較合理的是把 `VWAP slope` 在 reporting / CLI 中重新標示成 secondary refinement，而不是新增更多相依欄位。
+2. 若之後再做分析輪，可直接比較「保留主線 surface」與「降級為 compare-only 記錄」兩種 artifact 可讀性差異。
+3. 若第二份 intraday 樣本仍只看到微弱增量，`VWAP slope` 就更適合正式降成 compare-only 分支。
