@@ -2654,3 +2654,51 @@ git diff --check
 
 1. 若下一輪進入研究輪，優先挑新的 ORB filter family 或第二份 intraday 樣本，不要再圍繞 `EMA trend` 做 contract 討論。
 2. 若下一輪進入執行輪，也不建議先動 `EMA trend` surface；較合理的是讓執行輪配額回到 reporting / validator 或其他更有新增資訊的 artifact 題目。
+
+## 2026-05-21 研究輪：`前日高低點 / gap context` 是合理的新 family，但現階段不應直接進入 ORB 執行輪
+
+這輪不改程式，只回答一個研究排序問題：在 `EMA trend` 已降級為 compare-only filter 之後，下一個值得研究的 ORB family 是什麼。結論是：**`前日高低點 / gap context` 是合理的新 family，但它比目前 ORB 主線更依賴 previous-day / higher-timeframe 資料邊界，因此現階段應先列為研究主題，不直接進入執行輪。**
+
+### 來源
+
+- TradingView `GeeksDoByte 15m & 30m ORB + Prev Day High/Low`
+  https://www.tradingview.com/script/U8dn81NE-GeeksDoByte-15m-30m-ORB-Prev-Day-High-Low/
+- TradingView `Opening Range & Prior Day High/Low [Gorb]`
+  https://www.tradingview.com/script/xNKGE5KR-Opening-Range-Prior-Day-High-Low-Gorb/
+- TradingView `ORB Gap Strategy`
+  https://www.tradingview.com/script/qbOn74Yb-ORB-Gap-Strategy/
+- TradingView Pine Script docs：`Repainting`
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+- TradingView Pine Script docs：`Other timeframes and data`
+  https://www.tradingview.com/pine-script-docs/concepts/other-timeframes-and-data/
+
+### 外部研究重點
+
+- 多個公開 ORB 腳本會把 `previous day high / low` 視為和 OR high / low 並列的重要日內結構位階，用來觀察 breakout 是否剛好撞上前日阻力，或是否完成更高級別的突破。
+- `ORB Gap Strategy` 也把 gap context 拉進 ORB，做法不是單看當日 opening range，而是把 overnight / 開盤缺口一起當成突破強度的背景條件。
+- 但這一類腳本幾乎都依賴 **前一日資料** 或 **higher-timeframe request**。TradingView 官方文件明確提醒：`request.security()` 與 higher-timeframe 資料如果處理不當，會有 historical / realtime 不一致與 repainting 風險。
+
+### 對 SignalForge 的含義
+
+- 這個 family 有研究價值，因為它不是單純再堆一個 intraday 小 filter，而是把 ORB 放回更完整的日內結構脈絡。
+- 但它和目前 SignalForge ORB 主線的差別在於：
+  1. 需要明確定義 `previous day` 是 regular session 還是 full session；
+  2. 需要決定前日高低點、前收、gap 是不是都屬同一個 family；
+  3. 需要把 higher-timeframe / previous-day 資料邊界寫進 artifact 與 validator，而不是只在策略內部多加幾個欄位。
+- 換句話說，這不是一個適合夜間 automation 直接做成小型執行輪的題目；它比較像下一個獨立研究 family。
+
+### 研究結論
+
+- `前日高低點 / gap context` 值得納入下一階段 ORB 研究候選。
+- 但現在更合理的做法是：
+  1. 先把它記成 **new filter family / structural context topic**；
+  2. 等有第二份 intraday 樣本或更完整的 previous-day 資料假設時，再決定是否值得落地成可選策略條件；
+  3. 在那之前，不要把它和 `VWAP slope`、`EMA trend`、`body strength` 這類同日內部 refinement 混成同一類欄位。
+
+### 下一步
+
+1. 下一個 ORB 研究題若要有新增資訊，優先考慮 `previous day high/low`、`gap direction/fill`、`overnight range` 這類新 family，而不是回頭擴 `EMA trend` contract。
+2. 若未來真的要實作，應先補：
+   - previous-day 邊界定義；
+   - artifact / validator 對 higher-timeframe context 的說明；
+   - 至少第二份 intraday 樣本。
