@@ -4501,6 +4501,66 @@ phase hold 1 的主要 blocked reasons：
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
 
+## 2026-05-21 Code Review：台股 stacked refinement benchmark 與 reporting hint 對齊檢查
+
+### Review 範圍
+
+- `TWSE_2330_5M aligned baseline`
+- `ORB + EMA inside-range`
+- `ORB + EMA inside-range + full bar above range`
+- `ORB + EMA inside-range + full bar above range + OR average volume baseline`
+- `TWSE Refinement Benchmark` reporting hint
+- `reports/generated/twse-orb-aligned-emabox-fullbar-orvol-comparison-20260521.*`
+
+### Findings
+
+1. **目前台股 benchmark hint 已落後於最新比較結果。**
+   - 目前 hint 仍把 `full bar above range` 放在 primary structural benchmark，`OR average volume baseline` 放在 secondary trade-compression benchmark。
+   - 但最新比較已經顯示：`full bar + OR average volume baseline` 才是目前最強的台股已測組合，且 hold `1 / 3 / 5` 全部 `PASS`。
+   - 受影響檔案：
+     - `src/signal_forge/reporting/_legacy.py`
+     - `tests/test_reporting.py`
+     - `docs/策略筆記/ORB + Volume + VWAP.md`
+   - 建議修法：把台股 benchmark 解讀從二層改成三層：
+     1. `aligned baseline`
+     2. `full bar above range`
+     3. `full bar above range + OR average volume baseline`
+
+2. **目前 reporting surface 還沒有 machine-readable 的 stacked refinement 位階。**
+   - 報表可以靠 prose hint 解讀出「stacked version 最強」，但 `strategy_spec` 內沒有對應的 benchmark tier / mode 語意。
+   - 這不是 bug，但它表示目前 benchmark 順序仍主要靠文案維持，一旦 comparison hint 沒更新，就容易和 canonical 結論脫節。
+   - 受影響檔案：
+     - `src/signal_forge/reporting/_legacy.py`
+     - `reports/generated/*twse*`
+   - 建議修法：下一輪若做執行，只先補 reporting / comparison hint；不要在沒有產品判斷前擴新 schema。
+
+3. **`OR average volume baseline` 的角色需要再細分。**
+   - 單獨使用時，它是次層 trade-compression benchmark。
+   - 和 `full bar above range` 疊加時，它又變成有明顯增量的互補 refinement。
+   - 這表示它不能再用單一標籤概括；至少在台股目前研究脈絡裡，要明確區分：
+     - standalone benchmark
+     - stacked complementary refinement
+   - 建議修法：review 後續的 comparison hint 時，明確把 standalone 與 stacked 版本拆開描述。
+
+### 結論
+
+- 這輪 review 的主要結論是：**台股 ORB 的 reporting / comparison hint 已經需要從「單一主 benchmark」升級成「stacked benchmark 優先」的解讀順序。**
+- 但這仍屬於 reporting contract 調整，不該在 review 輪順手改策略語意。
+- 目前較合理的台股排序是：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
+  4. `OR average volume baseline`
+  5. `OR retest`
+
+### 下一步
+
+1. 若進入執行輪，優先更新 `TWSE Refinement Benchmark` hint，讓 stacked refinement 成為新的主 benchmark 提示。
+2. 若進入研究或分析輪，新的台股 refinement 應至少同時對照：
+   - `aligned baseline`
+   - `full bar above range`
+   - `full bar above range + OR average volume baseline`
+
 ## 2026-05-21 Code Review：台股 full bar above range 與現有 benchmark 的優先級收斂
 
 ### Review 範圍
