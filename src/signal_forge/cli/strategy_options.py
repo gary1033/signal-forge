@@ -9,6 +9,17 @@ from signal_forge.strategies.orb_volume_vwap import OrbVolumeVwapStrategy
 from signal_forge.strategies.volume_filter import VolumeFilteredStrategy
 from signal_forge.strategy import Strategy
 
+ORB_SESSION_SCOPE_CONTRACT = "regular-session research contract only"
+ORB_EXTENDED_HOURS_POLICY_CONTRACT = (
+    "extended-hours bars are outside the current ORB research contract until "
+    "session/data boundaries are defined explicitly"
+)
+ORB_FORBIDDEN_PREVIOUS_DAY_PREFIXES = (
+    "orb_previous_day_",
+    "orb_gap_",
+    "orb_overnight_",
+)
+
 
 def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
     """
@@ -201,7 +212,7 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
     """
     defaults = STRATEGY_PARAMETER_DEFAULTS[args.strategy]
     volume_window, volume_multiplier = _strategy_level_volume_reporting_defaults(args)
-    return {
+    spec = {
         "source_strategy": args.strategy,
         "strategy_impl": strategy.name,
         "entry_side": "long_only",
@@ -296,8 +307,8 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
             )
         ),
         "orb_signal_window_rule": "when configured, new ORB breakouts are only accepted before orb_signal_window_minutes from session start; existing long positions are not force-flattened by this cutoff",
-        "orb_session_scope": "regular-session research contract only",
-        "orb_extended_hours_policy": "extended-hours bars are outside the current ORB research contract until session/data boundaries are defined explicitly",
+        "orb_session_scope": ORB_SESSION_SCOPE_CONTRACT,
+        "orb_extended_hours_policy": ORB_EXTENDED_HOURS_POLICY_CONTRACT,
         "orb_min_range_pct": f"{_arg_or_default(args, 'orb_min_range_pct', defaults.orb_min_range_pct):.4f}",
         "orb_max_range_pct": f"{_arg_or_default(args, 'orb_max_range_pct', defaults.orb_max_range_pct):.4f}",
         "orb_range_size_rule": "when configured, OR width divided by the first session open must stay within the min/max range pct gate",
@@ -318,6 +329,9 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         else "disabled",
         "orb_volume_baseline_rule": "when enabled, breakout volume is compared against the average volume observed during the opening range instead of the rolling volume SMA baseline",
     }
+    if getattr(args, "strategy", "") == "orb-volume-vwap":
+        _validate_orb_same_session_contract(spec)
+    return spec
 
 
 def orb_runtime_spec_from_bars(
@@ -397,6 +411,23 @@ def _strategy_level_volume_reporting_defaults(
             VolumeFilteredStrategy.volume_multiplier,
         ),
     )
+
+
+def _validate_orb_same_session_contract(spec: dict[str, str]) -> None:
+    """
+    用途與流程：驗證 ORB 的 strategy spec 仍維持目前 same-session only 研究契約，先檢查固定的 session scope 與 extended-hours policy 是否存在，再拒絕任何 previous-day、gap 或 overnight family key 混入。
+    參數：spec 是 strategy_spec_from_args 建好的 deterministic metadata dict；呼叫端應只在 ORB strategy 上使用這個檢查。
+    回傳與錯誤：回傳 None；若缺少必要 contract 欄位、或 spec 混入目前禁止的 previous-day family surface，會拋出 ValueError。
+    """
+    if spec.get("orb_session_scope") != ORB_SESSION_SCOPE_CONTRACT:
+        raise ValueError("ORB strategy spec lost the same-session scope contract")
+    if spec.get("orb_extended_hours_policy") != ORB_EXTENDED_HOURS_POLICY_CONTRACT:
+        raise ValueError("ORB strategy spec lost the extended-hours boundary contract")
+    for forbidden_prefix in ORB_FORBIDDEN_PREVIOUS_DAY_PREFIXES:
+        if any(key.startswith(forbidden_prefix) for key in spec):
+            raise ValueError(
+                f"ORB strategy spec leaked previous-day family surface: {forbidden_prefix}"
+            )
 
 
 def _arg_or_default(

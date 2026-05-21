@@ -3060,3 +3060,39 @@ git diff --check
 
 1. 若還要推進 previous-day family，先補第二份獨立 intraday 樣本。
 2. 在樣本與資料邊界都清楚前，不要讓 `prior_day_close_regular_session` 長成正式 CLI surface。
+
+## 2026-05-21 執行輪：把 ORB same-session boundary 從測試敘述推進到 strategy spec validator
+
+這輪不改 ORB 策略語意，也不新增 `previous-day / gap / overnight` 欄位；只做一個更靠近程式本體的 contract 收斂：把「ORB 目前仍是 same-session only」從外層 regression 敘述，推進成 `strategy_options.py` 自己的 validator。
+
+### 本輪修改
+
+- `src\signal_forge\cli\strategy_options.py`
+  - 新增 ORB same-session contract 常數：
+    - `ORB_SESSION_SCOPE_CONTRACT`
+    - `ORB_EXTENDED_HOURS_POLICY_CONTRACT`
+    - `ORB_FORBIDDEN_PREVIOUS_DAY_PREFIXES`
+  - 新增 `_validate_orb_same_session_contract(spec)`：
+    - 檢查 `orb_session_scope`
+    - 檢查 `orb_extended_hours_policy`
+    - 拒絕任何 `orb_previous_day_*`、`orb_gap_*`、`orb_overnight_*` surface
+  - `strategy_spec_from_args(...)` 在 ORB 路徑會主動呼叫這個 validator，而不是只把邊界留給外層測試。
+- `tests\test_cli.py`
+  - 新增 direct unit test，直接驗證 validator 會拒絕人為混入的 `orb_previous_day_close` 欄位。
+
+### 工程含意
+
+- 先前 repo 已經有「不要讓 previous-day family 提前長進 ORB contract」的 regression。
+- 這輪的價值是把那條 guardrail 往內收：
+  - 以前：只有 CLI / artifact regression 會抓到 drift
+  - 現在：`strategy_spec` 建構點本身就會拒絕 drift
+- 這讓後續若有人在 `strategy_spec_from_args(...)` 旁邊直接偷加 `orb_previous_day_*` 類欄位，會先在本地 unit test 與 validator 層失敗，不必等到 phase / entry-edge artifact 才發現。
+
+### 下一步
+
+1. 若還要推進 `prior-day close` family，下一輪應優先定義「正面 contract」與資料來源，而不是再補更多禁止性欄位。
+2. 在那之前，ORB same-session boundary 已同時有：
+   - phase prose
+   - CLI regression
+   - `strategy_spec_from_args(...)` direct test
+   - 以及本輪新增的內建 validator

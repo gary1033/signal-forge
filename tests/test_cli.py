@@ -15,6 +15,7 @@ from signal_forge.cli import (
     main,
     strategy_spec_from_args,
 )
+from signal_forge.cli.strategy_options import _validate_orb_same_session_contract
 from signal_forge.data_fetch import FetchDataResult
 from signal_forge.strategies import ConfluenceScoreStrategy
 
@@ -118,6 +119,28 @@ class CliTests(unittest.TestCase):
                 any(key.startswith(forbidden_prefix) for key in spec),
                 f"unexpected previous-day family surface leaked into ORB contract: {forbidden_prefix}",
             )
+
+    def test_validate_orb_same_session_contract_rejects_previous_day_surface(self) -> None:
+        """
+        用途與流程：直接驗證 ORB same-session contract validator 會拒絕 previous-day family key，避免只有外層 CLI regression 發現 metadata drift，讓失敗可以更靠近 strategy spec 建構點。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        args = build_parser().parse_args(
+            [
+                "entry-edge",
+                "--csv",
+                "sample.csv",
+                "--strategy",
+                "orb-volume-vwap",
+            ]
+        )
+        strategy = build_strategy_from_args(args)
+        spec = strategy_spec_from_args(args, strategy)
+        spec["orb_previous_day_close"] = "100.0"
+
+        with self.assertRaisesRegex(ValueError, "previous-day family surface"):
+            _validate_orb_same_session_contract(spec)
 
     def test_phase_command_accepts_minimal_strategy_invocation(self) -> None:
         """
