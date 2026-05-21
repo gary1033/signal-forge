@@ -2954,3 +2954,62 @@ git diff --check
 
 1. 若還要推進 previous-day family，優先補第二份 intraday 樣本。
 2. 在樣本仍只有這一份之前，不要把 `prior-day close / gap bias` 提前寫成 ORB 的正式 strategy spec surface。
+
+## 2026-05-21 Code Review：prior-day family 若要落地，現在最缺的不是 filter，而是資料與 contract 分層
+
+這輪是 review-only，不改 ORB 策略語意。重點是把前幾輪對 `prior-day close / gap bias` 的研究結論，整理成真正可執行的工程待辦，避免之後直接把前日欄位塞進 ORB surface。
+
+### Finding 1：目前只有「不要落地」的負面 contract，還沒有「若要落地應先定義什麼」的正面 contract
+
+- 嚴重度：中
+- 受影響檔案：
+  - `tests/test_cli.py`
+  - `src\signal_forge\cli\strategy_options.py`
+- 現況：
+  - 現在已經有 regression 鎖住 ORB 不會長出 `orb_previous_day_*`、`orb_gap_*`、`orb_overnight_*`。
+  - 但 repo 內還沒有對應的「前收資料從哪來、怎麼切 regular/full session、何時可以算有效 prior close」正面定義。
+- 風險：
+  - 後續實作者可能知道「不能亂加欄位」，卻仍不知道第一個 prior-day contract 應該長什麼樣。
+- 建議：
+  - 若真的要推進，先寫一份最小 data-boundary spec，而不是直接加 CLI 參數。
+
+### Finding 2：目前用 day2+ 切片做 sample-sensitivity 檢查是合理的，但它仍只是單樣本內部切片，不是第二份樣本
+
+- 嚴重度：中
+- 受影響檔案：
+  - `reports/generated/msft_5m_demo_day2plus.csv`
+  - `reports/generated/msft-orb-dayboundary-sample-sensitivity-20260521.*`
+- 現況：
+  - 把第一個沒有 in-sample prior close 的 session 拿掉後，主線 ORB 仍維持 `PASS`，而且 PF 還變高。
+- 風險：
+  - 這個結果足以支持「不要急著落 prior-day family」，但不足以支持任何更積極的 prior-day filter 決策。
+- 建議：
+  - 下一步若還要推進 previous-day family，應優先補真正獨立的第二份 intraday 樣本，而不是再對這份 MSFT demo 做更多切片。
+
+### Finding 3：phase / entry-edge reporting 對 prior-day family 的責任邊界還沒先定義，容易在實作時邊做邊決定
+
+- 嚴重度：中
+- 受影響檔案：
+  - `src\signal_forge\reporting\_legacy.py`
+  - `tests\test_reporting.py`
+- 現況：
+  - phase markdown 現在已明講 previous-day / higher-timeframe context 在目前 ORB contract 外。
+  - 但若未來真的落 prior-day family，還沒有決定 phase 報表是否只保留 summary，或要不要顯示 prior-close boundary metadata。
+- 風險：
+  - 實作者可能直接把前日欄位塞進 phase markdown，讓 phase / entry-edge 的 surface 再次失衡。
+- 建議：
+  - 在正式落地前，先決定 prior-day family 只進 `strategy_spec`，還是 phase report 也要有最小邊界說明；不要到實作當下才即興決定。
+
+### Review 結論
+
+- 目前 `prior-day close / gap bias` 仍是合理的第一個 previous-day family 候選。
+- 但真正缺的不是策略條件本身，而是：
+  1. 前收資料來源定義；
+  2. session 邊界定義；
+  3. reporting / validator contract 分層。
+- 在這三件事補齊前，較合理的工程決策仍是：**保持 previous-day family 在 ORB contract 外，只保留研究結論與 guardrail。**
+
+### 下一步
+
+1. 研究輪若再碰 previous-day family，先寫 `prior-day close` 的資料邊界草案。
+2. 執行輪不要先加新欄位；若要做，也應先從 validator 或 contract note 開始，而不是從策略邏輯開始。
