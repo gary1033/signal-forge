@@ -3013,3 +3013,50 @@ git diff --check
 
 1. 研究輪若再碰 previous-day family，先寫 `prior-day close` 的資料邊界草案。
 2. 執行輪不要先加新欄位；若要做，也應先從 validator 或 contract note 開始，而不是從策略邏輯開始。
+
+## 2026-05-21 研究：`prior-day close` 第一版資料邊界草案
+
+這輪只做研究，不改 ORB 策略語意。目標是把 `prior-day close / gap bias` 若要成為第一個 previous-day family 候選時，**最小可落地的資料邊界**先寫清楚，避免後續直接把 `orb_previous_day_*` 欄位塞進現有 ORB surface。
+
+### 外部依據
+
+- TradingView `Sessions` 文件：session string 與 named session 是不同層級；若腳本要對 regular / extended hours 有穩定定義，必須先決定 session 邊界，而不是只靠 chart 預設。
+- TradingView `Other timeframes and data` 與 `Repainting` 文件：任何 higher-timeframe / previous-session 值若透過 `request.security()` 取得，都要先處理 confirmed value 與 lookahead/repaint 風險。
+- TradingView `Opening Range Bias + Prev Day Close`：公開 ORB 腳本確實會把 `prev day close` 當成單一水平線或 gap-bias 參照，而不是一次綁入整組 PDH/PDL/premarket。
+- TradingView `ORB Gap Strategy`：gap filter 通常是「先有 session open 與 prior reference，再決定當天只允許某個方向」，顯示 `prior close` 很適合作為 previous-day family 的第一刀。
+
+### 第一版最小資料邊界
+
+1. **第一個前日欄位只允許是一個 scalar：`prior_day_close_regular_session`。**
+   - 不同時引入 `PDH`、`PDL`、premarket high/low、overnight range。
+   - 目的不是一次把 previous-day family 做滿，而是先驗證「單一前收參照」到底有沒有研究價值。
+
+2. **`prior_day_close_regular_session` 的定義必須是「前一個已完成 regular session 的最後確認 close」。**
+   - 不是當天 premarket 最後價。
+   - 不是 extended-hours close。
+   - 不是即時 developing higher-timeframe bar。
+
+3. **session 邊界必須沿用 ORB 已顯式化的 market-clock 設定。**
+   - `prior close` 必須和 `orb_session_start_*`、`orb_session_end_*`、`orb_session_timezone` 屬於同一套 regular-session 定義。
+   - 若未來市場切換，不應只改 prior-close 計算，而不改 ORB 自己的 session 邊界。
+
+4. **若資料集第一個 session 沒有可用前收，必須明確標成 unavailable，而不是補值。**
+   - 不做 forward fill。
+   - 不偷用當日第一根或資料集第一列 close 當 prior close。
+   - 在沒有 prior close 的 session 上，gap-bias 類條件應直接視為未啟用或不可判定。
+
+5. **第一版 previous-day family 不應先要求 Pine 風格的 HTF 即時計算。**
+   - 對 SignalForge 來說，較低風險的做法是先在資料層或 artifact 層把 `prior_day_close_regular_session` 視為已確認欄位。
+   - 若未來真的需要 Pine/TradingView 對齊，才再引入「confirmed HTF value + offset」那一層語意。
+
+### 工程含意
+
+- 這份草案支持的不是「現在就把 gap bias 寫進 ORB」，而是：**如果要落第一個 previous-day family，第一刀應該只是一個 confirmed scalar contract。**
+- 它同時否定兩個過早方向：
+  1. 直接把 `PDH/PDL + premarket` 一整組欄位塞進 `strategy_spec`。
+  2. 在沒有定義 prior-close 資料來源前，就先加 `orb_gap_*` 或 `orb_previous_day_*` CLI 參數。
+
+### 下一步
+
+1. 若還要推進 previous-day family，先補第二份獨立 intraday 樣本。
+2. 在樣本與資料邊界都清楚前，不要讓 `prior_day_close_regular_session` 長成正式 CLI surface。
