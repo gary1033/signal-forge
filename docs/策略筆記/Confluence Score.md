@@ -77,6 +77,7 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 
 ## 下一步
 
+- `2330` 的 `hold=5`、`hold=10` 顯示這個策略更像中段趨勢跟隨，而不是隔日 bounce；下一步應先處理多持有期下的 signal overlap 語意，否則高 PF 很難直接轉成完整持倉策略。
 - 檢查 score 組成，拆解哪些 reason 對勝率或 PF 有實際貢獻。
 - 比較「score 內部量能確認」與「外層 volume filter」各自的貢獻，避免重複濾網造成過度配適。
 - 測試不同 threshold 與交易頻率、最大回撤之間的關係。

@@ -317,6 +317,564 @@ class CliTests(unittest.TestCase):
             "long entries require close >= sma(close, vwap_regime_window) when enabled",
         )
 
+    def test_entry_edge_command_accepts_orb_retest_confirmation(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB retest confirmation，並把設定寫入 strategy spec。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-retest-confirmation",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-retest-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-retest-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_closeonly_vw20_vm1.50_with_vwap_with_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_retest_confirmation"], "enabled")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_retest_rule"],
+            "long entries wait for breakout, OR-high retest, and close-confirmed reclaim when enabled",
+        )
+        self.assertEqual(summary["strategy_spec"]["volume_window"], "20")
+        self.assertEqual(summary["strategy_spec"]["volume_multiplier"], "1.50")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_session_scope"],
+            "regular-session research contract only",
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_extended_hours_policy"],
+            "extended-hours bars are outside the current ORB research contract until session/data boundaries are defined explicitly",
+        )
+
+    def test_entry_edge_command_accepts_orb_session_parameters(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可覆寫 ORB 的 session start、session end、timezone 與 opening range 長度，並把實際生效值寫入 strategy spec。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_shifted_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-opening-range-minutes",
+                    "2",
+                    "--orb-session-start-hour",
+                    "8",
+                    "--orb-session-start-minute",
+                    "0",
+                    "--orb-session-end-hour",
+                    "13",
+                    "--orb-session-end-minute",
+                    "30",
+                    "--orb-session-timezone",
+                    "Asia/Taipei",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-session-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-session-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0800_or2_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_opening_range_minutes"], "2")
+        self.assertEqual(summary["strategy_spec"]["orb_session_start_hour"], "8")
+        self.assertEqual(summary["strategy_spec"]["orb_session_start_minute"], "0")
+        self.assertEqual(summary["strategy_spec"]["orb_session_end_hour"], "13")
+        self.assertEqual(summary["strategy_spec"]["orb_session_end_minute"], "30")
+        self.assertEqual(summary["strategy_spec"]["orb_session_timezone"], "Asia/Taipei")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_session_rule"],
+            "intraday ORB only evaluates bars at or after the configured session start time",
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_session_end_rule"],
+            "configured session end currently documents the intended regular-session boundary for ORB research artifacts; it does not force-flat open positions by itself",
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_session_timezone_rule"],
+            "configured timezone documents the intended market-clock reference for ORB session metadata and research artifacts",
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_session_scope"],
+            "regular-session research contract only",
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_observed_range_pct_sessions"], "1")
+        self.assertEqual(summary["strategy_spec"]["orb_observed_range_pct_first"], "0.0300")
+        self.assertEqual(summary["strategy_spec"]["orb_observed_range_pct_last"], "0.0300")
+
+    def test_entry_edge_command_accepts_orb_signal_window_cutoff(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可設定 ORB signal window cutoff，並把 cutoff 規則寫入 strategy spec，而不把它誤解成強制平倉規則。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_signal_window_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-opening-range-minutes",
+                    "2",
+                    "--orb-signal-window-minutes",
+                    "4",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-signal-window-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-signal-window-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or2_sigw4_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_signal_window_minutes"], "4")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_signal_window_rule"],
+            "when configured, new ORB breakouts are only accepted before orb_signal_window_minutes from session start; existing long positions are not force-flattened by this cutoff",
+        )
+
+    def test_entry_edge_command_accepts_orb_vwap_slope_confirmation(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB 的 VWAP slope confirmation，並把這個 entry-quality 規則寫入 strategy spec。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-vwap-slope-confirmation",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-vwap-slope-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-vwap-slope-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_vslope_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_vwap_slope_confirmation"], "enabled")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_vwap_slope_rule"],
+            "when enabled, breakout is only accepted if session VWAP is rising versus the previous bar in the same session",
+        )
+
+    def test_entry_edge_command_accepts_orb_ema_trend_confirmation(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB 的 EMA trend confirmation，並把 rolling EMA 視窗與 entry-quality 規則寫入 strategy spec。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-ema-trend-confirmation",
+                    "--orb-ema-window",
+                    "10",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-ema-trend-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-ema-trend-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_ema10_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_ema_trend_confirmation"], "enabled")
+        self.assertEqual(summary["strategy_spec"]["orb_ema_window"], "10")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_ema_trend_rule"],
+            "when enabled, breakout is only accepted if close stays above the rolling EMA and that EMA is rising versus the previous bar in the same session",
+        )
+
+    def test_entry_edge_command_accepts_orb_reject_ema_inside_range(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB 的 EMA inside-range 結構 gate，並把 EMA 與 OR 盒子相對位置的規則寫入 strategy spec。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-reject-ema-inside-range",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-ema-box-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-ema-box-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_emabox_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_reject_ema_inside_opening_range"], "enabled"
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_ema_inside_range_rule"],
+            "when enabled, new ORB breakouts are rejected if the rolling EMA still falls inside the opening-range box",
+        )
+
+    def test_entry_edge_command_accepts_orb_range_size_filter(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB 開盤區間寬度百分比濾網，並把 range size 設定寫入 strategy spec。
+        參數：self 表示目前物件實例
+        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-min-range-pct",
+                    "0.0100",
+                    "--orb-max-range-pct",
+                    "0.0500",
+                    "--orb-opening-range-minutes",
+                    "2",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-range-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-range-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or2_orpct0.010-0.050_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_opening_range_minutes"], "2")
+        self.assertEqual(summary["strategy_spec"]["orb_min_range_pct"], "0.0100")
+        self.assertEqual(summary["strategy_spec"]["orb_max_range_pct"], "0.0500")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_range_size_rule"],
+            "when configured, OR width divided by the first session open must stay within the min/max range pct gate",
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_observed_range_pct_sessions"], "1")
+        self.assertEqual(summary["strategy_spec"]["orb_observed_range_pct_min"], "0.0300")
+        self.assertEqual(summary["strategy_spec"]["orb_observed_range_pct_max"], "0.0300")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_observed_range_pct_below_min_sessions"], "0"
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_observed_range_pct_within_gate_sessions"], "1"
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_observed_range_pct_above_max_sessions"], "0"
+        )
+
+    def test_entry_edge_command_accepts_orb_breakout_distance_threshold(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB 最小突破距離百分比，並把 breakout distance 規則寫入 strategy spec。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-min-breakout-pct",
+                    "0.0050",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-breakout-distance-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-breakout-distance-cli.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_obp0.005_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_min_breakout_pct"], "0.0050")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_breakout_distance_rule"],
+            "when configured, close must finish at least orb_min_breakout_pct above OR high before the breakout is accepted",
+        )
+
+    def test_entry_edge_command_accepts_orb_full_bar_above_range(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB full-bar-above-range 條件，並把 breakout candle 結構規則寫入 strategy spec。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-full-bar-above-range",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-fullbar-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-fullbar-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_fullbar_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_full_bar_above_range"], "enabled")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_full_bar_rule"],
+            "when enabled, the breakout candle low must stay above OR high so the full bar remains outside the opening range",
+        )
+
+    def test_entry_edge_command_accepts_orb_min_breakout_body_pct(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB breakout candle body ratio 門檻，並把 body strength 規則寫入 strategy spec。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_body_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-min-breakout-body-pct",
+                    "0.6000",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-breakout-body-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-breakout-body-cli.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_body0.60_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_min_breakout_body_pct"], "0.6000")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_breakout_body_rule"],
+            "when configured, breakout candle body divided by full candle range must be at least orb_min_breakout_body_pct before the breakout is accepted",
+        )
+
+    def test_entry_edge_command_accepts_orb_fresh_breakout_from_or(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB fresh breakout gate，並把前一根 close 需仍在 OR 內的規則寫入 strategy spec。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_fresh_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-fresh-breakout-from-or",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-fresh-breakout-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-fresh-breakout-cli.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or30_fresh_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(summary["strategy_spec"]["orb_fresh_breakout_from_or"], "enabled")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_fresh_breakout_rule"],
+            "when enabled, the previous close must still be inside the OR box before the current bar can count as a fresh breakout",
+        )
+
+    def test_entry_edge_command_accepts_orb_opening_range_volume_baseline(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可啟用 ORB 的 opening-range volume baseline，並把 breakout 量能比較基準改成 opening range 平均量能，同時將規則寫入 strategy spec。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_or_volume_baseline_orb_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-opening-range-minutes",
+                    "2",
+                    "--volume-window",
+                    "3",
+                    "--volume-multiplier",
+                    "1.5",
+                    "--orb-use-opening-range-volume-baseline",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-or-volume-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-or-volume-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn(
+            "strategy=orb_volume_vwap_ss0930_or2_orvol_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
+            output,
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_use_opening_range_volume_baseline"], "enabled"
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_volume_baseline_rule"],
+            "when enabled, breakout volume is compared against the average volume observed during the opening range instead of the rolling volume SMA baseline",
+        )
+
+    def test_entry_edge_command_writes_orb_range_gate_observation_counts(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 在 ORB range gate 啟用時，會把每個 session 的 opening range 百分比分類摘要寫進 strategy spec，讓 artifact 可直接看出有多少樣本低於下限、落在 gate 內或高於上限。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_intraday_two_session_orb_csv(Path(temp_dir))
+            _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "orb-volume-vwap",
+                    "--orb-min-range-pct",
+                    "0.0100",
+                    "--orb-max-range-pct",
+                    "0.0500",
+                    "--orb-opening-range-minutes",
+                    "2",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "orb-range-counts-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "orb-range-counts-cli.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(summary["strategy_spec"]["orb_observed_range_pct_sessions"], "2")
+        self.assertEqual(
+            summary["strategy_spec"]["orb_observed_range_pct_below_min_sessions"], "1"
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_observed_range_pct_within_gate_sessions"], "1"
+        )
+        self.assertEqual(
+            summary["strategy_spec"]["orb_observed_range_pct_above_max_sessions"], "0"
+        )
+
     def test_fetch_data_command_reports_written_paths(self) -> None:
         """
         用途與流程：驗證 fetch data command reports written paths 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
@@ -459,6 +1017,171 @@ def _write_vwap_reversion_csv(directory: Path) -> Path:
                 "2026-01-02,10,10.5,9.5,10,1",
                 "2026-01-03,15,15.5,14.5,15,1",
                 "2026-01-04,16,16.5,15.5,16,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return csv_path
+
+
+def _write_intraday_orb_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出含 intraday 時間欄位的 ORB CSV fixture，供 CLI 測試 ORB retest 參數與 strategy spec。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "intraday_orb.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01T09:30,100,101,99,100,100",
+                "2026-01-01T09:31,100,102,100,101,100",
+                "2026-01-01T09:32,101,103.6,100.8,102.6,150",
+                "2026-01-01T09:33,102.6,103.7,101.7,102.7,230",
+                "2026-01-01T09:34,102.7,104.0,102.0,103.0,230",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return csv_path
+
+
+def _write_intraday_body_orb_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出可先出現弱 breakout、再出現強 breakout 的 ORB CSV fixture，供 CLI 測試 breakout candle body ratio 條件。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "intraday_orb_body.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01T09:30,100.0,100.8,99.8,100.2,100",
+                "2026-01-01T09:31,100.2,101.0,100.0,100.8,100",
+                "2026-01-01T09:32,100.95,101.7,100.8,101.2,150",
+                "2026-01-01T09:33,101.15,102.4,101.1,102.2,260",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return csv_path
+
+
+def _write_intraday_fresh_orb_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出會先出現一根低量 breakout、再出現一根高量但已非 fresh breakout 的 ORB CSV fixture，供 CLI 測試 fresh breakout gate。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "intraday_orb_fresh.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01T09:30,100.0,100.8,99.8,100.2,100",
+                "2026-01-01T09:31,100.2,101.0,100.0,100.8,100",
+                "2026-01-01T09:32,100.8,101.6,100.7,101.2,100",
+                "2026-01-01T09:33,101.2,102.4,101.1,102.2,260",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return csv_path
+
+
+def _write_intraday_or_volume_baseline_orb_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出 ORB opening-range volume baseline 專用 CSV fixture，讓 CLI 測試可穩定重現「rolling volume SMA 會擋掉 breakout，但 OR 平均量能 baseline 會放行」的情境。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "intraday_orb_or_volume.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01T09:30,100.0,100.8,99.8,100.2,40",
+                "2026-01-01T09:31,100.2,101.0,100.0,100.8,60",
+                "2026-01-01T09:32,100.8,100.95,100.4,100.9,300",
+                "2026-01-01T09:33,100.9,102.4,100.8,102.2,100",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return csv_path
+
+
+def _write_intraday_shifted_orb_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出 session 起點為 08:00 的 ORB CSV fixture，供 CLI 測試 ORB session 參數化。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "intraday_orb_shifted.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01T08:00,100,101,99,100,100",
+                "2026-01-01T08:01,100,102,100,101,100",
+                "2026-01-01T08:02,101,102.2,100.4,100.5,100",
+                "2026-01-01T08:03,100.5,103.4,100.2,102.5,150",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return csv_path
+
+
+def _write_intraday_signal_window_orb_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出會在 signal window 外才出現 breakout 的 ORB CSV fixture，供 CLI 驗證 ORB 的時間窗 cutoff 規則。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "intraday_orb_signal_window.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01T09:30,100.0,100.8,99.8,100.2,100",
+                "2026-01-01T09:31,100.2,101.0,100.0,100.8,100",
+                "2026-01-01T09:32,100.8,100.95,100.4,100.9,120",
+                "2026-01-01T09:33,100.9,100.98,100.6,100.95,120",
+                "2026-01-01T09:34,100.95,102.6,100.9,102.2,180",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return csv_path
+
+
+def _write_intraday_two_session_orb_csv(directory: Path) -> Path:
+    """
+    用途與流程：寫出兩個 session 的 ORB CSV fixture，其中一個 session 的 opening range 低於 min gate，另一個落在 gate 內，供 CLI 驗證 artifact 的 gate 分類摘要。
+    參數：directory（Path）由呼叫端傳入，需符合函式 contract
+    回傳與錯誤：回傳 Path；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    """
+    csv_path = directory / "intraday_orb_two_session.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-01-01T09:30,100,100.2,99.9,100.0,100",
+                "2026-01-01T09:31,100,100.3,99.9,100.1,100",
+                "2026-01-01T09:32,100.1,100.4,100.0,100.2,120",
+                "2026-01-02T09:30,100,101.0,99.0,100.0,100",
+                "2026-01-02T09:31,100,102.0,100.0,101.0,100",
+                "2026-01-02T09:32,101.0,102.5,100.8,102.0,140",
             ]
         )
         + "\n",

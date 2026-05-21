@@ -90,3 +90,33 @@ def bars_from_closes(closes: list[float], volumes: list[float] | None = None) ->
         )
         for index, close in enumerate(closes)
     ]
+
+
+def bars_from_intraday_closes(
+    closes: list[float],
+    *,
+    start_timestamp: str,
+    step_minutes: int,
+    volumes: list[float] | None = None,
+) -> list[Bar]:
+    """
+    用途與流程：依 intraday 起始時間與固定分鐘間隔建立 Bar fixture，供 ORB / session 類策略測試 session 邏輯、開盤區間與 VWAP/量能條件。
+    參數：closes 是收盤價序列；start_timestamp 是含時間資訊的 ISO-8601 起點；step_minutes 是每根 bar 的分鐘間距；volumes 可選，None 時全部使用 100.0。
+    回傳與錯誤：回傳 list[Bar]；若 start_timestamp 不是可解析的 ISO-8601 datetime，會由 datetime.fromisoformat 拋出 ValueError。
+    """
+    from datetime import datetime, timedelta
+
+    if volumes is None:
+        volumes = [100.0 for _ in closes]
+    start = datetime.fromisoformat(start_timestamp)
+    return [
+        Bar(
+            (start + timedelta(minutes=index * step_minutes)).isoformat(timespec="minutes"),
+            close,
+            close + 1.0,
+            close - 1.0,
+            close,
+            volumes[index],
+        )
+        for index, close in enumerate(closes)
+    ]

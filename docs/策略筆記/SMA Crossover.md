@@ -5,7 +5,7 @@ tags:
   - trading/strategy
   - trading/trend
 status: research
-updated: 2026-05-20
+updated: 2026-05-21
 repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\sma_crossover.py
 ---
 
@@ -114,7 +114,7 @@ SMA Crossover 是趨勢追蹤 baseline。它假設短期平均價格高於長期
 
 ## 下一步
 
-- 用 `entry-edge --hold-bars-list 1,3,5,10` 比較不同固定持有期，判斷一日 entry-edge 是否低估趨勢策略用途。
+- `2330` 的 `hold=3`、`hold=5`、`hold=10` 已經顯示這個策略明顯不是一日 edge；下一步應把它當成 Phase 2 趨勢持有候選，而不是繼續只看隔日 entry-edge。
+- 優先比較 `hold=3` 與 `hold=5` 哪一種更符合「報酬改善但回撤仍可接受」的趨勢持有語意。
 - 比較 entry-only volume filter 與 target-state volume filter，確認哪一種比較符合趨勢策略語意。
-- 若進入 Phase 2，應建立多日持倉與出場規則，而不是只用一日 entry-edge。
 - 檢查不同標的與不同 market regime 下的表現差異。

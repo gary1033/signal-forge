@@ -6,6 +6,7 @@ from pathlib import Path
 
 from signal_forge.cli.strategy_options import (
     build_strategy_from_args,
+    orb_runtime_spec_from_bars,
     strategy_spec_from_args,
 )
 from signal_forge.entry_edge import (
@@ -36,6 +37,7 @@ def run_entry_edge_command(args: argparse.Namespace) -> int:
     data_validation = validate_bars(bars)
     strategy = build_strategy_from_args(args)
     strategy_spec = strategy_spec_from_args(args, strategy)
+    strategy_spec.update(orb_runtime_spec_from_bars(args, bars))
     config = EntryEdgeConfig(
         initial_equity=args.initial_equity,
         commission_bps=args.commission_bps,

@@ -69,11 +69,16 @@ modify -> verify -> keep/discard -> log
 
 禁止事項：
 
-- 不做策略績效最佳化。
 - 不新增 broker。
 - 不新增 API key / credential 讀取。
 - 不新增真實下單介面。
 - 不碰 live 送單能力。
+
+允許事項：
+
+- 可以做策略研究、策略績效最佳化、參數調整與策略更新。
+- 可以參考 TradingView 或其他公開來源，但要轉成 SignalForge 可驗證的研究假設與實作。
+- 每個 wakeup 仍只做一個聚焦改動，並保留 modify / verify / keep-or-discard / log 的 audit trail。
 
 ## Live 安全邊界
 

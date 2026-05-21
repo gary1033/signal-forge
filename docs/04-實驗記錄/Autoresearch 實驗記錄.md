@@ -5,7 +5,7 @@ tags:
   - experiment
   - autoresearch
 status: active
-updated: 2026-05-20
+updated: 2026-05-21
 ---
 
 # Autoresearch 實驗記錄
@@ -17,7 +17,7 @@ updated: 2026-05-20
 - 主線：回測可驗證性。
 - 方法：`modify -> verify -> keep/discard -> log`。
 - 每次 wakeup 只做一個聚焦改動。
-- 不做策略績效最佳化。
+- 允許策略研究、策略績效最佳化、參數調整與策略更新，但每次改動都要保留可重現驗證與 discard 路徑。
 - 不新增 broker。
 - 不新增 API key / credential 讀取。
 - 不新增真實下單介面。
@@ -72,13 +72,817 @@ git diff --check
 | 2026-05-20 23:20 | Entry Edge 多持有期比較報表 | 110；87 tests OK | keep |
 | 2026-05-20 23:50 | VWAP Reversion 可選 regime filter | 110；tests OK | keep |
 
+## 2026-05-21 研究輪：ORB + Volume + VWAP 候選
+
+這輪先做研究提案，不直接改正式策略程式。主候選鎖定 `Opening Range Breakout + Volume + VWAP`，原因是它和 SignalForge 現有的 long-only、`--volume-filter`、VWAP 對齊語意最接近，若要導入，能沿用既有 `BarByBarStrategy` 模板拆成 `prepare_context(...)` / `decide_bar(...)`。
+
+### 來源
+
+- TradingView open-source：NeuraEdge ORB - Opening Range Breakout Indicator
+  https://tw.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+- TradingView open-source：ORB + Volume + VWAP Breakout
+  https://tw.tradingview.com/script/7khuDtm8-ORB-Volume-VWAP-Breakout/
+- TradingView open-source：Anchored VWAP
+  https://tw.tradingview.com/script/L1tWQjgR-Anchored-VWAP/
+
+### 候選摘要
+
+- `ORB + Volume + VWAP`：先鎖定開盤區間，再要求 breakout bar 同時滿足相對量能放大與價格站上 session VWAP，屬於很適合 Phase 1 long-only 的進場訊號候選。
+- `NeuraEdge ORB`：功能更完整，還帶 retest、FVG、SL/TP 與 performance tracking；但這些內容超出目前 SignalForge Phase 1 的最小導入範圍，直接搬進來會一次混入太多產品判斷。
+- `Anchored VWAP`：概念本身可做研究，但 anchor 要綁事件、日期還是 session，屬於需要額外產品判斷的分支，暫不列為本輪執行候選。
+
+### 適配判斷
+
+- 最適合下一輪執行的是 `ORB + Volume + VWAP` 的「簡化 long-only 版本」。
+- 第一版可先固定：
+  - 只做 long breakout。
+  - breakout 以 bar close 確認。
+  - volume filter 使用相對量能門檻。
+  - VWAP 使用 session VWAP，要求 `close > vwap`。
+  - 不帶停損、停利、short、alert webhook、dashboard。
+- 這樣可以先驗證「開盤區間突破 + 量能 + VWAP」本身是否值得納入現有 entry-edge 流程，而不是一次引入整套 intraday 交易框架。
+
+### 風險與驗證邊界
+
+- ORB 是 intraday 概念；目前 repo 主要示範資料是日線，若要實作，需要先確認是否引入 intraday OHLCV 樣本，否則只能先完成策略模板與測試替身。
+- Session window 是核心語意；不同市場（美股、期貨、台股）開盤定義不同，不能直接硬寫美股 `09:30-10:00` 到通用策略。
+- TradingView 腳本常含 intrabar 視覺訊號或 alert 描述；SignalForge 這邊只接受 close-confirmed、non-repainting 的 deterministic signal。
+- Anchored VWAP 的 anchor 起點若需要人工事件選擇，會超出目前 automation 可自動決策的範圍。
+
+### 下一步
+
+- 下一輪執行可考慮只做一個最小改動：新增 `orb-volume-vwap` 策略骨架或先建立測試替身與 registry 預留，保持 `BarByBarStrategy` template 對齊。
+- 若先不引入新策略，也可先做更小的比較研究：把現有 `--volume-filter` 與 VWAP 語意整理成是否足以近似 ORB 腳本的需求。
+- 若要真的進入 ORB 實作，先補一份 intraday 資料需求與 session 定義筆記，再決定資料層怎麼接。
+
+## 2026-05-21 研究輪：ORB 下一步優化方向
+
+這輪延續 ORB 候選，但不再找新策略，而是聚焦「ORB + Volume + VWAP」下一個最值得加的優化。結論是：**優先考慮 retest confirmation，不優先做多時間框架或更多濾網堆疊。**
+
+### 來源
+
+- TradingView open-source：ORB Breakout Strategy with VWAP and Volume Filters
+  https://tw.tradingview.com/script/wLSGHPUe-ORB-Breakout-Strategy-with-VWAP-and-Volume-Filters/
+- TradingView open-source：ORB Breakout & Retest
+  https://tw.tradingview.com/script/tJGpjdb1-ORB-Breakout-Retest/
+- TradingView Pine Script docs：Bar states / `barstate.isconfirmed`
+  https://www.tradingview.com/pine-script-docs/v5/concepts/bar-states/
+
+### 研究結論
+
+- `ORB Breakout & Retest` 明確把流程拆成「先突破、再回踩、再確認」，核心目的是減少假突破，這和目前 SignalForge 已經有的 close-confirmed、single-signal 模板相容。
+- TradingView 官方文件指出 `barstate.isconfirmed` 適合用來避免 repaint；而它**不能**安全地拿去配 `request.security()` 使用。這代表若下一步優化選 retest confirmation，可以沿用目前單時間框架、bar-close confirmed 的 deterministic 邏輯；若直接走多時間框架 ORB，會更容易碰到資料對齊與 repaint 邊界。
+- 另一份 ORB 策略頁面同時提到 VWAP slope、candle strength、session close exit 等更多可調濾網，但這些會一次打開太多產品判斷。對目前 automation 來說，retest confirmation 的增量最清楚。
+
+### 對 SignalForge 的含義
+
+- 現在的 `orb_volume_vwap_breakout` 是「第一時間突破就進」。
+- 下一個最小可驗證優化，可以改成兩段式狀態：
+  1. 記錄某個 session 已經突破 OR high。
+  2. 等回踩 OR high 附近後，再出現重新站回 OR high 上方的 close-confirmed bar 才翻成 long。
+- 這比直接加入多時間框架或更多 filter 更符合目前 repo 的 deterministic 與 template 邊界。
+
+### 先不做的分支
+
+- **多時間框架 ORB**：需要額外資料來源或 `request.security` 類比邏輯，風險高於本輪預期。
+- **VWAP slope / candle strength / ATR / FVG**：都可能有研究價值，但每個都會再增加一層語意與參數面，暫時不是最小下一步。
+- **Session close 強制平倉**：這屬於持倉語意決策，要先決定 ORB 在 SignalForge 是 entry-edge 候選還是完整 intraday 持有系統。
+
+## 2026-05-21 研究輪：ORB 持有語意判斷
+
+這輪研究聚焦在 ORB 的持有與離場語意。結論是：**session close exit 很常見，也合理，但它不再只是 filter 或 entry refinement，而是把策略正式推向完整 intraday 持有系統。**
+
+### 來源
+
+- TradingView rangebreakout scripts 總覽
+  https://tw.tradingview.com/scripts/rangebreakout/
+- TradingView open-source：Opening Range Breakout + VWAP + Volume [ORB Strategy]
+  https://tw.tradingview.com/script/hapKLoXr-Opening-Range-Breakout-VWAP-Volume-ORB-Strategy/
+- TradingView 開盤區間腳本彙整頁面（含 retest、RTH VWAP、session close flat 描述）
+  https://tw.tradingview.com/scripts/opening/
+
+### 研究結論
+
+- 多個 ORB 腳本把「regular trading session 結束前平倉」當成預設流程，因為 ORB 本質常被視為日內動能策略，而不是隔夜持有策略。
+- 這和目前 SignalForge 的 ORB 實作不同：現在版本比較像「intraday breakout signal state machine」，有 session reset，但沒有明確的 session close exit 語意。
+- 若直接加入 session close exit，策略就不再只是 entry refinement，而會開始定義「持倉多久」、「何時一定離場」這類完整持有規則。
+
+### 對 SignalForge 的含義
+
+- `retest confirmation` 屬於進場品質優化，仍在目前 automation 可安全處理的範圍。
+- `session close exit` 則更接近 Phase 2 題目，因為它會影響：
+  - ORB 策略是拿來做 entry-edge 候選，還是完整 intraday strategy。
+  - 測試資料是否要包含 session 結束 bar。
+  - reporting 是否要明確顯示 forced flatten / session close exit。
+- 所以它是合理候選，但不應該在沒有額外產品判斷的情況下由 automation 直接硬做。
+
+### 建議排序
+
+1. 先保留現在的可選 retest confirmation，讓 ORB 進場語意穩定。
+2. 再決定 ORB 是否要進入「明確 session close exit」版本。
+3. 如果要做 session close exit，應一起定義：
+   - session 結束時間是否可參數化；
+   - session close flat 是 hard rule 還是可選 rule；
+   - entry-edge / phase reporting 要怎麼反映 forced exit。
+
+## 2026-05-21 研究輪：ORB session 參數化與 extended-hours
+
+這輪研究聚焦在 ORB 的 session 起點、時區與 extended-hours 處理。結論是：**下一個最合理的工程方向，是把 session start / end / timezone 從內建假設提升成明確設定，否則 ORB 很難脫離美股 `09:30` 假設。**
+
+### 來源
+
+- TradingView openingrange scripts 彙整
+  https://tw.tradingview.com/scripts/openingrange/
+- TradingView openrange scripts 彙整
+  https://tw.tradingview.com/scripts/openrange/
+- TradingView sessions scripts 彙整
+  https://tw.tradingview.com/scripts/sessions/
+- TradingView open-source：Multi-Session ORB
+  https://tw.tradingview.com/script/bO5hteNH-Multi-Session-ORB/
+
+### 研究結論
+
+- 多數 ORB 腳本都把 **session window**、**timezone**、甚至 **是否延伸到其他市場時段** 做成顯式設定。
+- TradingView 的實務語境裡，extended-hours 常被視為和 regular session 不同的資料區塊；如果不明確定義 session 邊界，ORB 高低點會因資料 feed 與時段切法不同而漂移。
+- 這對 SignalForge 的含義很直接：目前 `OrbVolumeVwapStrategy` 內建 `09:30` 只適合當研究起點，不適合視為長期預設真理。
+
+### 對 SignalForge 的含義
+
+- 現在的策略已經能運作，但它在語意上其實是「美股 regular session ORB 假設版」。
+- 若要讓 ORB 真正能被台股、美股 extended-hours 關閉版、或其他期貨 session 使用，至少要把這些邊界講清楚：
+  - session start hour / minute
+  - opening range 持續多久
+  - 是否只看 regular session
+  - session VWAP 是否隨同一個 session reset
+- 這些設定屬於高價值改動，但仍比 `session close exit` 更偏工程參數化，產品風險較低。
+
+### 建議排序
+
+1. 保留目前 ORB + retest confirmation 邏輯不變。
+2. 下一個執行輪優先考慮把 session 起點與 OR 長度暴露成更明確的 CLI / strategy spec。
+3. extended-hours 是否納入，先以筆記與資料假設界定，不急著直接在策略內做第二套 session 模式。
+
+## 2026-05-21 執行輪：ORB session 起點與 OR 長度參數化
+
+這輪不碰 `session close exit` 或 extended-hours 模式，只做較低風險的工程參數化：把 `OrbVolumeVwapStrategy` 原本寫死的 session 起點與 opening range 長度接進 strategy factory、CLI 與 strategy spec。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy.name` 現在會把 session 起點編進策略名稱，例如 `ss0930`。
+- `build_strategy(...)` / `build_phase1_strategy(...)` 新增：
+  - `orb_opening_range_minutes`
+  - `orb_session_start_hour`
+  - `orb_session_start_minute`
+- CLI 新增：
+  - `--orb-opening-range-minutes`
+  - `--orb-session-start-hour`
+  - `--orb-session-start-minute`
+- `strategy_spec` 會把 ORB session 相關設定寫出來，避免之後看 artifact 時只知道用了 ORB，卻不知道是從幾點開始建 OR。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `103 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動把 ORB 從「隱含美股 09:30 假設」推進到「至少可明確宣告 session 起點與 OR 長度」。
+- `session end` / `timezone` / extended-hours 仍留在下一步，因為它們會牽涉更完整的 session 邊界語意，而不只是 parser plumbing。
+
+## 2026-05-21 研究輪：ORB 的 timezone / regular-hours / extended-hours 邊界
+
+這輪延續 ORB 的 session 主題，但不再改程式，而是確認下一步應該把什麼留在策略參數、什麼留在資料假設。結論是：**`session end` 與 `timezone` 值得進一步參數化；extended-hours 則應先被視為資料邊界，而不是馬上做成策略內第二套模式。**
+
+### 來源
+
+- TradingView Pine Script docs：Sessions
+  https://www.tradingview.com/pine-script-docs/v5/concepts/sessions/
+- TradingView ORB scripts index
+  https://tw.tradingview.com/scripts/orb/
+- TradingView opening-range-breakout scripts index
+  https://tw.tradingview.com/scripts/opening-range-breakout/
+
+### 研究結論
+
+- TradingView 官方文件把 `time(timeframe, session, timezone)`、`session.ismarket`、`session.ispremarket`、`session.ispostmarket` 都列成 session 判斷的核心工具，表示 session/timezone 在 Pine 世界本來就是一級設定，不只是視覺化細節。
+- 官方文件也明確區分 `session.regular` 與 `session.extended`，而且 extended session 需要透過不同的 ticker / `request.security(...)` 取值語意來處理。這代表 extended-hours 不是單純多一個 if 條件，而是資料來源邊界本身不同。
+- 多個公開 ORB 腳本都把 `session start hour/minute`、`range duration`、甚至 `box duration` 或 `session preset` 暴露成參數。這支持我們目前已做的 session start / OR 長度參數化，也說明下一步若要補 `session end` 或 `timezone`，在方法論上是合理的。
+
+### 對 SignalForge 的含義
+
+- ORB 現在已經有 `session start` 與 `opening range length`，但還缺：
+  - `session end`
+  - `timezone`
+  - regular-hours-only 是否是明確 contract
+- 若現在就把 extended-hours 直接做成策略模式，會同時打開：
+  - bar 是否屬於 premarket / postmarket；
+  - VWAP 是否跨 extended session 連續累積；
+  - OR high / low 是否應包含 premarket 價格；
+  - 測試資料是否要切成不同 session 類型。
+- 這些都超過本輪 automation 適合自行定版的範圍，所以較合理的做法，是先把它記成研究邊界，而不是急著做第二套 session engine。
+
+### 建議排序
+
+1. 先保留目前 ORB 的 regular-session 研究定位。
+2. 若下一輪要再做執行，優先考慮把 `session end` 與 `timezone` 納入 CLI / strategy spec。
+3. extended-hours 先只記錄成資料假設與風險邊界，等真的有對應資料樣本與產品判斷，再決定是否要做成可選模式。
+
+## 2026-05-21 執行輪：ORB regular-session 邊界寫入 strategy spec
+
+這輪不改 ORB 的進出場判定，也不新增 extended-hours 模式，只把前一輪研究得到的邊界正式寫進 CLI / artifact contract。目標是讓 summary JSON 與後續報表能直接看出：**目前 ORB 只是 regular-session 研究版本，extended-hours 不在既有保證範圍內。**
+
+### 修改內容
+
+- `strategy_spec` 新增：
+  - `orb_session_scope = regular-session research contract only`
+  - `orb_extended_hours_policy = extended-hours bars are outside the current ORB research contract until session/data boundaries are defined explicitly`
+- CLI regression tests 同步鎖住這兩個欄位，避免未來 artifact 失去這個邊界說明。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `104 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動的價值不是新增功能，而是把 ORB 現階段的研究範圍從「藏在聊天與筆記裡」提升成「artifact 直接可見」。
+- `session end` 與 `timezone` 仍留給下一個執行輪；這次先把 contract 補齊，避免在資料邊界尚未定義時讓使用者誤以為 extended-hours 已經被支持。
+
+## 2026-05-21 研究輪：ORB range size / trading cutoff 哪個更適合下一步
+
+這輪研究聚焦在 ORB 的兩種常見細化：**開盤區間大小過濾（range size filter）** 與 **交易截止時間（trading cutoff）**。結論是：**若只選一個較低風險、較接近現有 repo 邊界的下一步，應優先做 range size filter，而不是先做 trading cutoff。**
+
+### 來源
+
+- TradingView open-source：NeuraEdge ORB - Opening Range Breakout Indicator
+  https://tw.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+- TradingView ORB 腳本彙整頁面
+  https://tw.tradingview.com/scripts/opening-range-breakout/
+- TradingView 開盤區間腳本彙整頁面
+  https://tw.tradingview.com/scripts/opening/
+
+### 研究結論
+
+- `NeuraEdge ORB` 直接把 OR size 和 `ATR(14)` 比較，並指出 `0.5x-1.5x ATR` 常是較合理的區間；同時也明講極小區間容易假突破、極大區間則代表 gap day 或風險已經擴大。
+- 另一批 ORB scripts 也會把 `Normal ORB range size` 當成打分條件，和 VWAP alignment、volume boost 並列。這代表「range 是否正常」在 ORB 世界裡不是視覺附註，而是常見的訊號品質條件。
+- 相較之下，`trading cutoff hour` 雖然也常見，但它已經開始定義「過了幾點之後不再允許新訊號」，本質上更接近 session policy，而不是純 entry quality filter。
+
+### 對 SignalForge 的含義
+
+- `range size filter` 的優點：
+  - 仍是 single-session、single-timeframe 邏輯；
+  - 不需要引入 extended-hours 或 session close exit；
+  - 可以只用既有 OR high / low，再補一個簡單的 range normalization。
+- `trading cutoff` 的風險：
+  - 會把策略往「時間治理規則」再推一步；
+  - 跟 `session end`、timezone、regular-hours-only contract 更糾纏；
+  - 比較像 session policy，不是單純訊號品質。
+
+### 建議排序
+
+1. 下一個較低風險的 ORB 優化，優先考慮「開盤區間大小是否正常」的 filter 或至少先把 OR range 寫進 artifact。
+2. `trading cutoff` 可以列為後續候選，但較適合和 `session end`、timezone 一起討論。
+3. Gap direction、EMA、FVG 都先放後面，因為它們會同時增加更多前置語意與跨模組依賴。
+
+## 2026-05-21 執行輪：ORB 新增可選 range size filter
+
+這輪沿著前一輪研究，對 `ORB + Volume + VWAP` 補上一個最小、可驗證的 **range size filter**。實作方式不是直接上 ATR，而是先用更保守的定義：**OR 寬度 / session 第一根 bar 開盤價**。只有當這個比例落在設定的最小/最大區間內，突破訊號才允許成立。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增：
+  - `min_opening_range_pct`
+  - `max_opening_range_pct`
+- 新增 reason：
+  - `opening_range_too_narrow`
+  - `opening_range_too_wide`
+- CLI 新增：
+  - `--orb-min-range-pct`
+  - `--orb-max-range-pct`
+- `strategy_spec` 新增 OR range 相關欄位與規則描述，讓 artifact 可以直接看出 range size gate 是否啟用。
+
+### 為什麼先做這個版本
+
+- 它仍然是 single-session、single-timeframe 的 entry quality filter。
+- 不需要引入 `session end`、timezone policy 或 extended-hours。
+- 先把「極窄 / 極寬 OR」這種明顯品質問題擋掉，再決定未來是否要升級成 ATR-normalized 版本。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `107 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動把 ORB 從「只有 breakout + volume + VWAP」推進到「可選擇排除明顯不正常的開盤區間」。
+- 是否改成 ATR-normalized、是否把 trading cutoff 一起納入，仍留在下一步，不在這輪擴張。
+
+## 2026-05-21 研究輪：range size filter 之後先做 ATR-normalized 還是 artifact 可視化
+
+這輪研究聚焦在一個很實際的下一步排序問題：`range size filter` 已經有最小版本後，下一步是直接升級成 ATR-normalized，還是先把 OR range 指標寫進 artifact / reporting。結論是：**先做 artifact 可視化，比直接上 ATR-normalized 更合理。**
+
+### 來源
+
+- TradingView ORB scripts index
+  https://tw.tradingview.com/scripts/orb/
+- TradingView opening-range-breakout scripts index
+  https://tw.tradingview.com/scripts/opening-range-breakout/
+- TradingView open-source：NeuraEdge ORB - Opening Range Breakout Indicator
+  https://tw.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+
+### 研究結論
+
+- 多個 ORB 腳本不只把 `Normal ORB range size` 當濾網，也會把它放進 on-chart score、label 或 dashboard，讓交易者直接看到這一天的 OR 是偏窄、正常還是偏寬。
+- `NeuraEdge ORB` 的 ATR-normalized 做法有研究價值，但它背後其實包含兩件事：
+  1. 用 ATR 當 normalization；
+  2. 把 OR size 當成顯式可讀的評估欄位。
+- 對 SignalForge 來說，第 2 點更應該先做。因為如果 artifact 裡看不到 OR range pct，本輪新增的 range size filter 雖然存在，後續分析卻很難知道它到底擋了什麼。
+
+### 對 SignalForge 的含義
+
+- 直接升級 ATR-normalized 的問題：
+  - 需要先補一個新的 volatility 指標 helper；
+  - 會再打開 window、normalization 基準與 intraday ATR 語意；
+  - 但 reporting 端仍然可能看不到當天 OR 到底多大。
+- 先做 artifact 可視化的優點：
+  - 仍屬 deterministic reporting / trace 可讀性增強；
+  - 能直接支撐後續判斷：目前的 `% of first open` 夠不夠用；
+  - 若之後真的升級到 ATR-normalized，也更容易做前後比較。
+
+### 建議排序
+
+1. 下一個較低風險的 ORB 執行項目，優先考慮把 `opening_range_pct` 或等價欄位寫進 artifact / reporting。
+2. 有了可視化數據後，再決定是否要把 range size gate 升級成 ATR-normalized。
+3. `trading cutoff`、gap direction、EMA filter 仍排在後面，因為它們都比這一步更偏策略語意擴張。
+
+## 2026-05-21 執行輪：將 opening_range_pct 寫進 artifact strategy spec
+
+這輪不再改 ORB 的交易判斷，而是把上一輪研究結論落成一個 reporting 改動：**將 run-level 的 `opening_range_pct` 摘要寫進 `summary_json.strategy_spec`**。這樣後續回看 artifact 時，可以直接知道這次資料中的 OR range 大小範圍，而不只是看到 range size filter 有沒有打開。
+
+### 修改內容
+
+- CLI summary `strategy_spec` 新增：
+  - `orb_observed_range_pct_sessions`
+  - `orb_observed_range_pct_min`
+  - `orb_observed_range_pct_max`
+  - `orb_observed_range_pct_first`
+  - `orb_observed_range_pct_last`
+- 這些值是依照目前 ORB 的：
+  - `session start`
+  - `opening_range_minutes`
+  - session 第一根 bar 開盤價
+  直接從本次輸入 bars 推導，不改策略本體。
+- CLI regression tests 已同步鎖住這些欄位。
+
+### 為什麼這輪先做這個
+
+- 它屬於 deterministic artifact 可視化，不會新增 broker / live / session policy 風險。
+- 有了這些 run-level 數字，之後才有基礎判斷：
+  - `% of first open` 是否足夠好用；
+  - 是否真的需要升級成 ATR-normalized；
+  - 哪些資料集經常被 `opening_range_too_narrow` / `opening_range_too_wide` 擋掉。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `106 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動把 ORB 的 range size filter 從「只存在於策略判斷」推進到「artifact 也能直接看到觀測值」。
+- ATR-normalized 仍留在下一步；這輪先補觀測證據，不在同一輪再加新的 volatility 語意。
+
+## 2026-05-21 研究輪：opening_range_pct 可視化之後，先做實證比較再決定 ATR-normalized
+
+這輪不改策略碼，而是確認 `orb_observed_range_pct_*` 已經進入 artifact 之後，ORB 的下一步該怎麼排。結論是：**先用這批 run-level 觀測值判斷 `% of first open` 是否夠用，再決定 ATR-normalized 值不值得加入。**
+
+### 來源
+
+- TradingView ORB scripts index
+  https://tw.tradingview.com/scripts/orb/
+- TradingView opening-range-breakout scripts index
+  https://tw.tradingview.com/scripts/opening-range-breakout/
+- TradingView open-source：NeuraEdge ORB - Opening Range Breakout Indicator
+  https://tw.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+
+### 研究結論
+
+- 多個 ORB 腳本會把 opening range 大小做成 score、label 或 dashboard 欄位，而不是只拿來當一個看不見的 gate。這代表 OR size 先被觀測、再被優化，是更常見的研究順序。
+- `NeuraEdge ORB` 的 ATR-normalized 範圍判斷很有參考價值，但它要回答的前提問題其實是：目前用 `% of first open` 算出來的 `opening_range_pct` 是否已經能穩定區分「過窄 / 正常 / 過寬」。
+- 既然 artifact 現在已經能寫出 `orb_observed_range_pct_min/max/first/last`，下一步更合理的工作，是先回頭看不同資料集上的觀測值分布與被 filter 擋掉的情況，而不是立刻把另一層 volatility normalization 寫進策略。
+
+### 對 SignalForge 的含義
+
+- 現在的 ORB 已經從「只能開關 filter」提升到「artifact 會留下 range 觀測值」。
+- 這表示下一步可以先做比較研究，例如：
+  - 哪些資料集的 `orb_observed_range_pct` 長期偏窄；
+  - `opening_range_too_narrow` / `opening_range_too_wide` 是否真的常常擋到不合理樣本；
+  - `% of first open` 在不同價位股票上是否明顯失真。
+- 只有當這些觀測值顯示 `% of first open` 不夠穩定時，ATR-normalized 才從「合理想法」變成「值得實作的下一步」。
+
+### 建議排序
+
+1. 先用目前 artifact 的 `orb_observed_range_pct_*` 做資料回看與比較。
+2. 若觀測後發現價格水位效應太強，再把 ATR-normalized gate 升成候選執行項目。
+3. 在這之前，先不要同時把 ATR、trading cutoff、session close exit 混進同一輪。
+
+## 2026-05-21 執行輪：將 ORB range gate 分類摘要寫進 artifact
+
+這輪不改 ORB 訊號規則，只補 artifact 可讀性：當 `--orb-min-range-pct` / `--orb-max-range-pct` 啟用時，`strategy_spec` 現在會直接寫出有多少個 session 的 opening range **低於下限、落在 gate 內、或高於上限**。
+
+### 修改內容
+
+- `orb_runtime_spec_from_bars(...)` 新增 gate 分類摘要欄位：
+  - `orb_observed_range_pct_below_min_sessions`
+  - `orb_observed_range_pct_within_gate_sessions`
+  - `orb_observed_range_pct_above_max_sessions`
+- 這些值不是策略本體額外推論，而是直接拿已存在的 `orb_observed_range_pct_*` 觀測值，依目前 CLI gate 設定做 deterministic 分類。
+- CLI regression tests 新增兩個層次：
+  - 既有單一 session fixture 驗證欄位存在且數值正確；
+  - 新的雙 session fixture 驗證「一個低於下限、一個落在 gate 內」的分類摘要。
+
+### 為什麼先做這個
+
+- 前一輪研究的重點是「先用 artifact 觀測值做實證比較」；如果 artifact 只寫 min/max/first/last，仍然要手動回推 gate 覆蓋情況。
+- 補上分類摘要後，下一輪回看結果時能直接回答：這次的 range filter 幾乎沒擋到東西，還是其實大部分 session 都被擋在 gate 外。
+- 這仍屬 reporting / validation 層的可讀性增強，沒有擴張 session policy、extended-hours 或持有語意。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `107 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB range gate 不只「有設定值」，也能在 artifact 直接看出它實際覆蓋到多少 session。
+
+## 2026-05-21 研究輪：ORB 的下一個低風險候選是 breakout distance threshold
+
+這輪延續 ORB，但不再往 ATR-normalized 或 session policy 擴張，而是確認在目前 `volume + VWAP + retest + range gate` 之後，還有沒有更輕量的下一步。結論是：**若要再加一個低風險條件，`breakout distance threshold` 比 trading cutoff、session close exit 或 extended-hours 都更適合。**
+
+### 來源
+
+- TradingView opening-range-breakout scripts index
+  https://tw.tradingview.com/scripts/opening-range-breakout/
+- TradingView ORB scripts index
+  https://tw.tradingview.com/scripts/orb/
+- TradingView open-source：NeuraEdge ORB - Opening Range Breakout Indicator
+  https://tw.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+
+### 研究結論
+
+- TradingView 的 ORB 彙整頁面裡，常見設定之一就是 `ORB Breakout Distance Required` 與 `Min Breakout % Beyond ORB`。這說明很多實作者不把「剛好收過 OR high」視為足夠，而會要求多出一點距離，避免只吃到貼線雜訊。
+- 這種條件和目前 SignalForge 的 ORB 架構相容，因為它仍然是單時間框架、close-confirmed、entry quality filter，不需要引入新的 session engine。
+- `NeuraEdge ORB` 也呈現類似精神：不是每個穿越 OR 的動作都該視為有效突破，距離與結構是否夠乾淨本來就是判斷的一部分。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 的 long 觸發是 `close > OR high`，外加 VWAP、volume、可選 retest 與 range gate。
+- 若要再增加一層低風險 refinement，下一個最像「純 entry quality」的選項，是要求：
+  - `close >= OR high * (1 + breakout_pct)`，或
+  - `close - OR high` 至少超過某個相對門檻。
+- 這比 `trading cutoff` 更少牽涉 session policy，也比直接升級 ATR-normalized 更少引入新指標語意。
+
+### 建議排序
+
+1. 先用目前 artifact 的 range gate 摘要回看資料。
+2. 若要做下一個小執行項目，優先考慮 `min breakout % beyond OR` 這種距離門檻。
+3. ATR-normalized、session close exit、extended-hours 仍先留在更後面的研究分支。
+
+## 2026-05-21 執行輪：ORB 新增可選 breakout distance threshold
+
+這輪把上一輪研究落成一個最小改動：`ORB + Volume + VWAP` 現在可選擇要求 **close 至少超出 OR high 一段最小百分比**，才把突破視為有效。預設仍是 `0.0`，也就是不改既有行為。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `min_breakout_pct`，並在 `close > OR high` 之後、VWAP / volume 檢查之前先判斷突破距離是否足夠。
+- 新增 reason：`breakout_distance_too_small`。
+- CLI 新增 `--orb-min-breakout-pct`。
+- `strategy_spec` 新增：
+  - `orb_min_breakout_pct`
+  - `orb_breakout_distance_rule`
+- factory / registry / CLI regression / strategy regression 全部同步更新，且維持預設 ORB 名稱與行為不變；只有設定新參數時，strategy name 才會加上 `obp...`。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、純 entry quality filter。
+- 不需要引入新的 ATR helper、session policy 或持有語意。
+- 能直接補上「剛好收過 OR high」與「真正有一段乾淨突破距離」之間的區別。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `109 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在除了 volume、VWAP、retest 與 range gate 外，還能研究「突破距離本身是否足夠」。
+
+## 2026-05-21 研究輪：breakout distance 之後，下一個較輕的候選是 breakout candle strength
+
+這輪延續 ORB 的 entry quality 路線。結論是：**在 breakout distance threshold 之後，下一個仍然維持單時間框架、close-confirmed 邊界的候選，是 breakout candle strength / full-close-above-range，而不是 EMA、gap direction 或 session policy。**
+
+### 來源
+
+- TradingView opening-range-breakout scripts index
+  https://tw.tradingview.com/scripts/opening-range-breakout/
+- TradingView open-source：ORB 369 - Opening Range Breakout
+  https://tw.tradingview.com/script/gOtvISFA-ORB-369-Opening-Range-Breakout/
+- TradingView open-source：PumpC Opening Range Breakout (ORB) 5min Range
+  https://tw.tradingview.com/script/ZWchgzJq-PumpC-Opening-Range-Breakout-ORB-5min-Range/
+
+### 研究結論
+
+- ORB 彙整頁面裡，常見 filter 不只包含 volume、ATR、distance，也常直接要求 **strong directional candle**，例如 body 佔整根 range 的某個最小比例。
+- `ORB 369` 類型腳本更進一步要求 breakout candle **整根站上 OR high**，而不是只有 close 剛好高過去。`PumpC ORB` 也明確檢查前一根是否仍被包在 OR 內，再確認 breakout，核心目標都是減少貼線假突破。
+- 這類條件的共同點是：它們依然只使用當前 timeframe 的單根或相鄰 bar 結構，不需要新 session engine，也不需要額外 volatility normalization。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經有：
+  - VWAP alignment
+  - volume confirmation
+  - retest confirmation
+  - range size filter
+  - breakout distance threshold
+- 若還要再加一層低風險 refinement，下一個最自然的是：
+  - 要求 breakout candle body ratio 達到某個下限，或
+  - 要求 breakout candle low 也站在 OR high 上方，避免只靠 close 勉強越線。
+- 這比 EMA 9/21、gap direction、session cutoff 更接近目前 repo 的 deterministic entry-quality 邊界。
+
+### 建議排序
+
+1. 先回看 breakout distance threshold 的實際覆蓋情況。
+2. 若要做下一個小執行項目，優先考慮 breakout candle strength 或 full-close-above-range 類型條件。
+3. EMA、gap、session close exit、extended-hours 仍先放後面。
+
+## 2026-05-21 執行輪：ORB 新增可選 full-close-above-range 條件
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇要求 **breakout candle 的 low 也必須站在 OR high 上方**，才把這根 bar 視為有效突破。預設仍是關閉，所以既有 ORB contract 不變。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `require_full_bar_above_range`。
+- 啟用後，若 breakout bar 雖然 `close > OR high`，但 `low <= OR high`，就回傳 `breakout_bar_reentered_range`，不進場。
+- CLI 新增 `--orb-full-bar-above-range`。
+- `strategy_spec` 新增：
+  - `orb_full_bar_above_range`
+  - `orb_full_bar_rule`
+- 為了讓 artifact 名稱能區分兩種語意，ORB strategy name 現在明確寫成：
+  - 預設 `closeonly`
+  - 啟用後 `fullbar`
+
+### 為什麼先做這個
+
+- 它比 body ratio 更保守、也更容易測試，因為不需要再引入第二個數值門檻。
+- 它仍是單時間框架、close-confirmed、純 entry quality refinement。
+- 這能直接補上「close 有越線，但整根 candle 其實仍有一部分留在區間內」的常見假突破情境。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `111 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在除了 breakout distance 外，也能研究 breakout bar 結構本身是否夠乾淨。
+
+## 2026-05-21 研究輪：full-close-above-range 之後，下一個候選是 candle body strength
+
+這輪延續 ORB 的 breakout 結構研究。結論是：**在 `full-close-above-range` 之後，下一個仍然維持單時間框架、close-confirmed 邊界的候選，是 `candle body strength`，例如要求 breakout candle 的 body 佔整根 range 至少某個最小比例。**
+
+### 來源
+
+- TradingView opening-range-breakout scripts index
+  https://tw.tradingview.com/scripts/opening-range-breakout/
+- TradingView open-source：ORB Breakout Strategy with VWAP and Volume Filters
+  https://tw.tradingview.com/script/wLSGHPUe-ORB-Breakout-Strategy-with-VWAP-and-Volume-Filters/
+- TradingView open-source：ORB Breakout
+  https://www.tradingview.com/script/KWfBq6HU-ORB-Breakout/
+
+### 研究結論
+
+- TradingView 的 ORB 彙整頁面常把 `Strong Directional Candle` 直接列成 filter，典型做法是要求 **body / candle range** 達到某個下限，例如 `60%+ body ratio`。
+- `ORB Breakout Strategy with VWAP and Volume Filters` 也直接提到 `Candle Strength Filter catches weak-momentum breakouts`，表示 candle 結構本身就是常見的弱突破濾網。
+- 另一類 ORB 腳本則只要求 `body closes above OR High`。這說明在 ORB 世界裡，breakout candle 的「站上方式」本來就經常被拆成多層：先是 close 越線，再來是整根站穩，最後才是 body 強度。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經有：
+  - breakout distance threshold
+  - full-close-above-range
+- 如果要再加一層更細的結構條件，最自然的是：
+  - `candle_body_pct = abs(close - open) / (high - low)`
+  - 只在 breakout bar 的 body ratio 達到某個下限時才接受訊號。
+- 這比 EMA、gap direction、session cutoff 更接近目前 repo 的 deterministic entry-quality 邊界，也比 ATR-normalized 或 session close exit 輕。
+
+### 建議排序
+
+1. 先回看 `full-close-above-range` 啟用前後的覆蓋率與訊號變化。
+2. 若要做下一個小執行項目，優先考慮 `min breakout candle body %`。
+3. EMA、gap、session close exit、extended-hours 仍先放後面。
+
+## 2026-05-21 執行輪：ORB 新增可選 breakout candle body strength
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇要求 **breakout candle 的 body / full candle range** 達到最小比例，才把這根 bar 視為有效突破。預設仍是關閉，所以既有 ORB contract 不變。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `min_breakout_body_pct`。
+- 啟用後，若 breakout bar 已經收過 OR high，但 `abs(close - open) / (high - low)` 低於門檻，就回傳 `breakout_body_too_small`，不進場。
+- CLI 新增 `--orb-min-breakout-body-pct`。
+- `strategy_spec` 新增：
+  - `orb_min_breakout_body_pct`
+  - `orb_breakout_body_rule`
+- 為了讓 artifact 名稱能區分不同 refinement，啟用後的 ORB strategy name 會加上 `body...` 片段，例如 `body0.60`。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、純 entry quality refinement。
+- 它不需要新的 session engine，也不需要引入 ATR-normalized 或持有語意。
+- 它能直接補上「有突破、也沒回到區間內，但 breakout candle 本身實體太小」這種弱動能情境。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `112 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在除了 breakout distance 與 full-bar 結構外，也能研究 breakout candle 實體本身是否夠強。
+
+## 2026-05-21 研究輪：body strength 之後，下一個較低風險候選是 fresh breakout from inside OR
+
+這輪延續 ORB 的 breakout 結構研究。結論是：**在 body strength 之後，下一個更貼近 ORB 本體、而且仍維持單時間框架與 close-confirmed 邊界的候選，是 `breakout must start from inside OR`，也就是要求前一根 close 還在 OR 盒子內，這一根才算真正的 fresh breakout。**
+
+### 來源
+
+- TradingView open-source：PumpC Opening Range Breakout (ORB) 5min Range
+  https://www.tradingview.com/script/ZWchgzJq-PumpC-Opening-Range-Breakout-ORB-5min-Range/
+- TradingView strategy：OR Breakout Retest
+  https://www.tradingview.com/script/KU2b95Q8/
+- TradingView open-source：ORB Session Breakout
+  https://tw.tradingview.com/script/PtyymXpz-ORB-Session-Breakout/
+
+### 研究結論
+
+- PumpC 的 2025-04-29 release note 直接把 alert 邏輯改成：**只有當 breakout 是從 OR 內部發動時才觸發**；也就是前一根 `close[1]` 必須仍被 OR 邊界包住，避免 price 已經在區間外時又反覆觸發無效 breakout。
+- `OR Breakout Retest` 也明確寫成 breakout 是「candle body exits the zone」，強調的是 body-based、close-confirmed 的新脫離，而不是任何 wick 穿越都算。
+- `ORB Session Breakout` 同樣把重點放在 confirmed close beyond the ORB，而不是盤中刺穿。這代表對 SignalForge 來說，把「是否從 OR 內部發動」補成額外條件，仍然符合現在的 deterministic 邊界。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經有：
+  - breakout distance threshold
+  - full-bar-above-range
+  - breakout candle body strength
+- 若還要再補一層較低風險 refinement，下一個更自然的是：
+  - `previous close inside OR`，只有當前一根 close 仍在 OR 內時，下一根 close 穿出 OR high 才視為 fresh breakout。
+- 這比 EMA、gap direction、session cutoff 或 extended-hours 更貼近 ORB 本體，因為它處理的是「這是不是一次新的突破」，不是更高層的市場 regime 或持有政策。
+
+### 建議排序
+
+1. 先回看 body strength 啟用前後，是否已經大幅減少弱突破。
+2. 若要做下一個小執行項目，優先考慮 `breakout starts from inside OR`。
+3. EMA、gap、session close exit、extended-hours 仍先放後面。
+
+## 2026-05-21 執行輪：ORB 新增可選 fresh breakout from inside OR
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇要求 **前一根 close 仍在 OR 盒子內**，只有這樣，當前這根 close 穿出 OR high 才算 fresh breakout。預設仍是關閉，所以既有 ORB contract 不變。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `require_fresh_breakout_from_or`。
+- 啟用後，若前一根 close 已經在 OR 盒子外，當前這根即使收得更高，也回傳 `breakout_not_fresh_from_or`，不把它視為新的 breakout。
+- CLI 新增 `--orb-fresh-breakout-from-or`。
+- `strategy_spec` 新增：
+  - `orb_fresh_breakout_from_or`
+  - `orb_fresh_breakout_rule`
+- 為了讓 artifact 名稱能區分不同 refinement，啟用後的 ORB strategy name 會加上 `fresh` 片段。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、純 entry quality refinement。
+- 它不需要新的 session engine，也不會把 ORB 推進到完整持有或 extended-hours 決策。
+- 它能直接補上「價格早已站在區間外，但後續每一根又被看成新 breakout」這個常見的 ORB 判定噪音。
+
+### 驗證
+
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `115 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在除了 breakout distance、full-bar 與 body strength 外，也能研究 breakout 是否真的是從 OR 盒子內部重新發動。
+
+## 2026-05-21 研究輪：fresh breakout 之後，下一個較低風險候選是 OR-specific volume baseline
+
+這輪延續 ORB 的 entry quality 路線。結論是：**在 fresh breakout 之後，下一個仍然維持單時間框架、close-confirmed 邊界的候選，是把 breakout volume 改成相對於 `opening range average volume`，而不是一般 rolling SMA volume。**
+
+### 來源
+
+- TradingView open-source：ORB Breakout
+  https://www.tradingview.com/script/KWfBq6HU-ORB-Breakout/
+- TradingView open-source：NeuraEdge ORB - Opening Range Breakout Indicator
+  https://tw.tradingview.com/script/Sb0YgLYU-NeuraEdge-ORB-Opening-Range-Breakout-Indicator/
+- TradingView open-source：PumpC Opening Range Breakout (ORB) 5min Range
+  https://tw.tradingview.com/script/ZWchgzJq-PumpC-Opening-Range-Breakout-ORB-5min-Range/
+
+### 研究結論
+
+- `ORB Breakout` 直接把 volume 條件寫成 **`Volume ≥ 1.5× OR avg volume`**，不是相對於一個泛用的 rolling volume 視窗。
+- `NeuraEdge ORB` 也把 breakout volume 當成核心確認之一，只是它仍採「突破要有高於平均量的 conviction」這個方向，而不是 session policy 或多時間框架。
+- `PumpC ORB` 進一步把 `ORB Volume ATR` 當成獨立觀測量，說明 OR 本身的量能分布常被拿來當 breakout 背景，而不只是拿全局平均量能做比較。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 的 volume filter 是：
+  - `bar.volume / sma(volume, volume_window)`
+- 若還要再補一層更貼近 ORB 的 refinement，下一個更自然的是：
+  - `bar.volume / average(opening-range volumes)`
+- 這比 trading cutoff、session close exit、extended-hours 或 gap direction 更符合目前 repo 的邊界，因為它仍只是單 session、單 timeframe 的 entry-quality filter，而且 OR volume 本來就在 `prepare_context(...)` 可穩定推導。
+
+### 建議排序
+
+1. 先比較 fresh breakout 與 body strength 疊加後的訊號覆蓋率。
+2. 若要做下一個小執行項目，優先考慮 `breakout volume relative to OR average volume`。
+3. session cutoff、session close exit、extended-hours 仍先放後面。
+
+## 2026-05-21 執行輪：ORB 新增可選 OR-specific volume baseline
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇把 breakout volume 改成相對於 **opening range 平均量能**，而不是一般 rolling volume SMA。預設仍是關閉，所以既有 ORB contract 不變。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `use_opening_range_volume_baseline`。
+- 啟用後，breakout volume baseline 會從 `sma(volume, volume_window)` 改成 `average(opening-range volumes)`。
+- `decide_bar(...)` 的量能 baseline warmup 邏輯已調整：若啟用 OR volume baseline，就不再被 rolling volume SMA 的 warmup 綁住。
+- CLI 新增 `--orb-use-opening-range-volume-baseline`。
+- `strategy_spec` 新增：
+  - `orb_use_opening_range_volume_baseline`
+  - `orb_volume_baseline_rule`
+- 為了讓 artifact 名稱能區分不同 refinement，啟用後的 ORB strategy name 會加上 `orvol` 片段。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、純 entry quality refinement。
+- 它比 trading cutoff、session close exit、extended-hours 或 gap direction 更貼近 ORB 自己的語意。
+- 它能補上「rolling SMA volume 被開盤後高量非突破 bar 拉高，結果把原本合理的突破誤擋掉」這類情境。
+
+### 驗證
+
+- factory / regression / CLI 測試已補上：
+  - ORB 名稱與 defaults contract
+  - OR volume baseline 相對於 rolling volume SMA 的差異情境
+  - CLI strategy spec / strategy name 接線
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `117 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在除了 fresh breakout、body strength 與 breakout distance 外，也能研究「breakout volume 是不是相對於早盤主戰區真正放量」。
+
 ## 最新已知狀態
 
 - Branch：`main`
 - Remote：`origin/main`
 - Readiness score：`110`
 - Live mode：dry-run order intent only。
-- 最新已知測試基線：`87 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`97 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`99 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`103 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`104 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`107 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`106 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`109 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`111 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`112 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`113 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`115 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`113 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`117 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`119 tests OK`，以當輪實際測試輸出為準。
+- 最新已知測試基線：`119 tests OK`，以當輪實際測試輸出為準。
 
 ## 實驗下一步
 
@@ -86,5 +890,431 @@ git diff --check
 - 繼續補強 Phase markdown 的人工可讀性，但必須有 exact-text regression test。
 - SMA Crossover 先用 `--hold-bars-list` 比較固定持有期，再決定是否需要完整趨勢持有 / 出場規則。
 - VWAP Reversion 下一步比較 regime filter 啟用前後的 entry-edge 結果，暫不把成交量 gate 併入策略本體。
+- 評估 `ORB + Volume + VWAP` 是否以最小 long-only 版本納入 Phase 1；若要實作，先補 session 定義與 intraday 資料假設。
+- ORB 候選的下一步優先考慮 retest confirmation；先不要急著加多時間框架或更多 intraday filter。
+- ORB 若要再往下走，下一個大分支是 session close exit；這屬於持有語意決策，不建議 automation 直接自行定版。
+- ORB 另一條高價值但相對低風險的路徑，是把 session start / range length / timezone 邊界參數化，減少策略被 `09:30` 假設綁死。
+- OR range 已經開始寫進 artifact；下一步是先用 `orb_observed_range_pct_*` 做實證比較，再決定 `% of first open` 是否足夠，或是否值得升級成 ATR-normalized gate。
+- ORB range gate 現在也會寫出 low/within/high 分類摘要；下一步可開始用這些欄位比較不同資料集上 gate 的實際覆蓋率。
+- ORB 若要再加一個低風險 filter，`min breakout % beyond OR` 會比 trading cutoff 或 session close exit 更接近目前的 entry quality 邊界。
+- breakout distance 之後，下一個更輕的 refinement 候選是 breakout candle strength / full-close-above-range，而不是先跳去 EMA、gap 或 session policy。
+- full-close-above-range 之後，下一個更細的結構候選是 breakout candle body ratio；這個條件現在已經可用，下一步應優先比較它和 full-bar gate 疊加後的實際覆蓋率。
+- `fresh breakout from inside OR` 現在已經可用；下一步應優先比較它和 body strength 疊加後，是互補關係，還是只是擋掉同一批弱突破。
+- `OR average volume baseline` 現在已經可用；下一步應優先比較它與 rolling volume SMA 在不同資料集上，到底擋掉的是同一批弱突破，還是真的補到新的 entry-quality 邏輯。
+- `signal window cutoff` 現在已經可用；下一步應優先比較它和 fresh breakout、body strength、OR volume baseline 疊加後，到底只是重複擋掉同一批晚到突破，還是真的補到新的 session policy 邏輯。
+- `session end/timezone` 現在已經寫進 CLI / strategy spec；下一步應優先比較不同 market-clock 設定下 artifact 的解讀差異，再決定 `session close exit` 是否值得進入可選 policy。
 - OOP template 已鎖住後，三種策略的下一步修改應分開討論與測試，避免混入模板重構。
 - 若要做策略研究實驗，結果放入 `04-實驗記錄/`，策略語意同步到 `策略筆記/`。
+
+## 2026-05-21 研究輪：OR volume baseline 之後，下一個較合理的是 signal window cutoff，而不是 wick/high-low trigger
+
+這輪延續 ORB 的 intraday session 邊界研究。結論是：**在 OR-specific volume baseline 之後，下一個仍維持單時間框架、close-confirmed、且工程風險相對可控的候選，是 `signal window cutoff`，例如限制 ORB 只在開盤後某段時間內接受新的 breakout；相對地，`high/low` 或 `wick` trigger mode 不適合現在的 SignalForge contract。**
+
+### 來源
+
+- TradingView open-source：ORB Breakout
+  https://www.tradingview.com/script/KWfBq6HU-ORB-Breakout/
+- TradingView open-source：RPFXBYDAN - ORB (Opening Range Breakout)
+  https://www.tradingview.com/script/23PYvshx-RPFXBYDAN-ORB-Opening-Range-Breakout/
+- TradingView open-source：ORB Opening Range Breakout LliterH
+  https://www.tradingview.com/script/twET9tO7/
+- TradingView Pine Script 官方文件：Sessions
+  https://www.tradingview.com/pine-script-docs/concepts/sessions/
+- TradingView Pine Script 官方文件：Repainting
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+
+### 研究結論
+
+- `ORB Breakout` 明確把訊號限制在固定的 **signal window** 內，例如 1m 用 `9:31–11:30 ET`、5m 用 `9:35–11:30 ET`；這代表公開 ORB 腳本常把「太晚的 breakout 不再追」視為 session policy，而不是隱性假設。
+- `RPFXBYDAN - ORB` 與 `ORB Opening Range Breakout LliterH` 都把 session / timezone / trigger mode 做成顯式設定，代表這一層通常被視為 ORB 核心配置的一部分。
+- 但 `RPFXBYDAN - ORB` 同時提供 `close`、`high/low`、`wick` 三種 trigger mode。對 SignalForge 而言，`close` 仍然最符合現在的 bar-close confirmed contract；`high/low` 與 `wick` 雖然常見，卻會把策略往 intrabar 判定推進。
+- 官方 `Sessions` 文件明確說明 Pine 可直接用 session string 與 timezone 定義時間邊界；這意味著若未來要補 `session end` / `signal cutoff`，可以維持同時間框架，不需要引入更高風險的多時間框架資料請求。
+- 官方 `Repainting` 文件則明確提醒 `request.security()` 在不同時間框架上可能產生 historical / realtime 不一致。對 SignalForge 而言，這再次說明：若只是要補 `signal window cutoff`，不應該順手把設計帶去 HTF/LTF `request.security()`。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經有：
+  - session start 參數化
+  - OR range gate
+  - breakout distance
+  - full-bar-above-range
+  - breakout body strength
+  - fresh breakout
+  - OR-specific volume baseline
+- 若還要再補一層較低風險 refinement，下一個比較合理的是：
+  - `只在 session start 後的某段時間內接受新 breakout`
+  - 並把 `session end` / `cutoff time` / `timezone` 一起寫進 strategy spec
+- 這比 `wick` / `high-low` trigger mode 更適合現在的 repo，因為它維持 close-confirmed、deterministic、同時間框架；它改的是 **何時允許追突破**，不是 **如何放寬突破定義**。
+
+### 建議排序
+
+1. 先用目前 artifact 比較 `OR average volume baseline` 與 rolling SMA 的實際覆蓋率差異。
+2. 若要做下一個小執行項目，優先考慮 `signal window cutoff` 與 `session end/timezone` 的顯式化。
+3. `high/low` / `wick` trigger mode 先不要做，避免把 SignalForge 從 close-confirmed 推向 intrabar 語意。
+
+## 2026-05-21 執行輪：ORB 新增可選 signal window cutoff
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇只在 session 開始後某段時間內接受**新的 breakout**。這個 cutoff 不會強制平掉已經持有的 long；它只限制「太晚才發生的首次突破」不再被追價。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `signal_window_minutes`。
+- 當 `bar.close > OR high` 但當前分鐘數已達 cutoff 時，策略會回傳 `outside_signal_window`，而不是翻成 long。
+- 若上一根已經在 long，超過 cutoff 後仍維持 `hold_intraday_breakout`，不做 forced flatten。
+- CLI 新增 `--orb-signal-window-minutes`。
+- `strategy_spec` 新增：
+  - `orb_signal_window_minutes`
+  - `orb_signal_window_rule`
+- 為了讓 artifact 名稱能區分不同 refinement，啟用 cutoff 後的 ORB strategy name 會加上 `sigw<minutes>` 片段。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、deterministic 的 session policy，不需要引入 `request.security()` 或 intrabar trigger。
+- 它比 `wick/high-low trigger mode` 更符合目前 repo 的 contract，因為它沒有放寬 breakout 定義，只是把「多晚還允許追 breakout」寫成顯式規則。
+- 它也比直接做 `session close exit` 更輕，因為它不改持有語意，只限制新訊號。
+
+### 驗證
+
+- factory / regression / CLI 測試已補上：
+  - ORB 名稱與 defaults contract
+  - late breakout cutoff 會阻擋新訊號，但不會強制平掉既有 long
+  - CLI strategy spec / strategy name 接線
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `119 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在除了 volume、range、body、fresh breakout 等 refinement 外，也能研究「突破太晚是否應該直接放棄追價」。
+
+## 2026-05-21 研究輪：signal window cutoff 之後，先做 session end/timezone 顯式化，不直接做 session close exit
+
+這輪延續 ORB 的時間邊界研究。結論是：**在 signal window cutoff 已經落地之後，下一個較低風險、且更符合目前 SignalForge contract 的方向，是先把 `session end` 與 `timezone` 顯式寫進 CLI / strategy spec；`session close exit` 雖然常見，但它屬於持有與平倉語意，不應在這一步直接定版。**
+
+### 來源
+
+- TradingView open-source：RPFXBYDAN - ORB (Opening Range Breakout)
+  https://www.tradingview.com/script/23PYvshx-RPFXBYDAN-ORB-Opening-Range-Breakout/
+- TradingView open-source：Opening Range Breakout (ORB) with Fib Retracement
+  https://www.tradingview.com/script/32ptXi5r-Opening-Range-Breakout-ORB-with-Fib-Retracement/
+- TradingView open-source：Opening-Range Breakout
+  https://www.tradingview.com/script/8vjWAdLN-Opening-Range-Breakout/
+- TradingView Pine Script 官方文件：Sessions
+  https://www.tradingview.com/pine-script-docs/concepts/sessions/
+- TradingView Pine Script 官方文件：Repainting
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+
+### 研究結論
+
+- `RPFXBYDAN - ORB` 把 **Opening Range Session**、**Trading Session**、**Market**、**Your Timezone** 分開處理，代表成熟 ORB 腳本通常把「OR 視窗」和「允許交易的 session」視為兩層不同設定，而不是只靠單一 `09:30` 起點。
+- `ORB with Fib Retracement` 也把 `Session time / timezone` 當成核心輸入，表示連偏視覺化的 ORB 工具也會先把時間錨點顯式化。
+- `Opening-Range Breakout` 這類完整 strategy 常把 **EOD flat / session close exit** 寫成規則，但那已經是持有與平倉 policy，不只是時間邊界描述。
+- TradingView 官方 `Sessions` 文件也明確區分 **named sessions**（如 `regular`、`extended`）與自訂時間字串，說明 regular / extended 本來就不是同一層語意。
+- 官方 `Repainting` 文件則再次提醒：若只是補時間邊界，不應順手把問題推向 `request.security()` 多時間框架，否則會增加 historical / realtime 不一致風險。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經能控制：
+  - `session start`
+  - `opening range minutes`
+  - `signal window cutoff`
+- 但它還沒有明確回答：
+  - 這個策略的 regular session 到幾點結束
+  - timezone 是資料欄位固有假設，還是使用者可顯式指定的 contract
+  - OR 計算、signal window、未來若有 forced flat，是否共享同一個 session 定義
+- 因此下一步更合理的是先把 `session end` 與 `timezone` 寫進 CLI / strategy spec / artifact，讓 ORB 的時間邊界完整可見；這比直接加入 `session close exit` 更穩，因為它先補 contract，再談持有 policy。
+
+### 建議排序
+
+1. 先做 `session end/timezone` 顯式化，讓 ORB 的 market-clock contract 完整可見。
+2. 完成後再決定 `session close exit` 要不要作為可選 policy，而不是現在就把它寫死成預設。
+3. `wick/high-low trigger mode` 仍放後面，避免把策略從 close-confirmed 推向 intrabar 語意。
+
+## 2026-05-21 執行輪：ORB 新增 session end/timezone 顯式化
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可把 **session end** 與 **session timezone** 正式寫進 CLI / strategy spec / artifact contract。這一步先只做時間邊界顯式化，不直接變成 `session close exit` 規則，也不改變既有 long 持有語意。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增：
+  - `session_end_hour`
+  - `session_end_minute`
+  - `session_timezone`
+- CLI 新增：
+  - `--orb-session-end-hour`
+  - `--orb-session-end-minute`
+  - `--orb-session-timezone`
+- `strategy_spec` 新增：
+  - `orb_session_end_hour`
+  - `orb_session_end_minute`
+  - `orb_session_timezone`
+  - `orb_session_end_rule`
+  - `orb_session_timezone_rule`
+- registry / factory / defaults 也同步補上 ORB 的 session end / timezone 預設值，避免 CLI、artifact 與策略物件各自維護不同的 market-clock 假設。
+
+### 為什麼先做這個
+
+- 它是在補 ORB 的時間邊界 contract，而不是偷渡新的平倉 policy。
+- 它比直接加 `session close exit` 更穩，因為可以先讓 artifact 明確說出「這個 ORB 版本的 regular session 到哪裡結束、用哪個 timezone 解讀」。
+- 它也比做 `wick/high-low trigger mode` 更符合目前 close-confirmed、single-timeframe 的研究邊界。
+
+### 驗證
+
+- factory / CLI 測試已補上：
+  - ORB 預設值 registry 與策略物件的 session end / timezone 一致
+  - CLI strategy spec 會正確寫出 session end / timezone 與對應規則說明
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `119 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動把 ORB 的 market-clock contract 從隱性假設拉成顯式 metadata，為之後是否要做 `session close exit`、extended-hours 或更完整的 regular-session policy 打好基礎。
+
+## 2026-05-21 研究輪：session end/timezone 之後，先做 VWAP slope confirmation，不直接做 session close exit
+
+這輪延續 ORB 的 entry-quality 與持有語意邊界研究。結論是：**在 `session end/timezone` 已經顯式化之後，下一個更合理的低風險候選是 `VWAP slope confirmation`，也就是不只要求價格在 VWAP 上方，還要求 VWAP 本身正在上升；相對地，`session close exit` 仍屬持有 / 平倉 policy，不適合在這一步直接定版。**
+
+### 來源
+
+- TradingView strategy：Opening Range Breakout (ORB)
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView indicator：ORB + Volume + VWAP Breakout
+  https://www.tradingview.com/script/7khuDtm8-ORB-Volume-VWAP-Breakout/
+- TradingView indicator：Opening Range Breakout + VWAP + Volume [ORB Strategy]
+  https://www.tradingview.com/script/hapKLoXr-Opening-Range-Breakout-VWAP-Volume-ORB-Strategy/
+- TradingView Pine Script 官方文件：Repainting
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+
+### 研究結論
+
+- `Opening Range Breakout (ORB)` 明確提到可選的 **VWAP Trend Filter**：做多不只要求價格在 VWAP 上方，還要求 **VWAP slope 必須是正的**。這表示公開 ORB strategy 已經把它當成一種 entry-quality refinement，而不是持有政策。
+- `ORB + Volume + VWAP Breakout` 與 `Opening Range Breakout + VWAP + Volume [ORB Strategy]` 都把 VWAP 視為趨勢對齊的一部分，而不只是單點位置比較。從 SignalForge 角度看，這代表現在的 `close > VWAP` 仍偏向最小版本，還有空間補成「位置 + 方向」兩層確認。
+- 從工程風險看，VWAP slope confirmation 仍屬 **同時間框架、close-confirmed** 的判斷，不需要 `request.security()`；相較之下，`session close exit` 會直接改變持有與平倉語意，層級更高。
+- TradingView 官方 `Repainting` 文件也再次支持這個排序：只要 VWAP slope 仍用已收盤 bar 的序列做判斷，它不需要引入更高風險的多時間框架資料請求。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經有：
+  - `close > VWAP`
+  - volume baseline / OR volume baseline
+  - range / distance / body / fresh breakout / signal window 等 refinement
+  - session end / timezone metadata
+- 若還要再補一個低風險 refinement，`VWAP slope confirmation` 很適合放在這一層，因為它仍然是 entry-quality filter：
+  - 不是新的持有 policy
+  - 不需要新的 session policy
+  - 不需要 intrabar trigger
+- 這樣的排序也更乾淨：先把「進場品質」補完整，再決定要不要往 `session close exit` 這種持有/離場 policy 前進。
+
+### 建議排序
+
+1. 先做 `VWAP slope confirmation`，把 VWAP 從單純位置條件補成「位置 + 方向」。
+2. 完成後再比較它和 body strength、fresh breakout、OR volume baseline 疊加後，是否只是擋掉同一批弱突破。
+3. `session close exit` 仍放在後面，等 market-clock contract 與 entry-quality filter 穩定後再討論。
+
+## 2026-05-21 執行輪：ORB 新增可選 VWAP slope confirmation
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇把 VWAP 從單純的「位置條件」升級成「位置 + 方向」條件。也就是說，除了要求 breakout 時 `close > VWAP`，現在也可以要求 **session VWAP 相對前一根同 session bar 必須持續上升**，才接受這次 long breakout。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `require_vwap_slope_confirmation`。
+- 啟用後，若 breakout 當下的 session VWAP 相對前一根同 session bar 沒有上升，策略會回傳 `breakout_vwap_slope_blocked`。
+- CLI 新增 `--orb-vwap-slope-confirmation`。
+- `strategy_spec` 新增：
+  - `orb_vwap_slope_confirmation`
+  - `orb_vwap_slope_rule`
+- 為了讓 artifact 名稱能區分不同 refinement，啟用後的 ORB strategy name 會加上 `vslope` 片段。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、純 entry-quality refinement，不需要新的持有或平倉 policy。
+- 它比直接加 `session close exit` 更適合現在的 repo，因為它只是在加強突破品質，而不是改變出場語意。
+- 它也比 `wick/high-low trigger mode` 更穩，因為它不會把策略推向 intrabar 判定。
+
+### 驗證
+
+- factory / regression / CLI 測試已補上：
+  - ORB 名稱與 defaults contract
+  - VWAP slope 沒有上升時會阻擋 breakout；上升時保留原本 breakout 行為
+  - CLI strategy spec / strategy name 接線
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `121 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在不只看「價格是否在 VWAP 上方」，也能研究「VWAP 本身有沒有持續抬升」。
+
+## 2026-05-21 研究輪：VWAP slope confirmation 之後，先做 EMA trend confirmation，不直接做 gap fill bias 或 session close exit
+
+這輪延續 ORB 的趨勢對齊與持有語意邊界研究。結論是：**在 `VWAP slope confirmation` 已經落地之後，下一個更合理的低風險候選是 `EMA trend confirmation`，也就是要求較慢的 intraday EMA 也在往上，且價格維持在 EMA 上方；相對地，`gap fill bias` 會把 prior-day close / RTH 邊界語意拉進來，`session close exit` 則直接進入持有與平倉 policy。**
+
+### 來源
+
+- TradingView indicator：Opening Range Breakout
+  https://www.tradingview.com/script/tZtCD3TM-Opening-Range-Breakout/
+- TradingView strategy：Opening Range Breakout (ORB)
+  https://www.tradingview.com/script/AMsB94Rs-Opening-Range-Breakout-ORB/
+- TradingView indicator：BORTORB - Opening Range Breakout Indicator
+  https://www.tradingview.com/script/bDkeiwBg-BORTORB-Opening-Range-Breakout-Indicator/
+- TradingView Pine Script 官方文件：Repainting
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+
+### 研究結論
+
+- `Opening Range Breakout` 明確把 **EMA 趨勢確認** 當成 breakout 前的必要條件之一：EMA 必須上升、價格要在 EMA 上方，而且 EMA 也要位於 OR high 上方。這表示公開 ORB 腳本常把「較慢趨勢基線是否同向」當成一層獨立 refinement。
+- `Opening Range Breakout (ORB)` 另一條路徑則是 **Gap Fill Filter**，用前一日收盤價決定 long / short 是否符合 gap fill bias。這個方向雖然也屬 deterministic，但它會把 prior-day close、RTH/24h 邊界與 session 切法一起帶進來。
+- `BORTORB` 類腳本則更偏向把 reference levels 與 session box 疊上去做 confluence；這些東西有研究價值，但顯然比單純 EMA trend confirmation 更重。
+- 從工程風險看，EMA trend confirmation 仍屬 **單時間框架、close-confirmed** 的判斷，不需要 `request.security()`；TradingView 官方 `Repainting` 文件支持這個排序，因為只要繼續用已收盤 bar 計算 EMA，就不會平白引入多時間框架的不一致風險。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經有：
+  - VWAP 位置
+  - VWAP slope
+  - volume / OR volume baseline
+  - range / distance / body / fresh breakout / signal window
+  - session end / timezone metadata
+- 若還要再補一個低風險 refinement，`EMA trend confirmation` 很適合放在這一層，因為它仍然只是 entry-quality filter：
+  - 不是新的持有 / 平倉 policy
+  - 不需要 prior-day close 或 gap 語意
+  - 不需要 intrabar trigger
+- 相較之下，`gap fill bias` 會把「前一日收盤價怎麼定義」這個跨 session 問題拉進來；`session close exit` 則直接改變出場語意，兩者都比 EMA trend confirmation 更重。
+
+### 建議排序
+
+1. 先做 `EMA trend confirmation`，把 ORB 的趨勢對齊從「VWAP」擴成「VWAP + 較慢 EMA」。
+2. 完成後再比較它和 VWAP slope、body strength、fresh breakout 是否只是重複擋掉同一批弱突破。
+3. `gap fill bias` 與 `session close exit` 仍放後面，等 entry-quality filters 收斂後再討論。
+
+## 2026-05-21 執行輪：ORB 新增可選 EMA trend confirmation
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇再加上一層 **EMA trend confirmation**。啟用後，策略不只要求 breakout 時 `close > OR high` 且維持既有 VWAP / volume 條件，還會額外要求 **breakout 當下 `close > rolling EMA`**，並把這個 EMA 視窗明確寫進 CLI 與 artifact。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增：
+  - `ema_window`
+  - `require_ema_trend_confirmation`
+- 啟用後，若 breakout 當下 `close` 仍未站上 rolling EMA，策略會回傳 `breakout_below_ema`。
+- 內部同時保留 `breakout_ema_slope_blocked` 這個 reason，明寫策略對「EMA 本身也應持續上升」的 contract。
+- CLI 新增：
+  - `--orb-ema-trend-confirmation`
+  - `--orb-ema-window`
+- `strategy_spec` 新增：
+  - `orb_ema_trend_confirmation`
+  - `orb_ema_window`
+  - `orb_ema_trend_rule`
+- 為了讓 artifact 名稱能區分不同 refinement，啟用後的 ORB strategy name 會加上 `ema{window}` 片段，例如 `ema10`。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、純 entry-quality refinement，不需要新的持有或平倉 policy。
+- 它比 `gap fill bias` 更輕，因為不需要把 prior-day close / gap 語意拉進來。
+- 它也比 `session close exit` 更適合現在的 repo，因為它只是加強突破品質，不會改變出場語意。
+
+### 驗證
+
+- factory / regression / CLI 測試已補上：
+  - ORB 名稱與 defaults contract
+  - EMA trend confirmation 的 CLI 接線與 strategy spec
+  - breakout 雖然站上 OR high、但仍未站上 EMA 時會被擋下；站上 EMA 時保留原本 breakout 行為
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `122 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在不只看「價格是否突破 OR high 並站上 VWAP」，也能研究「較慢的 intraday EMA 是否已經重新被站上」。下一步應該先比較它和 `VWAP slope`、`body strength`、`fresh breakout` 疊加後，到底是補到新的趨勢對齊資訊，還是只是重複擋掉同一批弱突破。
+
+## 2026-05-21 研究輪：EMA trend confirmation 之後，先做 EMA 相對 OR 位置的結構 gate，不直接做 gap fill bias 或 session close exit
+
+這輪延續 ORB 的趨勢對齊與 session policy 邊界研究。結論是：**在 `EMA trend confirmation` 已經落地之後，下一個更合理的低風險候選，不是直接做 `gap fill bias`、`session close exit`，也不是先擴成多時間框架，而是補一個更貼近 ORB 本體的結構 gate：`EMA relative to opening range`。**
+
+白話講，就是不只問「breakout 當下 close 有沒有站上 EMA」，還問 **EMA 本身相對於 OR 盒子在哪裡**。例如只在 `OR high` 位於 EMA 上方時接受 long，或在 EMA 落在 OR 盒子內部時直接不出訊號。
+
+### 來源
+
+- TradingView indicator：ORB with 100 EMA
+  https://www.tradingview.com/script/JHm0ftM9-ORB-with-100-EMA/
+- TradingView indicator：ORB 1-Hour High/Low Alert [EMA + SMA]
+  https://www.tradingview.com/script/lODBOB7a-ORB-1-Hour-High-Low-Alert-EMA-SMA/
+- TradingView Pine Script 官方文件：Repainting
+  https://www.tradingview.com/pine-script-docs/concepts/repainting/
+
+### 研究結論
+
+- `ORB with 100 EMA` 把 **EMA 相對 OR 的位置** 當成獨立規則，而不只是一般趨勢濾網：
+  - 只在 `OR` 位於 `100EMA` 上方時接受 buy setup。
+  - 若 `100EMA` 落在 opening range 盒子內部，則直接不發出訊號。
+  這表示公開 ORB 腳本常把「EMA 與 OR 結構的相對位置」視為一個比 `close > EMA` 更貼近 ORB 幾何語意的 gate。
+- `ORB 1-Hour High/Low Alert [EMA + SMA]` 進一步顯示，很多 ORB 腳本會把 **VWAP、EMA、SMA** 疊成多層 trend filters；但從 SignalForge 的角度看，下一步若只是再加一條 generic SMA，比較像是繼續堆同類型 moving-average filter，未必比 `EMA 相對 OR 位置` 更有辨識度。
+- TradingView 官方 `Repainting` 文件仍支持這個排序：只要這個 gate 繼續建立在同時間框架、已收盤 bar 的 OR 與 EMA 上，就不需要引入 `request.security()`，也不會把研究推向 higher-timeframe / intrabar 的不一致風險。
+
+### 對 SignalForge 的含義
+
+- 現在 ORB 已經有：
+  - `close > VWAP`
+  - `VWAP slope`
+  - `close > EMA`
+  - volume / OR volume baseline
+  - range / distance / body / fresh breakout / signal window
+  - session end / timezone metadata
+- 若再補一個低風險 refinement，`EMA relative to OR` 比 `SMA trend confirmation` 更值得優先，因為：
+  - 它仍是單時間框架、close-confirmed。
+  - 它不是新的持有 / 平倉 policy。
+  - 它不是 generic indicator stacking，而是直接利用 **EMA 與 OR 盒子** 的幾何關係定義 breakout 品質。
+- 相較之下：
+  - `gap fill bias` 會把 prior-day close 與跨 session 邊界一起帶進來。
+  - `session close exit` 直接進入持有 / 平倉 policy。
+  - `request.security()` 型多時間框架做法則有明確 repaint 風險。
+
+### 建議排序
+
+1. 先做 `EMA relative to OR` 結構 gate，例如：
+   - only long when `OR high > EMA`
+   - 或當 `EMA` 落在 `OR low ~ OR high` 之間時直接禁訊號
+2. 完成後再比較它和 `EMA trend confirmation`、`VWAP slope`、`fresh breakout` 疊加後，是否只是重複擋掉同一批弱突破。
+3. `gap fill bias`、`session close exit`、多時間框架版本仍放後面，等 entry-quality filters 收斂後再討論。
+
+## 2026-05-21 執行輪：ORB 新增可選 EMA inside-range 結構 gate
+
+這輪把上一輪研究收斂成一個最小可驗證版本：`ORB + Volume + VWAP` 現在可選擇再加上一條 **EMA inside-range 結構 gate**。啟用後，策略不是只看 breakout 當下 `close` 有沒有站上 EMA，而是直接檢查 **rolling EMA 本身是否還卡在 OR 盒子內**；如果 EMA 仍落在 `OR low ~ OR high` 之間，就把這次 breakout 視為結構仍然模糊，不接受 long entry。
+
+### 修改內容
+
+- `OrbVolumeVwapStrategy` 新增 `reject_ema_inside_opening_range`。
+- 啟用後：
+  - 若 breakout 當下的 rolling EMA 落在 `opening_range_low ~ opening_range_high` 之間，策略回傳 `ema_inside_opening_range`。
+  - 若 EMA 視窗尚未暖機完成，策略回傳 `breakout_ema_reference_unavailable`。
+- CLI 新增 `--orb-reject-ema-inside-range`。
+- `strategy_spec` 新增：
+  - `orb_reject_ema_inside_opening_range`
+  - `orb_ema_inside_range_rule`
+- 為了讓 artifact 名稱能區分不同 refinement，啟用後的 ORB strategy name 會加上 `emabox` 片段。
+
+### 為什麼先做這個
+
+- 它仍是單時間框架、close-confirmed、純 entry-quality refinement，不需要新的持有或平倉 policy。
+- 它比單純再堆一條 generic SMA 更有辨識度，因為它直接利用 **EMA 與 OR 盒子** 的幾何關係。
+- 它也比 `gap fill bias`、`session close exit` 或多時間框架版本更輕，因為不需要 prior-day close、session 平倉 policy，或 `request.security()`。
+
+### 驗證
+
+- factory / regression / CLI 測試已補上：
+  - ORB 名稱與 defaults contract
+  - `EMA inside-range` 的 CLI 接線與 strategy spec
+  - breakout 發生時若 EMA 仍在 OR 盒子內會被擋下；若 EMA 已離開 OR 盒子則保留原本 breakout 行為
+- `python tools\phase_readiness_score.py` -> `110`
+- `python -m unittest discover -s tests` -> `126 tests OK`
+- `git diff --check` -> clean
+
+### 決策
+
+- keep
+- 這次改動讓 ORB 現在不只看「價格是否突破 OR high 並站上 EMA」，也能研究「EMA 本身相對 OR 盒子的位置是否仍然太模糊」。下一步應先比較它和 `EMA trend confirmation`、`VWAP slope`、`fresh breakout` 疊加後，到底是補到新的結構資訊，還是只是重複擋掉同一批弱突破。

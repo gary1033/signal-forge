@@ -5,7 +5,7 @@ tags:
   - trading/strategy
   - trading/mean-reversion
 status: research
-updated: 2026-05-20
+updated: 2026-05-21
 repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\vwap_reversion.py
 ---
 
@@ -77,7 +77,7 @@ Regime filter 只阻擋從空手進入多單，不會因為價格跌破 regime S
 
 ## 下一步
 
-- 比較未啟用與啟用 `--vwap-regime-filter` 的 entry-edge 結果，確認簡單趨勢濾網是否真的減少反向接刀。
+- `2330` 的 `hold=3`、`hold=5`、`hold=10` 雖然已跨過 PF 門檻，但回撤與重疊訊號也同步增加；下一步應先比較未啟用與啟用 `--vwap-regime-filter` 的多持有期結果，確認改善是否來自更合理的市場狀態過濾，而不只是延長暴露時間。
 - 比較成交量過濾器與趨勢 regime filter 的交互效果，避免把放量下跌誤當成反彈確認。
 - 測試不同 `entry_z` / `exit_z` 與 `hold_bars_per_day`。
 - 比較 rolling VWAP 與 anchored VWAP 的研究價值。

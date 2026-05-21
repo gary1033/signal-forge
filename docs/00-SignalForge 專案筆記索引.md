@@ -6,7 +6,7 @@ tags:
   - autoresearch
 status: active
 repo: C:\Projects\signal-forge
-updated: 2026-05-20
+updated: 2026-05-21
 ---
 
 # SignalForge 專案筆記索引
@@ -25,6 +25,7 @@ updated: 2026-05-20
 - [[03-程式疊代/Phase 程式疊代紀錄|Phase 程式疊代紀錄]]
 - [[04-實驗記錄/Autoresearch 實驗記錄|Autoresearch 實驗記錄]]
 - [[04-實驗記錄/台積電資料與三策略回測|台積電資料與三策略回測]]
+- [[04-實驗記錄/台積電四策略延伸研究|台積電四策略延伸研究]]
 
 ## 目前狀態
 
