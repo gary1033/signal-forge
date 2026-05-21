@@ -5189,3 +5189,67 @@ phase hold 1 blocked reasons：
 
 1. 若進入分析輪，直接用 `TWSE_2330_5M aligned` 比較 `one-and-done` 與上述三層 canonical anchors。
 2. 若進入 review 輪，優先檢查這個 contract 是否已足夠穩定，不必急著再擴成更重的 schema。
+
+## 2026-05-21 分析：`one-and-done` contract 對目前台股最強 stacked profile 的 runtime 中性驗證
+
+### 比較對象
+
+這輪還不能直接比較真正的 `one-and-done` 交易語意，因為目前 repo 只新增了 machine-readable contract，尚未把它接進 ORB breakout 的實際 entry control。
+
+因此這輪分析固定回答另一個更立即的問題：
+
+- 在 `TWSE_2330_5M` 的 `Asia/Taipei 09:00-13:30 aligned` baseline 上，
+- 目前最強的台股 stacked profile
+
+  `ORB + EMA inside-range + full bar above range + OR average volume baseline`
+
+  在加入 `one-and-done` contract metadata 後，runtime 是否保持完全不變。
+
+### 主要結果
+
+- hold comparison 指標全部維持不變：
+  - hold 1：PF `6.525`、Trades `8`、Win rate `37.5%`、Avg net PnL `13.88`
+  - hold 3：PF `2.259`、Trades `8`、Win rate `50.0%`、Avg net PnL `39.15`
+  - hold 5：PF `1.374`、Trades `8`、Win rate `50.0%`、Avg net PnL `21.06`
+  - hold 10：PF `1.099`、Trades `8`、Win rate `37.5%`、Avg net PnL `6.73`
+
+- phase hold 1 attribution 也維持原狀：
+  - accepted `8`
+  - blocked `2668`
+  - hold `111`
+  - top blocked reasons：
+    - `below_or_high(2251)`
+    - `breakout_volume_blocked(228)`
+    - `breakout_bar_reentered_range(141)`
+    - `ema_inside_opening_range(44)`
+
+- 新增的只有 `strategy_spec` metadata：
+  - `orb_one_and_done_mode`
+  - `orb_one_and_done_scope`
+  - `orb_one_and_done_signal_basis`
+  - `orb_one_and_done_position_effect`
+  - `orb_one_and_done_reset_rule`
+  - `orb_one_and_done_data_family`
+
+### 解讀
+
+1. **這輪證明 `one-and-done` 目前仍只是 contract，不是已生效的交易語意。**
+   - 它不會影響目前台股最強 stacked profile 的 PF、交易數、blocked reasons 或 hold counts。
+
+2. **這個中性驗證是必要的。**
+   - 先確認 contract-only 變更沒有碰壞現有 baseline，後續才有資格在下一個執行輪把 `one-and-done` 真正接進 entry control。
+
+3. **因此下一輪若要做真正的 `one-and-done` 比較，必須清楚承認那會是策略語意改動。**
+   - 不能把這輪的中性結果誤讀成 `one-and-done` 已經證明有效或無效。
+
+### 本地分析報表
+
+- `reports/generated/twse-orb-aligned-oneanddone-contract-neutral-20260521_hold_comparison.json`
+- `reports/generated/twse-orb-aligned-oneanddone-contract-neutral-20260521_hold_comparison.md`
+- `reports/generated/twse-orb-aligned-oneanddone-contract-neutral-20260521-phase.json`
+- `reports/generated/twse-orb-aligned-oneanddone-contract-neutral-20260521-phase.md`
+
+### 下一步
+
+1. 若進入 review 輪，應把 `one-and-done` 先定性成 **contract-ready but semantics-not-enabled**。
+2. 若之後真的要分析 `one-and-done`，需要先做一個執行輪，把它正式接進 ORB 的 entry-count-control 語意，再和三層 canonical anchors 比較。

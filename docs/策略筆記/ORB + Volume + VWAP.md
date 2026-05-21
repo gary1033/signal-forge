@@ -744,3 +744,27 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - `OR average volume baseline`
 
 這些完全不同的 refinement 類型混在一起。
+
+### 目前回測上要怎麼解讀
+
+現階段要很明確地把兩件事分開：
+
+1. **`one-and-done` contract 已存在**
+2. **`one-and-done` 交易語意還沒啟用**
+
+這代表目前在 `TWSE_2330_5M aligned` 上重跑最強的台股 stacked profile：
+
+- `EMA inside-range`
+- `full bar above range`
+- `OR average volume baseline`
+
+時，PF、交易數、blocked reasons 都維持原狀。新增的只有 `strategy_spec` metadata，不是新的交易控制。
+
+### 因此下一步的正確順序
+
+- 先把 `one-and-done` 視為 **contract-ready**
+- 之後若真的要比較它，必須先在程式裡把它接成 **entry-count-control semantics**
+- 再拿去對照：
+  1. `aligned baseline`
+  2. `full bar above range`
+  3. `full bar above range + OR average volume baseline`
