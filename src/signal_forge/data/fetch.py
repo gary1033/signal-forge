@@ -262,17 +262,19 @@ def format_signal_forge_csv(bars: list[NormalizedBar]) -> str:
 
 def _twse_stock_day_url(symbol: str, month_start: date) -> str:
     """
-    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
-    參數：symbol（str）由呼叫端傳入，需符合函式 contract；month_start（date）由呼叫端傳入，需符合函式 contract
-    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    用途與流程：組出 TWSE STOCK_DAY 月資料 JSON URL，供 `fetch_twse_daily_stock`
+    逐月下載日線 OHLCV。這裡使用可直接回傳 JSON 的 `exchangeReport/STOCK_DAY`
+    endpoint，避免 `rwd/zh/afterTrading/STOCK_DAY` 在非瀏覽器環境回傳 307 HTML。
+    參數：symbol 是台股股票代號字串；month_start 是欲查詢月份的任一 date，函式只使用年月。
+    回傳與錯誤：回傳 URL 字串；函式本身不發送 request，也不主動驗證代號是否存在。
     """
     return (
-        "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?"
+        "https://www.twse.com.tw/exchangeReport/STOCK_DAY?"
         + urlencode(
             {
+                "response": "json",
                 "date": month_start.strftime("%Y%m%d"),
                 "stockNo": symbol,
-                "response": "json",
             }
         )
     )

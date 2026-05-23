@@ -97,6 +97,7 @@ class DataFetchTests(unittest.TestCase):
 
         self.assertEqual(source, "TWSE STOCK_DAY")
         self.assertEqual(len(seen_urls), 1)
+        self.assertIn("exchangeReport/STOCK_DAY", seen_urls[0])
         self.assertIn("stockNo=2330", seen_urls[0])
         self.assertIn("date=20240101", seen_urls[0])
         self.assertIn("113/01/02", raw_csv)

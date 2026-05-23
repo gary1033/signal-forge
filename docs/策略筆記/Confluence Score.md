@@ -5,7 +5,7 @@ tags:
   - trading/strategy
   - trading/multi-factor
 status: research
-updated: 2026-05-21
+updated: 2026-05-23
 repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\confluence_score.py
 ---
 
@@ -71,13 +71,14 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 - 因子越多，越容易 overfit。
 - 權重目前都是固定 `+1/-1`，沒有經過嚴格因子貢獻驗證。
 - threshold 若靠單一標的調整，容易變成資料配適。
+- 即使跨多檔台股固定持有期測出較高 PF，也仍需先解決 signal overlap；否則高分訊號在完整持倉系統中到底要忽略、合併、加碼或重設持有期，語意仍不明確。
 - 成交量已經是 score 的一部分；若再套外層成交量過濾器，可能提高確認強度，也可能重複計算量能條件。
 - 交易頻率較高，對成本與滑價更敏感。
 - 目前不含停損、停利、部位管理或 regime filter。
 
 ## 下一步
 
-- `2330` 的 `hold=5`、`hold=10` 顯示這個策略更像中段趨勢跟隨，而不是隔日 bounce；下一步應先處理多持有期下的 signal overlap 語意，否則高 PF 很難直接轉成完整持倉策略。
+- 多檔台股的 `hold=10` entry-edge 顯示這個策略更像中段趨勢跟隨，而不是隔日 bounce；下一步應先處理多持有期下的 signal overlap 語意，否則高 PF 很難直接轉成完整持倉策略。
 - 檢查 score 組成，拆解哪些 reason 對勝率或 PF 有實際貢獻。
 - 比較「score 內部量能確認」與「外層 volume filter」各自的貢獻，避免重複濾網造成過度配適。
 - 測試不同 threshold 與交易頻率、最大回撤之間的關係。

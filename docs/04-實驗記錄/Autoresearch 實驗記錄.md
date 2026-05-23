@@ -5,7 +5,7 @@ tags:
   - experiment
   - autoresearch
 status: active
-updated: 2026-05-21
+updated: 2026-05-23
 ---
 
 # Autoresearch 實驗記錄
@@ -5583,3 +5583,36 @@ phase hold 1 attribution 也維持原狀：
    - `aligned baseline`
    - `full bar above range`
    - `full bar above range + OR average volume baseline`
+
+## 2026-05-23 研究：多檔台股批次回測避免單一標的偏誤
+
+這輪依使用者要求，把策略回測從單一 `2330` 擴大成七檔 TWSE 大型股同時 sweep。新的研究工具是 `tools\multi_stock_entry_edge_sweep.py`，同一個命令會對多個 CSV、三個日線策略與多個固定持有期做 entry-edge 評估，並用跨股票總 gross profit / gross loss 計算 aggregate PF。
+
+### 本輪股票池
+
+- `2330`：沿用既有台積電日線資料，sweep 時用 common window 過濾。
+- `2317`、`2454`、`2308`、`2303`、`2412`、`2882`：本輪用 TWSE `STOCK_DAY` 補齊 `2020-01-01` 到 `2026-05-20` 日線資料。
+
+TWSE 下載路徑也同步修正：`rwd/zh/afterTrading/STOCK_DAY` 在本環境回 `HTTP 307` HTML，已改用可直接回 JSON 的 `exchangeReport/STOCK_DAY`，並在 `tests/test_data_fetch.py` 加上路徑 regression。
+
+### 主要結果
+
+| Strategy | Hold | 通過股票 | Aggregate PF | Trades | Avg win rate | Worst max drawdown |
+|---|---:|---:|---:|---:|---:|---:|
+| `confluence-score` | `10` | `7/7` | `2.299` | `349` | `58.98%` | `-27.56%` |
+| `sma-crossover` | `10` | `5/7` | `1.818` | `45` | `48.78%` | `-10.45%` |
+| `sma-crossover` | `5` | `3/7` | `1.689` | `45` | `58.44%` | `-9.25%` |
+
+結論：目前最符合 `PF >= 1.5` 且較不偏單一股票的候選，是 `confluence-score` 搭配 `hold=10`。逐檔 PF 都高於 `1.5`，aggregate PF 為 `2.299`。
+
+### 保留疑慮
+
+- 這仍是 entry-edge 固定持有期，不是完整投資組合或真實下單系統。
+- `confluence-score hold=10` 的 signal overlap 很高，表示完整策略還必須先定義「重疊訊號如何處理」。
+- `sma-crossover hold=10` 雖然 aggregate PF 達標，但只有 `5/7` 檔通過，而且交易數較少，因此不是本輪首選。
+
+### 下一步
+
+1. 將 `Confluence Score + hold=10` 視為 Phase 2 候選。
+2. 下一輪若要繼續優化，不先堆更多濾網，而是處理 overlap 語意與持倉規則。
+3. 所有後續策略優化都應先跑多股票 sweep，再判斷是否真的改善。

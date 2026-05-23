@@ -6,7 +6,7 @@ tags:
   - autoresearch
 status: active
 repo: C:\Projects\signal-forge
-updated: 2026-05-21
+updated: 2026-05-23
 ---
 
 # SignalForge 專案筆記索引
@@ -26,6 +26,7 @@ updated: 2026-05-21
 - [[04-實驗記錄/Autoresearch 實驗記錄|Autoresearch 實驗記錄]]
 - [[04-實驗記錄/台積電資料與三策略回測|台積電資料與三策略回測]]
 - [[04-實驗記錄/台積電四策略延伸研究|台積電四策略延伸研究]]
+- [[04-實驗記錄/台股多股票策略基準回測|台股多股票策略基準回測]]
 
 ## 目前狀態
 
@@ -34,6 +35,7 @@ updated: 2026-05-21
 - 主線：Phase 工作流可切換 `backtest` 與 `live`。
 - `backtest`：優先 deterministic artifacts、regression tests、報表可稽核性。
 - `entry-edge`：支援單一固定持有期，也可用 `--hold-bars-list` 輸出多持有期 comparison JSON/Markdown。
+- `multi_stock_entry_edge_sweep.py`：支援多檔股票、多策略、多持有期一次 sweep，避免只看單一標的 PF。
 - `vwap-reversion`：可選 `--vwap-regime-filter`，用 `close >= SMA` 阻擋強下跌中的新 long entry。
 - `live`：只產生 dry-run `OrderIntent`，安全邊界由 `LIVE_DRY_RUN_ONLY` 鎖住。
 - 最新整理基線：readiness score 目標仍為 `110`，固定 guard 是 `python -m unittest discover -s tests` 與 `git diff --check`。

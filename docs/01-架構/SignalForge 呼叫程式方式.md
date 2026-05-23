@@ -5,7 +5,7 @@ tags:
   - architecture
   - cli
 status: active
-updated: 2026-05-21
+updated: 2026-05-23
 aliases:
   - SignalForge CLI
   - SignalForge invocation
@@ -41,6 +41,7 @@ signal-forge --help
 | 安裝後給使用者或本機腳本跑 | `signal-forge <command> ...` | 由 `pyproject.toml` 的 `[project.scripts]` 指到 `signal_forge.cli:main`。 |
 | Python 程式內呼叫 | `from signal_forge import ...` | 給 tests、notebook 或研究腳本直接使用 `PhaseRunner`、`EntryEdgeEvaluator`、策略 factory。 |
 | 維護與驗證工具 | `python tools\phase_readiness_score.py`、`python -m unittest discover -s tests` | 不屬於產品 CLI，用於每輪 guard。 |
+| 多股票研究工具 | `python tools\multi_stock_entry_edge_sweep.py ...` | 用同一個 common window 一次比較多檔股票、多個策略與多個固定持有期，避免只看單一標的 PF。 |
 | 範例腳本 | `python examples\run_sample_backtest.py` | legacy `Backtester` demo，用來快速看三個內建策略的 toy backtest 輸出。 |
 
 目前不要直接執行 `src\signal_forge\cli\__main__.py`。正式 CLI 入口是 module invocation 或 console script，才能維持 import path 與 parser contract 一致。
@@ -135,6 +136,23 @@ python -m signal_forge.cli entry-edge `
   --slow-window 3 `
   --output-dir reports\generated `
   --run-name sma-fast2-slow3-demo
+```
+
+一次比較多檔台股與多個持有期：
+
+```powershell
+python tools\multi_stock_entry_edge_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --hold-bars-list 1,3,5,10 `
+  --pass-profit-factor 1.5
 ```
 
 ## 共用策略參數
