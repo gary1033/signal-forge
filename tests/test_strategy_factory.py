@@ -7,6 +7,7 @@ from signal_forge.strategies import (
     SUPPORTED_STRATEGY_NAMES,
     ConfluenceScoreStrategy,
     OrbVolumeVwapStrategy,
+    SignalCooldownStrategy,
     SmaCrossoverStrategy,
     VolumeFilteredStrategy,
     VwapReversionStrategy,
@@ -299,6 +300,28 @@ class StrategyFactoryTests(unittest.TestCase):
 
         self.assertIsInstance(strategy, VolumeFilteredStrategy)
         self.assertEqual(strategy.name, "volume_filter_w1_m1.00__sma_1_2_long_only")
+
+    def test_phase1_factory_can_wrap_signal_cooldown(self) -> None:
+        """
+        用途與流程：驗證 Phase 1 factory 可選擇性套用 signal cooldown wrapper，且 wrapper 會包在其他 entry filter 之後。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        strategy = build_phase1_strategy(
+            "sma-crossover",
+            fast_window=1,
+            slow_window=2,
+            volume_filter=True,
+            volume_window=1,
+            volume_multiplier=1.0,
+            signal_cooldown_bars=10,
+        )
+
+        self.assertIsInstance(strategy, SignalCooldownStrategy)
+        self.assertEqual(
+            strategy.name,
+            "signal_cooldown_b10__volume_filter_w1_m1.00__sma_1_2_long_only",
+        )
 
     def test_rejects_unsupported_strategy_name(self) -> None:
         """

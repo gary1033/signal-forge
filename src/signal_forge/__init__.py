@@ -30,6 +30,7 @@ from signal_forge.phase import (
 from signal_forge.strategy import BarByBarStrategy, Signal, Strategy, StrategyDecision
 from signal_forge.strategies import (
     SUPPORTED_STRATEGY_NAMES,
+    SignalCooldownStrategy,
     VolumeFilteredStrategy,
     build_phase1_strategy,
     build_strategy,
@@ -57,6 +58,7 @@ __all__ = [
     "PhaseRunner",
     "SUPPORTED_STRATEGY_NAMES",
     "Signal",
+    "SignalCooldownStrategy",
     "Strategy",
     "StrategyDecision",
     "VolumeFilteredStrategy",

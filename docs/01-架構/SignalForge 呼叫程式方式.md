@@ -115,6 +115,18 @@ python -m signal_forge.cli entry-edge `
   --run-name sma-volume-filter-demo
 ```
 
+啟用可選進場冷卻，避免接受 long entry 後短期內重複觸發新的 long entry：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv data\sample\phase1_demo_ohlcv.csv `
+  --strategy confluence-score `
+  --hold-bars-per-day 10 `
+  --signal-cooldown-bars 10 `
+  --output-dir reports\generated `
+  --run-name confluence-cooldown-demo
+```
+
 啟用 VWAP Reversion regime filter：
 
 ```powershell
@@ -152,7 +164,8 @@ python tools\multi_stock_entry_edge_sweep.py `
   --start 2020-01-01 `
   --end 2026-05-20 `
   --hold-bars-list 1,3,5,10 `
-  --pass-profit-factor 1.5
+  --pass-profit-factor 1.5 `
+  --signal-cooldown-bars 10
 ```
 
 ## 共用策略參數
@@ -165,6 +178,7 @@ python tools\multi_stock_entry_edge_sweep.py `
 | `vwap-reversion` | `vwap_window=20`、`entry_z=1.5`、`exit_z=0.25`、`vwap_regime_filter=False`、`vwap_regime_window=50`、Phase 1 `allow_short=False`。 |
 | `confluence-score` | `fast_window=20`、`slow_window=50`、`rsi_window=14`、`vwap_window=20`、`threshold=3.0`、Phase 1 `allow_short=False`。 |
 | volume filter wrapper | 只有啟用 `--volume-filter` 時套用，預設 `volume_window=20`、`volume_multiplier=1.2`。 |
+| signal cooldown wrapper | 只有啟用 `--signal-cooldown-bars` 時套用，接受 long entry 後封鎖指定 bar 數內的新 long entry；不強制平倉既有持倉。 |
 
 | 參數 | 適用策略或用途 |
 |---|---|
@@ -174,6 +188,7 @@ python tools\multi_stock_entry_edge_sweep.py `
 | `--vwap-regime-filter`、`--vwap-regime-window` | VWAP Reversion 可選 entry-only regime filter。 |
 | `--rsi-window`、`--threshold` | Confluence Score 主要參數。 |
 | `--volume-filter`、`--volume-window`、`--volume-multiplier` | 可選外層成交量 wrapper；預設關閉。 |
+| `--signal-cooldown-bars` | 可選外層進場冷卻 wrapper；正整數代表接受 long entry 後要封鎖幾根 bar 內的新 long entry。 |
 
 ## Python API 呼叫
 

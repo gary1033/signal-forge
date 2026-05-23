@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from signal_forge.strategies.confluence_score import ConfluenceScoreStrategy
 from signal_forge.strategies.orb_volume_vwap import OrbVolumeVwapStrategy
+from signal_forge.strategies.signal_cooldown import SignalCooldownStrategy
 from signal_forge.strategies.sma_crossover import SmaCrossoverStrategy
 from signal_forge.strategies.volume_filter import VolumeFilteredStrategy
 from signal_forge.strategies.vwap_reversion import VwapReversionStrategy
@@ -283,10 +284,11 @@ def build_phase1_strategy(
     volume_filter: bool = False,
     volume_window: int | None = None,
     volume_multiplier: float | None = None,
+    signal_cooldown_bars: int | None = None,
 ) -> Strategy:
     """
-    用途與流程：建立 Phase 1 long-only 策略，必要時包上成交量濾網 wrapper。
-    參數：strategy_name 是 registry key；策略參數為 None 時使用該策略 default，Phase 1 只強制 allow_short=False；orb_opening_range_minutes、orb_session_start_hour/minute、orb_session_end_hour/minute、orb_session_timezone、orb_vwap_slope_confirmation、orb_ema_window、orb_ema_trend_confirmation、orb_reject_ema_inside_opening_range、orb_signal_window_minutes、orb_min/max_range_pct、orb_min_breakout_pct、orb_full_bar_above_range、orb_min_breakout_body_pct、orb_fresh_breakout_from_or 與 orb_use_opening_range_volume_baseline 只對 ORB 策略生效；其中 session end / timezone 目前先作為 regular-session contract metadata；volume_filter 控制是否套用成交量 wrapper，volume_window 與 volume_multiplier 為 None 時使用 wrapper default。
+    用途與流程：建立 Phase 1 long-only 策略，必要時依序包上成交量濾網與進場冷卻 wrapper。
+    參數：strategy_name 是 registry key；策略參數為 None 時使用該策略 default，Phase 1 只強制 allow_short=False；orb_opening_range_minutes、orb_session_start_hour/minute、orb_session_end_hour/minute、orb_session_timezone、orb_vwap_slope_confirmation、orb_ema_window、orb_ema_trend_confirmation、orb_reject_ema_inside_opening_range、orb_signal_window_minutes、orb_min/max_range_pct、orb_min_breakout_pct、orb_full_bar_above_range、orb_min_breakout_body_pct、orb_fresh_breakout_from_or 與 orb_use_opening_range_volume_baseline 只對 ORB 策略生效；其中 session end / timezone 目前先作為 regular-session contract metadata；volume_filter 控制是否套用成交量 wrapper，volume_window 與 volume_multiplier 為 None 時使用 wrapper default；signal_cooldown_bars 為正整數時會封鎖接受 long entry 後指定 bar 數內的新 long entry。
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     strategy = build_strategy(
@@ -321,18 +323,20 @@ def build_phase1_strategy(
         orb_use_opening_range_volume_baseline=orb_use_opening_range_volume_baseline,
         allow_short=False,
     )
-    if not volume_filter:
-        return strategy
+    if volume_filter:
+        strategy = VolumeFilteredStrategy(
+            strategy,
+            volume_window=VolumeFilteredStrategy.volume_window
+            if volume_window is None
+            else volume_window,
+            volume_multiplier=VolumeFilteredStrategy.volume_multiplier
+            if volume_multiplier is None
+            else volume_multiplier,
+        )
+    if signal_cooldown_bars is not None:
+        strategy = SignalCooldownStrategy(strategy, cooldown_bars=signal_cooldown_bars)
 
-    return VolumeFilteredStrategy(
-        strategy,
-        volume_window=VolumeFilteredStrategy.volume_window
-        if volume_window is None
-        else volume_window,
-        volume_multiplier=VolumeFilteredStrategy.volume_multiplier
-        if volume_multiplier is None
-        else volume_multiplier,
-    )
+    return strategy
 
 
 def _build_sma_crossover(

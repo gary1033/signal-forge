@@ -58,6 +58,7 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 - `threshold` / CLI `--threshold`：預設 `3.0`。
 - `allow_short`：實作預設支援，但 CLI 目前固定 `False`。
 - 可選成交量過濾器：CLI 使用 `--volume-filter --volume-window 20 --volume-multiplier 1.2`，實作位置是 `C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py`。
+- 可選進場冷卻：CLI 使用 `--signal-cooldown-bars 10`，接受 long entry 後 10 根 bar 內封鎖新的 long entry；這只影響新的進場，不強制平掉既有持倉。
 - entry-edge 評估：訊號於 bar close 後確認，下一根 open 進場，固定持有 `hold_bars_per_day=1` 後以 exit bar close 出場。
 
 ## 股價走勢解說圖
@@ -72,13 +73,14 @@ warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason
 - 權重目前都是固定 `+1/-1`，沒有經過嚴格因子貢獻驗證。
 - threshold 若靠單一標的調整，容易變成資料配適。
 - 即使跨多檔台股固定持有期測出較高 PF，也仍需先解決 signal overlap；否則高分訊號在完整持倉系統中到底要忽略、合併、加碼或重設持有期，語意仍不明確。
+- `signal_cooldown_bars=10` 可以把七檔台股 common-window sweep 的 total overlap 降到 `0`，但 worst max drawdown 仍可能比 baseline 更深，因此它是持倉語意候選，不是完整風控。
 - 成交量已經是 score 的一部分；若再套外層成交量過濾器，可能提高確認強度，也可能重複計算量能條件。
 - 交易頻率較高，對成本與滑價更敏感。
 - 目前不含停損、停利、部位管理或 regime filter。
 
 ## 下一步
 
-- 多檔台股的 `hold=10` entry-edge 顯示這個策略更像中段趨勢跟隨，而不是隔日 bounce；下一步應先處理多持有期下的 signal overlap 語意，否則高 PF 很難直接轉成完整持倉策略。
+- 多檔台股的 `hold=10` entry-edge 顯示這個策略更像中段趨勢跟隨，而不是隔日 bounce；目前主候選是 `hold=10 + signal_cooldown_bars=10`，下一步應優先檢查 drawdown 來源與風控，而不是只追更高 PF。
 - 檢查 score 組成，拆解哪些 reason 對勝率或 PF 有實際貢獻。
 - 比較「score 內部量能確認」與「外層 volume filter」各自的貢獻，避免重複濾網造成過度配適。
 - 測試不同 threshold 與交易頻率、最大回撤之間的關係。

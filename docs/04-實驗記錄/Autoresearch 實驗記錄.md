@@ -5616,3 +5616,65 @@ TWSE 下載路徑也同步修正：`rwd/zh/afterTrading/STOCK_DAY` 在本環境�
 1. 將 `Confluence Score + hold=10` 視為 Phase 2 候選。
 2. 下一輪若要繼續優化，不先堆更多濾網，而是處理 overlap 語意與持倉規則。
 3. 所有後續策略優化都應先跑多股票 sweep，再判斷是否真的改善。
+
+## 2026-05-23 研究：`Confluence Score + signal cooldown` 降低重疊訊號
+
+這輪延續多股票基準，沒有再新增股票池或換資料區間，而是針對前一輪最大的保留疑慮：`Confluence Score + hold=10` 的 signal overlap 過高。做法是新增通用 `SignalCooldownStrategy` wrapper，接受一筆 long entry 後，在指定 bar 數內封鎖新的 long entry；既有持倉延續不會被強制平倉。
+
+### 本輪假設
+
+- 若 overlap 主要來自同一段趨勢中反覆觸發高分訊號，進場冷卻應能降低重複 entry。
+- 冷卻規則應只處理新的 long entry，不改寫 score，也不把已接受的 long 持倉強制變成 flat。
+- 評估仍使用七檔 TWSE common window：`2020-01-01` 到 `2026-05-20`。
+
+### 驗證命令
+
+```powershell
+python tools\multi_stock_entry_edge_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy confluence-score `
+  --hold-bars-list 10 `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --pass-profit-factor 1.5 `
+  --signal-cooldown-bars 10 `
+  --summary-json reports\generated\twse-multistock-confluence-cooldown10-20260523.json `
+  --summary-md reports\generated\twse-multistock-confluence-cooldown10-20260523.md
+```
+
+### 結果
+
+| Strategy | Hold | Cooldown | 通過股票 | Aggregate PF | Trades | Avg win rate | Avg end equity | Worst max drawdown | Total overlap |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `confluence-score` | `10` | `10` | `7/7` | `2.324` | `439` | `58.44%` | `29138.43` | `-33.05%` | `0` |
+| `confluence-score` baseline | `10` | disabled | `7/7` | `2.299` | `349` | `58.98%` | `22467.51` | `-27.56%` | `300` |
+
+逐檔 PF：
+
+| Symbol | PF | Trades | Win rate | Avg net PnL | Max drawdown | Overlap |
+|---|---:|---:|---:|---:|---:|---:|
+| `2303` | `2.043` | `66` | `59.09%` | `551.36` | `-33.05%` | `0` |
+| `2308` | `2.950` | `58` | `55.17%` | `329.88` | `-23.15%` | `0` |
+| `2317` | `2.257` | `56` | `53.57%` | `253.76` | `-26.56%` | `0` |
+| `2330` | `2.628` | `68` | `60.29%` | `367.62` | `-15.62%` | `0` |
+| `2412` | `3.037` | `63` | `65.08%` | `75.22` | `-4.47%` | `0` |
+| `2454` | `2.523` | `61` | `60.66%` | `460.29` | `-24.07%` | `0` |
+| `2882` | `1.709` | `67` | `55.22%` | `95.83` | `-13.12%` | `0` |
+
+### Keep / Discard 判斷
+
+- **Keep**：`signal_cooldown_bars=10` 讓 total overlap 從 `300` 降到 `0`，aggregate PF 從 `2.299` 微升到 `2.324`，七檔仍全數通過 `PF > 1.5`。
+- **Tradeoff**：worst max drawdown 從 `-27.56%` 惡化到 `-33.05%`，因此它是目前較好的持倉語意候選，不是最終風控版本。
+- **不採用**：單純把 `threshold` 調高到 `4` 或 `5` 並沒有改善穩健性；`threshold=3, hold=10` 仍是較平衡基準。
+
+### 下一步
+
+1. 把 `Confluence Score + hold=10 + signal_cooldown_bars=10` 視為目前多股票 PF 目標的主候選。
+2. 下一輪不要再只追 PF，應補風控維度：例如冷卻後的 drawdown 來源、停損/停利或部位縮放。
+3. 若要新增策略，必須與這個 candidate 在同一個七檔 common window 上比較。

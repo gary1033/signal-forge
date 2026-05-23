@@ -653,6 +653,46 @@ class CliTests(unittest.TestCase):
         )
         self.assertNotIn("hold_comparison_json=", output)
 
+    def test_entry_edge_command_writes_signal_cooldown_strategy_spec(self) -> None:
+        """
+        用途與流程：驗證 entry-edge CLI 可設定 signal cooldown，且 summary 會寫出冷卻期語意與實際 wrapper 名稱。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = _write_sample_csv(Path(temp_dir))
+            output = _run_cli(
+                [
+                    "entry-edge",
+                    "--csv",
+                    str(csv_path),
+                    "--strategy",
+                    "sma-crossover",
+                    "--fast-window",
+                    "1",
+                    "--slow-window",
+                    "2",
+                    "--signal-cooldown-bars",
+                    "10",
+                    "--output-dir",
+                    temp_dir,
+                    "--run-name",
+                    "signal-cooldown-cli",
+                ]
+            )
+            summary = json.loads(
+                (Path(temp_dir) / "signal-cooldown-cli.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertIn("strategy=signal_cooldown_b10__sma_1_2_long_only", output)
+        self.assertEqual(summary["strategy_spec"]["signal_cooldown_bars"], "10")
+        self.assertEqual(
+            summary["strategy_spec"]["signal_cooldown_position_effect"],
+            "entry_cooldown_only_no_force_flatten",
+        )
+
     def test_entry_edge_command_writes_hold_comparison_outputs(self) -> None:
         """
         用途與流程：驗證 entry edge command writes hold comparison outputs 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。

@@ -31,7 +31,13 @@ ORB_KNOWN_SAMPLE_MARKET_CLOCKS = {
 
 def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
     """
-    ?券?瘚?嚗? entry-edge ??phase ?梁???亙??賊?銝剜???argparse parser嚗???command ??蝬剛風??    ?嚗arser ?舐璅?argparse.ArgumentParser嚗?怠??◤?蝑?迂?MA?WAP?SI?RB session ??volume filter 蝑?options??    ??隤歹?? None嚗rgparse option 銵?????argparse ?靘???    """
+    用途與流程：把 entry-edge 與 phase 共用的策略參數註冊到 argparse parser，集中維護
+    SMA、VWAP、Confluence、ORB，以及外層 volume filter / signal cooldown wrapper 的 CLI
+    入口。
+    參數：parser 是呼叫端建立的 argparse.ArgumentParser，函式會原地新增 strategy 相關
+    options，不會回傳新 parser。
+    回傳與錯誤：回傳 None；若同名參數重複註冊，會由 argparse 拋出錯誤。
+    """
     from signal_forge.strategies import SUPPORTED_STRATEGY_NAMES
 
     parser.add_argument(
@@ -66,6 +72,11 @@ def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
         "--volume-multiplier",
         type=float,
         help="override required relative volume multiplier",
+    )
+    parser.add_argument(
+        "--signal-cooldown-bars",
+        type=int,
+        help="block new long entries for this many bars after an accepted long entry",
     )
     parser.add_argument(
         "--orb-retest-confirmation",
@@ -165,7 +176,13 @@ def add_strategy_arguments(parser: argparse.ArgumentParser) -> None:
 
 def build_strategy_from_args(args: argparse.Namespace) -> Strategy:
     """
-    ?券?瘚?嚗? CLI args ?? Phase 1 factory 撱箇? long-only strategy嚗蒂憟 VWAP regime?RB retest?RB session 韏琿??ession 蝯? metadata?ession timezone metadata?WAP slope confirmation?MA trend confirmation?MA inside-range 蝯? gate?ignal window cutoff?RB range size?RB breakout distance?RB full-bar breakout?RB breakout body strength?RB fresh-breakout gate?RB ??????baseline ??鈭日? wrapper 閮剖???    ?嚗rgs ??argparse 閫???箇??賢?蝛粹?嚗?? add_strategy_arguments 撱箇???雿?? ORB retest?ession?ession end/timezone metadata?WAP slope confirmation?MA trend confirmation?MA inside-range gate?ignal window?ange size?reakout distance?ull-bar breakout?reakout body strength?resh-breakout ???文?????baseline ???    ??隤歹?? Strategy嚗??亙?蝔望??銝?瘜???build_phase1_strategy ? ValueError??    """
+    用途與流程：將 CLI args 轉交給 Phase 1 strategy factory，建立 long-only 策略並套用
+    已啟用的 VWAP regime、ORB refinements、volume filter 與 signal cooldown wrapper。
+    參數：args 是 add_strategy_arguments 註冊後解析出的命名空間；未提供的欄位會用
+    getattr fallback 交給 factory 使用策略預設值。
+    回傳與錯誤：回傳 Strategy；若策略名稱或 wrapper 參數不合法，會由 build_phase1_strategy
+    拋出 ValueError。
+    """
     return build_phase1_strategy(
         args.strategy,
         fast_window=args.fast_window,
@@ -203,6 +220,7 @@ def build_strategy_from_args(args: argparse.Namespace) -> Strategy:
         volume_filter=getattr(args, "volume_filter", False),
         volume_window=getattr(args, "volume_window", None),
         volume_multiplier=getattr(args, "volume_multiplier", None),
+        signal_cooldown_bars=getattr(args, "signal_cooldown_bars", None),
     )
 
 
@@ -238,6 +256,12 @@ def strategy_spec_from_args(args: argparse.Namespace, strategy: Strategy) -> dic
         "volume_window": str(volume_window),
         "volume_multiplier": f"{volume_multiplier:.2f}",
         "volume_rule": "volume >= sma(volume, volume_window) * volume_multiplier",
+        "signal_cooldown_bars": _stringify_optional_number(
+            getattr(args, "signal_cooldown_bars", None)
+        ),
+        "signal_cooldown_rule": "when configured, new long entries are blocked for signal_cooldown_bars after an accepted adjusted long entry; existing long positions are not force-flattened",
+        "signal_cooldown_signal_basis": "confirmed_bar_close_only",
+        "signal_cooldown_position_effect": "entry_cooldown_only_no_force_flatten",
         "vwap_regime_filter": "enabled"
         if getattr(args, "vwap_regime_filter", False)
         else "disabled",

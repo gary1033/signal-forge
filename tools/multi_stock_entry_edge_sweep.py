@@ -43,7 +43,9 @@ class SweepAggregate:
     aggregate_profit_factor: float | None
     total_trades: int
     average_win_rate: float
+    average_end_equity: float
     worst_max_drawdown: float
+    total_overlapping_signals: int
     total_gross_profit: float
     total_gross_loss: float
 
@@ -110,13 +112,15 @@ def run_sweep(
     initial_equity: float,
     commission_bps: float,
     slippage_bps: float,
+    signal_cooldown_bars: int | None = None,
 ) -> tuple[list[SweepRow], list[SweepAggregate]]:
     """
     用途與流程：對多個股票 CSV、策略與固定持有期做笛卡兒積回測，並另外彙總每個
     strategy/hold 的跨股票 aggregate PF。
     參數：csv_paths 是待比較股票資料；strategies 是 SignalForge registry 策略名稱；
     hold_bars_values 是固定持有期清單；start/end 控制共同回測區間；pass_profit_factor、
-    initial_equity、commission_bps、slippage_bps 會傳入 EntryEdgeConfig。
+    initial_equity、commission_bps、slippage_bps 會傳入 EntryEdgeConfig；signal_cooldown_bars
+    為正整數時會要求策略工廠包上進場冷卻 wrapper，避免同一段行情反覆新進場。
     回傳與錯誤：回傳逐檔 SweepRow 與聚合 SweepAggregate；若策略名稱不支援、資料不足
     或 entry-edge contract 不合法，底層會拋出 ValueError。
     """
@@ -136,7 +140,10 @@ def run_sweep(
                     hold_bars_per_day=hold_bars,
                     pass_profit_factor=pass_profit_factor,
                 )
-                strategy = build_phase1_strategy(strategy_name)
+                strategy = build_phase1_strategy(
+                    strategy_name,
+                    signal_cooldown_bars=signal_cooldown_bars,
+                )
                 result = EntryEdgeEvaluator(config).run(strategy, bars)
                 rows.append(
                     SweepRow(
@@ -164,7 +171,7 @@ def run_sweep(
 def build_aggregates(rows: list[SweepRow]) -> list[SweepAggregate]:
     """
     用途與流程：把逐檔 sweep 結果依 strategy/hold 分組，計算跨股票總損益後的 aggregate PF，
-    讓判斷不只依賴單一股票的漂亮結果。
+    並彙總平均 end equity、最差 drawdown 與 total overlap，讓判斷不只依賴單一股票的漂亮結果。
     參數：rows 是 run_sweep 產生的逐檔結果。
     回傳與錯誤：回傳依 aggregate PF、通過數與交易數排序的摘要；若某組沒有交易，PF 會標成
     undefined。
@@ -204,7 +211,15 @@ def build_aggregates(rows: list[SweepRow]) -> list[SweepAggregate]:
                     if group_rows
                     else 0.0
                 ),
+                average_end_equity=(
+                    sum(row.end_equity for row in group_rows) / len(group_rows)
+                    if group_rows
+                    else 0.0
+                ),
                 worst_max_drawdown=min((row.max_drawdown for row in group_rows), default=0.0),
+                total_overlapping_signals=sum(
+                    row.overlapping_signal_count for row in group_rows
+                ),
                 total_gross_profit=total_gross_profit,
                 total_gross_loss=total_gross_loss,
             )
@@ -245,8 +260,8 @@ def format_markdown(
         "",
         "## Aggregate",
         "",
-        "| Strategy | Hold | Stocks passed | Aggregate PF | Trades | Avg win rate | Worst max drawdown |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Strategy | Hold | Stocks passed | Aggregate PF | Trades | Avg win rate | Avg end equity | Worst max drawdown | Total overlap |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for item in aggregates:
         lines.append(
@@ -255,7 +270,8 @@ def format_markdown(
             f"{item.pass_count}/{item.stock_count} | "
             f"{_format_pf(item.aggregate_profit_factor_status, item.aggregate_profit_factor)} | "
             f"{item.total_trades} | {item.average_win_rate:.2%} | "
-            f"{item.worst_max_drawdown:.2%} |"
+            f"{item.average_end_equity:.2f} | "
+            f"{item.worst_max_drawdown:.2%} | {item.total_overlapping_signals} |"
         )
     lines.extend(
         [
@@ -292,7 +308,8 @@ def _format_pf(status: str, value: float | None) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     """
-    用途與流程：建立批次 entry-edge sweep 的命令列 parser。
+    用途與流程：建立批次 entry-edge sweep 的命令列 parser，支援多 CSV、多策略、多持有期，
+    並可透過 --signal-cooldown-bars 啟用進場冷卻 wrapper。
     參數：無。
     回傳與錯誤：回傳 argparse.ArgumentParser；解析錯誤由 argparse 處理。
     """
@@ -313,6 +330,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--initial-equity", type=float, default=10_000.0)
     parser.add_argument("--commission-bps", type=float, default=1.0)
     parser.add_argument("--slippage-bps", type=float, default=1.0)
+    parser.add_argument(
+        "--signal-cooldown-bars",
+        type=int,
+        help="block new long entries for this many bars after an accepted long entry",
+    )
     parser.add_argument("--summary-json")
     parser.add_argument("--summary-md")
     return parser
@@ -321,7 +343,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """
     用途與流程：命令列入口，解析多股票 sweep 參數、執行回測、列印 Markdown，並可選擇寫出
-    JSON/Markdown 摘要檔。
+    JSON/Markdown 摘要檔；若提供 signal cooldown 參數，會把同一個 wrapper 設定套到每個
+    strategy/hold/stock 組合，確保比較口徑一致。
     參數：argv 是可選命令列參數清單；None 表示使用 sys.argv。
     回傳與錯誤：成功回傳 0；參數、資料或回測錯誤會由 argparse 或底層函式拋出。
     """
@@ -338,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         initial_equity=args.initial_equity,
         commission_bps=args.commission_bps,
         slippage_bps=args.slippage_bps,
+        signal_cooldown_bars=args.signal_cooldown_bars,
     )
     markdown = format_markdown(
         rows,
