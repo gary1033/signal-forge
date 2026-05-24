@@ -1,0 +1,15 @@
+{
+  "adjusted": false,
+  "csv_path": "data/processed/TWSE_2027_1D.csv",
+  "data_source": "TWSE STOCK_DAY",
+  "end": "2026-05-20",
+  "market": "twse",
+  "notes": "Daily OHLCV only; prices are not dividend/split adjusted.",
+  "raw_csv_path": "data/raw/TWSE_2027_1D_raw.csv",
+  "row_count": 1547,
+  "session": "regular",
+  "start": "2020-01-01",
+  "symbol": "2027",
+  "timeframe": "1D",
+  "timezone": "Asia/Taipei"
+}

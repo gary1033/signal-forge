@@ -327,7 +327,7 @@ def _fetch_url_text(url: str) -> str:
 
 def _market_data_request_headers() -> dict[str, str]:
     """
-    用途與流程：集中建立免費行情資料下載用 HTTP headers，使用標準瀏覽器 User-Agent 搭配 JSON Accept 與 TWSE historical stock-day Referer，降低 TWSE 對批次研究下載回同路徑 308 redirect loop 的機率。
+    用途與流程：集中建立免費行情資料下載用 HTTP headers，使用簡化瀏覽器 User-Agent 搭配 JSON Accept 與 TWSE historical stock-day Referer，降低 TWSE 對批次研究下載回同路徑 308 redirect loop 的機率。
     參數：無。
     回傳與錯誤：回傳 header dict；此函式不做 I/O，也不主動拋錯。
     """
@@ -336,7 +336,6 @@ def _market_data_request_headers() -> dict[str, str]:
         "Referer": "https://www.twse.com.tw/zh/trading/historical/stock-day.html",
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/125.0.0.0 Safari/537.36"
         ),
     }

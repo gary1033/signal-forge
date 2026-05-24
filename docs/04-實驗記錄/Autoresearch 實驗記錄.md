@@ -9216,3 +9216,116 @@ Max3 failure reasons 同樣包含 rolling IR / excess、drawdown、group concent
 - **Discard as current strategy upgrade**：兩個 balanced-quality 子股票池都讓 min rolling IR 與 min rolling excess 轉負，不能取代 TWSE35 baseline。
 - **Do not promote strategy**：promotion gate 仍是 `compare-only`，且 group concentration 仍接近 `100%`；這不是穩定營利證明。
 - **Next**：不要繼續只改 max symbols per group 或把既有 TWSE35 越篩越小。下一步要補新的替代標的，尤其是 shipping / steel / food / cement / telecom 等目前 singleton 或 eligible member 太少的 group，並重新跑 universe audit、selector、adjusted batch、raw/adjusted comparison 與 promotion gate。
+
+## 2026-05-24 TWSE44 thin-group universe follow-up
+
+### 目的
+
+這輪接續 TWSE35 balanced-quality selector 的結論：只把既有 TWSE35 篩小會讓 rolling edge 轉負，因此改成補 singleton / thin groups 的替代標的，再重跑 audit、selector、adjusted batch、raw / adjusted comparison 與 promotion gate。
+
+研究假設：
+
+> 若 TWSE35 失敗主因之一是 `shipping`、`steel`、`food`、`cement`、`telecom` 這類 group 成員不足或可替代性不足，補入同產業替代標的應降低 single-member dominance 與 group concentration，同時保留正 rolling IR / excess；若只修掉 single-member 診斷卻讓 adjusted rolling edge 或 drawdown 惡化，則只能 keep data/process，不能升級策略。
+
+本輪標的來源先用 TWSE 官方 OpenAPI 上市公司基本資料 `https://openapi.twse.com.tw/v1/opendata/t187ap03_L` 篩選產業代碼，再轉成 SignalForge 可驗證資料與 adjusted batch。這是資料來源，不是交易建議。
+
+### 本輪資料與程式改動
+
+- 新抓 9 檔 TWSE raw / processed OHLCV：`1103,1210,1227,1229,2023,2027,2609,2615,4904`。
+- `src\signal_forge\data\fetch.py` 將 TWSE 下載用 User-Agent 簡化為 `Mozilla/5.0 ... Chrome/125 ... Safari/537.36`，避免部分股票在 TWSE endpoint 發生同路徑 HTTP 308 redirect loop。
+- 產生 TWSE44 adjusted batch manifest：`reports\generated\adjusted-data\TWSE44_thin_group_adjusted_batch_manifest_20260524.json`，共 `44` 檔、`67221` rows。
+
+### 產生 artifact
+
+- Universe audit：`reports\generated\twse44-thin-group-universe-audit-require-adjusted-20260524.json`
+- Universe selector：`reports\generated\twse44-thin-group-balanced-universe-selection-20260524.json`
+- Adjusted summary：`reports\generated\twse44-thin-group-balanced-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Raw summary：`reports\generated\twse44-thin-group-balanced-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Raw / adjusted comparison：`reports\generated\twse44-thin-group-balanced-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-compare-20260524.json`
+- Group regime validation：`reports\generated\twse44-thin-group-balanced-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-regime-validation-20260524.json`
+- Group breadth validation：`reports\generated\twse44-thin-group-balanced-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-breadth-validation-20260524.json`
+- Promotion gate：`reports\generated\twse44-thin-group-balanced-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-promotion-gate-20260524.json`
+- Groupcap2 ablation：`reports\generated\twse44-thin-group-balanced-groupcap2-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+
+### Universe audit
+
+固定 audit gate：`min_row_count=1200`、平均成交金額 `500M`、`min_group_members=2`、要求 adjusted CSV。
+
+| Field | Value |
+|---|---:|
+| Symbols | `44` |
+| Eligible symbols | `33` |
+| Groups | `10` |
+| Singleton groups | `1` |
+| Adjusted available | `44` |
+
+新增替代標的的實際效果：
+
+| Group | Members | Eligible | 判斷 |
+|---|---:|---:|---|
+| `shipping` | `2603,2609,2615` | `3` | 成功補足替代性 |
+| `steel` | `2002,2023,2027` | `2` | `2027` 可用，`2023` 因流動性不足只作 diagnostic |
+| `telecom` | `2412,3045,4904` | `2` | `4904` 因流動性不足只作 diagnostic |
+| `cement` | `1101,1102,1103` | `1` | 新增標的未通過流動性 gate |
+| `food` | `1210,1216,1227,1229` | `1` | 新增標的未通過流動性 gate |
+
+### Selector 結果
+
+Selector 從 audit eligible rows 中選出 `21` 檔：
+
+```text
+1301,1303,2002,2027,2303,2308,2317,2330,2382,2412,2454,2603,2609,2615,2881,2882,2891,3037,3045,3711,5871
+```
+
+這次的進步是 `shipping` 由單一 `2603` 變成 `2603,2609,2615`，`steel` 也有 `2002,2027` 可替代；但 `cement` 與 `food` 仍只有一檔通過 liquidity gate，因此沒有真正補齊所有 thin groups。
+
+### 回測與 promotion gate
+
+固定設定：`monthly + lookback21 + ranking_skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M/20 bars`，優先看 adjusted 版本與 promotion gate。
+
+| Candidate | Symbols | Full IR | Stress 3x IR | MDD | Active MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Decision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `TWSE35 baseline` | `35` | `1.685` | `1.668` | `-37.80%` | `-29.98%` | `0.429` | `11.33%` | `100.00%` | compare-only |
+| `TWSE35 reentry6` | `35` | `1.046` | `1.026` | `-28.76%` | `-25.74%` | `0.499582` | `18.63%` | `100.00%` | compare-only |
+| `TWSE44 selected21` | `21` | `1.172` | `1.146` | `-53.82%` | `-42.76%` | `-0.438` | `-23.81%` | `95.43%` | compare-only / discard as upgrade |
+| `TWSE44 selected21 groupcap2` | `21` | `1.130` | `1.101` | `-48.76%` | `-37.38%` | `-0.270` | `-16.99%` | `95.40%` | compare-only / discard as upgrade |
+
+TWSE44 selected21 promotion gate：
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.172` |
+| Full 1x excess | `1542.55%` |
+| Full 1x MDD | `-53.82%` |
+| Full 1x active MDD | `-42.76%` |
+| Stress 3x IR | `1.146` |
+| Min rolling IR | `-0.438` |
+| Min rolling excess | `-23.81%` |
+| Max rolling top3 group share | `95.43%` |
+
+Failure reasons：
+
+```text
+rolling_ir_below_threshold
+rolling_excess_below_threshold
+drawdown_above_threshold
+active_drawdown_above_threshold
+group_concentration_above_threshold
+adjusted_drawdown_worsening_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+narrow_group_momentum
+```
+
+Group breadth validation 有一個明確改善：`single_member_dominant_windows=0`，代表補 shipping / steel 替代標的有解掉原本最尖銳的單成員依賴。但 gate 仍失敗，因為高 concentration windows 還有 `6` 個、narrow group momentum 仍存在，且 `roll05` 的 rolling IR / excess 轉負。`groupcap2` 可以把 MDD 從 `-53.82%` 改到 `-48.76%`，但 full IR 降到 `1.130`，min rolling IR / excess 仍是負值，所以也不能升級。
+
+### Keep / Discard 判斷
+
+- **Keep data/process**：TWSE44 adjusted batch、audit 與 selector 證明補 thin groups 是可重跑流程；`shipping`、`steel` 的替代性確實改善，single-member dominant window 降到 `0`。
+- **Keep code fix**：TWSE fetch User-Agent 簡化後可避免部分股票的 HTTP 308 loop，屬於資料抓取可靠性改善。
+- **Compare-only artifact**：`TWSE44 selected21` 與 `groupcap2` 都保留為「thin-group expansion」對照 artifact。
+- **Discard as current strategy upgrade**：TWSE44 selected21 的 MDD / active MDD 明顯惡化，rolling IR 與 rolling excess 轉負；`groupcap2` 只部分降低 drawdown，但仍未修 rolling edge，也沒有通過 group gates。
+- **Do not promote strategy**：這輪沒有達到穩定營利證明，也不能取代 TWSE35 baseline 或 reentry6 compare-only anchor。
+- **Next**：不要再只補低流動性 food / cement 或只加 group cap。下一步應改測可驗證的 drawdown / risk-off 條件、shipping regime 風險、market / industry regime filter，或搜尋新的策略 family；若繼續股票池方向，必須找真正通過 `500M` liquidity gate 的同群組替代標的，再重跑 adjusted promotion gate。
