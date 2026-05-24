@@ -50,10 +50,10 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 - `Signal`：每根 bar 的輸出格式，保留 `index`、`timestamp`、`target_position`、`reason`、`score`。
 - `StrategyDecision`：策略在單根 bar 的內部決策結果，由 template 轉成 `Signal`。
 - `BarByBarStrategy`：負責 `generate_signals()` 的固定流程，包含準備 context、逐根 bar 呼叫 hook、傳入 `previous_target_position`、維持 signal 與 bar 對齊。
-- 具體策略只實作 `prepare_context(...)` 與 `decide_bar(...)`，例如 SMA context 放 fast / slow SMA，VWAP context 放 rolling VWAP / rolling std，Confluence context 放 SMA / VWAP / RSI / volume。
-- `strategies.registry` 提供 Phase 1 strategy factory；CLI 仍以 `sma-crossover`、`vwap-reversion`、`confluence-score` 建構 long-only 策略。
+- 具體策略只實作 `prepare_context(...)` 與 `decide_bar(...)`，例如 SMA context 放 fast / slow SMA，VWAP context 放 rolling VWAP / rolling std，Confluence context 放 SMA / VWAP / RSI / volume，Absolute Momentum context 放 close 與長期 trend SMA。
+- `strategies.registry` 提供 Phase 1 strategy factory；CLI 可用 `sma-crossover`、`vwap-reversion`、`confluence-score`、`absolute-momentum` 建構 long-only 日線策略。
 
-這個模板是工程結構重構，不改變三個既有策略的交易語意。`VolumeFilteredStrategy` 仍是外層 wrapper，只在 CLI 啟用 `--volume-filter` 時套用。
+這個模板是工程結構重構，不改變既有策略的交易語意。`VolumeFilteredStrategy` 仍是外層 wrapper，只在 CLI 啟用 `--volume-filter` 時套用。
 
 ## PhaseMode 分流
 

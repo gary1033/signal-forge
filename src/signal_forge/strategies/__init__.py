@@ -1,3 +1,4 @@
+from signal_forge.strategies.absolute_momentum import AbsoluteMomentumStrategy
 from signal_forge.strategies.confluence_score import ConfluenceScoreStrategy
 from signal_forge.strategies.orb_volume_vwap import OrbVolumeVwapStrategy
 from signal_forge.strategies.registry import (
@@ -14,6 +15,7 @@ from signal_forge.strategies.volume_filter import VolumeFilteredStrategy
 from signal_forge.strategies.vwap_reversion import VwapReversionStrategy
 
 __all__ = [
+    "AbsoluteMomentumStrategy",
     "ConfluenceScoreStrategy",
     "OrbVolumeVwapStrategy",
     "STRATEGY_REGISTRY",

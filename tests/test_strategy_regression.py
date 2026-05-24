@@ -5,6 +5,7 @@ import unittest
 from helpers import bars_from_closes, bars_from_intraday_closes
 from signal_forge import Bar, BarByBarStrategy
 from signal_forge.strategies import (
+    AbsoluteMomentumStrategy,
     ConfluenceScoreStrategy,
     OrbVolumeVwapStrategy,
     SmaCrossoverStrategy,
@@ -163,6 +164,49 @@ class StrategyRegressionTests(unittest.TestCase):
             "trend_up+above_slow_sma+above_vwap+momentum_positive+volume_confirms_up",
         )
         self.assertEqual(signals[2].score, 5.0)
+
+    def test_absolute_momentum_requires_positive_momentum_and_trend(self) -> None:
+        """
+        用途與流程：驗證 Absolute Momentum 只有在回看報酬為正且 close 高於長期 SMA 時才輸出 long。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 warmup、負動能或趨勢濾網 reason/target 改變，assertion 會失敗。
+        """
+        strategy = AbsoluteMomentumStrategy(momentum_window=2, trend_window=3)
+
+        self.assertIsInstance(strategy, BarByBarStrategy)
+        signals = strategy.generate_signals(bars_from_closes([10, 11, 12, 11, 13]))
+
+        self.assertEqual(
+            [signal.target_position for signal in signals],
+            [0.0, 0.0, 1.0, 0.0, 1.0],
+        )
+        self.assertEqual(
+            [signal.reason for signal in signals],
+            [
+                "warmup",
+                "warmup",
+                "absolute_momentum_long",
+                "absolute_momentum_negative",
+                "absolute_momentum_long",
+            ],
+        )
+        self.assertGreater(signals[2].score, 0.0)
+        self.assertEqual(signals[3].score, 0.0)
+        self.assertGreater(signals[4].score, 0.0)
+
+    def test_absolute_momentum_blocks_positive_momentum_below_trend_sma(self) -> None:
+        """
+        用途與流程：驗證 Absolute Momentum 在回看報酬為正但價格仍低於趨勢 SMA 時維持空手。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；若趨勢濾網不再阻擋這種訊號，assertion 會失敗。
+        """
+        strategy = AbsoluteMomentumStrategy(momentum_window=2, trend_window=3)
+
+        signals = strategy.generate_signals(bars_from_closes([10, 20, 12]))
+
+        self.assertEqual(signals[2].target_position, 0.0)
+        self.assertEqual(signals[2].reason, "trend_filter_blocked")
+        self.assertGreater(signals[2].score, 0.0)
 
     def test_orb_volume_vwap_breakout_requires_or_volume_and_vwap_alignment(self) -> None:
         """

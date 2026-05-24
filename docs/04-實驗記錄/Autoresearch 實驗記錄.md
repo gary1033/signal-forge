@@ -5747,3 +5747,86 @@ python tools\multi_stock_entry_edge_sweep.py `
 1. 下一輪優先測絕對動能 / 長期趨勢持有類候選，目標不是再把 PF 往上堆，而是同時改善 `Avg excess return` 與 `Worst MDD`。
 2. 若做策略語意改動，應明確區分 entry-edge 固定 hold 與 Phase 2 target-state 持有；目前固定 hold 已顯示會犧牲強趨勢 upside。
 3. 繼續補 `cost stress` 與 walk-forward / OOS，避免長 hold 或動能濾網只是在 2020-2026 台股強趨勢樣本上貼合。
+
+## 2026-05-24 研究與執行：Absolute Momentum 長期趨勢候選
+
+這輪依 [[../02-規劃/策略回測與優化評估準則|策略回測與優化評估準則]]，測試「絕對動能 / 長期趨勢持有」候選。研究假設來自 Time Series Momentum 與 Dual Momentum 類文獻：若回看期報酬為正，且價格仍位於長期趨勢均線上方，策略可能保留趨勢 upside，同時避開長期下跌段。
+
+### 本輪程式改動
+
+- 新增 `src\signal_forge\strategies\absolute_momentum.py`。
+- 新增 registry key：`absolute-momentum`。
+- Phase 1 factory 固定建構 long-only 版本，並拒絕 `allow_short=True`。
+- CLI 既有 `--fast-window` / `--slow-window` 分別對應 `momentum_window` / `trend_window`。
+- `tools\multi_stock_entry_edge_sweep.py` 的預設日線策略清單加入 `absolute-momentum`，讓後續多股票 sweep 會自動納入比較。
+- 新增策略筆記：[[../策略筆記/Absolute Momentum|Absolute Momentum]]。
+
+### Entry-edge sweep
+
+命令：
+
+```powershell
+python tools\multi_stock_entry_edge_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --hold-bars-list 10,20,40,80 `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --pass-profit-factor 1.5 `
+  --summary-json reports\generated\twse-absolute-momentum-entry-edge-20260524.json `
+  --summary-md reports\generated\twse-absolute-momentum-entry-edge-20260524.md
+```
+
+結果：
+
+| Strategy | Hold | 通過股票 | Aggregate PF | Trades | Avg return | Worst MDD | Avg excess return | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `absolute-momentum` | `10` | `6/7` | `2.247` | `118` | `28.34%` | `-23.65%` | `-424.39%` | discard as main：MDD 低但報酬太低 |
+| `absolute-momentum` | `20` | `6/7` | `2.762` | `93` | `48.15%` | `-35.34%` | `-404.58%` | discard as main：低於目前候選 |
+| `absolute-momentum` | `40` | `7/7` | `3.284` | `74` | `72.62%` | `-29.00%` | `-380.11%` | compare-only：PF 與 MDD 可讀，但 upside 犧牲過大 |
+| `absolute-momentum` | `80` | `5/7` | `3.842` | `54` | `108.47%` | `-40.48%` | `-344.26%` | discard as main：通過數下降且 MDD 惡化 |
+
+相對目前基準 `confluence-score + hold=10 + signal_cooldown_bars=10`：
+
+| 指標 | Confluence cooldown baseline | Absolute Momentum 較可讀設定 |
+|---|---:|---:|
+| Avg return | `191.38%` | `72.62%` at hold `40` |
+| Worst MDD | `-33.05%` | `-29.00%` at hold `40` |
+| Avg excess return | `-261.35%` | `-380.11%` at hold `40` |
+
+解讀：`absolute-momentum + hold=40` 的 worst MDD 較低，但平均報酬與相對 buy-and-hold 落後幅度明顯更差；不能升級為主候選。
+
+### Target-state sanity check
+
+因為 Absolute Momentum 本質上是 target-state 趨勢持有，不一定適合只用固定 hold entry-edge 解讀，所以另外用既有 `Backtester` 做 close-to-close target exposure sanity check。
+
+預設 `momentum_window=126` / `trend_window=200` 結果：
+
+| 指標 | 結果 |
+|---|---:|
+| Avg return | `225.78%` |
+| Worst MDD | `-50.74%` |
+| Avg B&H return | `452.95%` |
+| Avg excess return | `-227.17%` |
+
+解讀：完整持倉可改善平均報酬與平均 excess，但 worst MDD 接近 buy-and-hold，沒有達成「同時改善 Avg excess return 與 Worst MDD」的本輪目標。
+
+小型參數網格 `momentum_window in 63,126,189,252`、`trend_window in 100,150,200,250` 也沒有找到 worst MDD 優於 `-40%` 且 excess 明顯改善的設定。這表示單純調整動能 / SMA 視窗不是下一個高品質方向。
+
+### Keep / Discard 判斷
+
+- **Keep**：程式層的 `absolute-momentum` 策略與 regression tests。它提供一個文獻支持、deterministic、long-only 的趨勢持有比較錨點，未來多股票 sweep 可持續追蹤。
+- **Compare-only**：`absolute-momentum + hold=40`。它在 entry-edge 下七檔都通過 PF gate，且 worst MDD 比 Confluence cooldown baseline 低，但平均報酬與 avg excess return 太差。
+- **Discard as main candidate**：預設 `126/200` 作為目前主策略。完整持倉雖改善 avg excess return，但 worst MDD 惡化到 `-50.74%`，不符合穩定營利方向。
+
+### 下一步
+
+1. 不再優先擴大 Absolute Momentum 參數搜尋；避免把樣本內強趨勢貼合成漂亮回測。
+2. 下一輪優先補正式 Phase 2 target-state 報表，讓完整持倉策略能直接輸出 benchmark-relative return、MDD、Sortino、Calmar 與 cost stress。
+3. 若繼續研究動能類策略，應加入波動縮放或 drawdown control，而不是只調整回看期與均線期數。

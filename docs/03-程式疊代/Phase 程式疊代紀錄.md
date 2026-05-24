@@ -106,8 +106,8 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 ### 6. Strategy OOP template
 
 - 新增 `StrategyDecision` 與 hook-based `BarByBarStrategy`，由 template 統一 `generate_signals()` 的逐 bar 流程。
-- 三個既有策略改為只實作 `prepare_context(...)` 與 `decide_bar(...)`，避免每個策略重複處理 signal 對齊與上一根 target 狀態。
-- 新增 `strategies.registry`，CLI 透過 Phase 1 factory 建構 long-only 策略。
+- 既有日線策略改為只實作 `prepare_context(...)` 與 `decide_bar(...)`，避免每個策略重複處理 signal 對齊與上一根 target 狀態。
+- 新增 `strategies.registry`，CLI 透過 Phase 1 factory 建構 long-only 策略；2026-05-24 起納入 `absolute-momentum` 作為 compare-only 趨勢持有候選。
 - `VolumeFilteredStrategy` 維持外層 wrapper，不併入策略本體。
 - 新增 template、factory、三策略 regression tests，確保重構不改 target / reason / score contract。
 
@@ -152,6 +152,6 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score 的策略語意修改。
+- OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

@@ -112,6 +112,7 @@ python -m signal_forge.cli fetch-data `
 - [[../策略筆記/SMA Crossover|SMA Crossover]]：趨勢追蹤 baseline。
 - [[../策略筆記/VWAP Reversion|VWAP Reversion]]：rolling VWAP 均值回歸。
 - [[../策略筆記/Confluence Score|Confluence Score]]：趨勢、VWAP、RSI、量能共振打分。
+- [[../策略筆記/Absolute Momentum|Absolute Momentum]]：長期趨勢持有候選，要求回看報酬為正且收盤站上長期 SMA；目前只作 compare-only，不是主候選。
 
 ## 已完成里程碑摘要
 

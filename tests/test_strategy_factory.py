@@ -5,6 +5,7 @@ import unittest
 from signal_forge.strategies import (
     STRATEGY_PARAMETER_DEFAULTS,
     SUPPORTED_STRATEGY_NAMES,
+    AbsoluteMomentumStrategy,
     ConfluenceScoreStrategy,
     OrbVolumeVwapStrategy,
     SignalCooldownStrategy,
@@ -25,12 +26,21 @@ class StrategyFactoryTests(unittest.TestCase):
         """
         self.assertEqual(
             SUPPORTED_STRATEGY_NAMES,
-            ("sma-crossover", "vwap-reversion", "confluence-score", "orb-volume-vwap"),
+            (
+                "sma-crossover",
+                "vwap-reversion",
+                "confluence-score",
+                "absolute-momentum",
+                "orb-volume-vwap",
+            ),
         )
         self.assertIsInstance(build_phase1_strategy("sma-crossover"), SmaCrossoverStrategy)
         self.assertIsInstance(build_phase1_strategy("vwap-reversion"), VwapReversionStrategy)
         self.assertIsInstance(
             build_phase1_strategy("confluence-score"), ConfluenceScoreStrategy
+        )
+        self.assertIsInstance(
+            build_phase1_strategy("absolute-momentum"), AbsoluteMomentumStrategy
         )
         self.assertIsInstance(build_phase1_strategy("orb-volume-vwap"), OrbVolumeVwapStrategy)
 
@@ -48,6 +58,10 @@ class StrategyFactoryTests(unittest.TestCase):
         self.assertEqual(
             build_phase1_strategy("confluence-score").name,
             "confluence_score_long_only",
+        )
+        self.assertEqual(
+            build_phase1_strategy("absolute-momentum").name,
+            "absolute_momentum_m126_sma200_long_only",
         )
         self.assertEqual(
             build_phase1_strategy("orb-volume-vwap").name,
@@ -200,6 +214,10 @@ class StrategyFactoryTests(unittest.TestCase):
             "confluence_score_long_short",
         )
         self.assertEqual(
+            build_strategy("absolute-momentum").name,
+            "absolute_momentum_m126_sma200_long_only",
+        )
+        self.assertEqual(
             build_strategy("orb-volume-vwap").name,
             "orb_volume_vwap_ss0930_or30_closeonly_vw20_vm1.50_with_vwap_no_retest_long_only",
         )
@@ -224,6 +242,14 @@ class StrategyFactoryTests(unittest.TestCase):
         self.assertEqual(
             STRATEGY_PARAMETER_DEFAULTS["confluence-score"].slow_window,
             ConfluenceScoreStrategy.slow_window,
+        )
+        self.assertEqual(
+            STRATEGY_PARAMETER_DEFAULTS["absolute-momentum"].fast_window,
+            AbsoluteMomentumStrategy.momentum_window,
+        )
+        self.assertEqual(
+            STRATEGY_PARAMETER_DEFAULTS["absolute-momentum"].slow_window,
+            AbsoluteMomentumStrategy.trend_window,
         )
         self.assertEqual(
             STRATEGY_PARAMETER_DEFAULTS["orb-volume-vwap"].threshold,
@@ -331,6 +357,15 @@ class StrategyFactoryTests(unittest.TestCase):
         """
         with self.assertRaisesRegex(ValueError, "unsupported strategy unknown"):
             build_strategy("unknown")
+
+    def test_absolute_momentum_rejects_short_mode(self) -> None:
+        """
+        用途與流程：驗證 Absolute Momentum 第一版策略只允許 long-only，避免 Phase 1 factory 誤接成多空策略。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 factory 沒有拒絕 allow_short=True，assertion 會失敗。
+        """
+        with self.assertRaisesRegex(ValueError, "only supports long-only"):
+            build_strategy("absolute-momentum", allow_short=True)
 
 
 if __name__ == "__main__":

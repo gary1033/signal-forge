@@ -11,7 +11,12 @@ from signal_forge.core.market_data import Bar
 from signal_forge.strategies import SUPPORTED_STRATEGY_NAMES
 
 
-DEFAULT_STRATEGIES = ("sma-crossover", "vwap-reversion", "confluence-score")
+DEFAULT_STRATEGIES = (
+    "sma-crossover",
+    "vwap-reversion",
+    "confluence-score",
+    "absolute-momentum",
+)
 
 
 @dataclass(frozen=True)
