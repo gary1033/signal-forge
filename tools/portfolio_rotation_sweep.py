@@ -109,6 +109,9 @@ class PortfolioRotationResult:
     max_group_abs_contribution_group: str | None
     max_group_abs_contribution_share: float
     top3_group_abs_contribution_share: float
+    max_group_average_weight_group: str | None
+    max_group_average_weight: float
+    top3_group_average_weight: float
     group_attribution: list["PortfolioGroupAttribution"]
 
 
@@ -601,6 +604,11 @@ def run_portfolio_rotation(
     max_group, max_group_share, top3_group_share = _group_concentration_metrics(
         group_attribution
     )
+    (
+        max_group_exposure,
+        max_group_average_weight,
+        top3_group_average_weight,
+    ) = _group_exposure_metrics(group_attribution)
     return PortfolioRotationResult(
         strategy=PORTFOLIO_ROTATION_STRATEGY,
         cost_multiplier=cost_multiplier,
@@ -679,6 +687,9 @@ def run_portfolio_rotation(
         max_group_abs_contribution_group=max_group,
         max_group_abs_contribution_share=max_group_share,
         top3_group_abs_contribution_share=top3_group_share,
+        max_group_average_weight_group=max_group_exposure,
+        max_group_average_weight=max_group_average_weight,
+        top3_group_average_weight=top3_group_average_weight,
         group_attribution=group_attribution,
     )
 
@@ -846,6 +857,27 @@ def _group_concentration_metrics(
         top_rows[0].group,
         top_rows[0].absolute_contribution_share,
         sum(row.absolute_contribution_share for row in top_rows[:3]),
+    )
+
+
+def _group_exposure_metrics(
+    group_attribution: list[PortfolioGroupAttribution],
+) -> tuple[str | None, float, float]:
+    """
+    用途與流程：從群組 attribution 的 average_weight 推導最大群組與前三群組平均曝險，判斷策略是否長期把資金集中在少數群組。
+    參數：group_attribution 是 `_build_group_attribution(...)` 產生的群組 attribution 清單，需包含每個群組的平均權重。
+    回傳與錯誤：回傳 `(max_group, max_average_weight, top3_average_weight)`；空清單時 group 為 None、比例為 0，不主動拋錯。
+    """
+    if not group_attribution:
+        return None, 0.0, 0.0
+    top_rows = sorted(
+        group_attribution,
+        key=lambda row: (-row.average_weight, row.group),
+    )
+    return (
+        top_rows[0].group,
+        top_rows[0].average_weight,
+        sum(row.average_weight for row in top_rows[:3]),
     )
 
 
@@ -1198,7 +1230,7 @@ def format_markdown(
     periods_per_year: int,
 ) -> str:
     """
-    用途與流程：將 portfolio rotation 回測結果格式化為 Markdown，包含投組層級績效與逐股 attribution 摘要，方便貼入實驗紀錄與人工審查。
+    用途與流程：將 portfolio rotation 回測結果格式化為 Markdown，包含投組層級績效、逐股 attribution 與群組曝險摘要，方便貼入實驗紀錄與人工審查。
     參數：results 是多成本倍率結果；start/end 是日期窗；periods_per_year 是風險年化期數。
     回傳與錯誤：回傳 Markdown 字串；此函式不做 I/O，也不主動拋錯。
     """
@@ -1211,8 +1243,8 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share |",
-        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
+        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
     ]
     for result in results:
         lines.append(
@@ -1262,7 +1294,10 @@ def format_markdown(
             f"{result.top3_symbol_abs_contribution_share:.2%} | "
             f"{result.max_group_abs_contribution_group or 'none'} | "
             f"{result.max_group_abs_contribution_share:.2%} | "
-            f"{result.top3_group_abs_contribution_share:.2%} |"
+            f"{result.top3_group_abs_contribution_share:.2%} | "
+            f"{result.max_group_average_weight_group or 'none'} | "
+            f"{result.max_group_average_weight:.2%} | "
+            f"{result.top3_group_average_weight:.2%} |"
         )
     lines.extend(_format_symbol_attribution_lines(results, heading="Top Symbol Attribution", limit=5))
     lines.extend(_format_group_attribution_lines(results, heading="Top Group Attribution", limit=5))
@@ -1274,7 +1309,7 @@ def format_walk_forward_markdown(
     retention_rows: list[PortfolioRetentionRow],
 ) -> str:
     """
-    用途與流程：將 portfolio rotation walk-forward 結果格式化成 Markdown 附加章節。
+    用途與流程：將 portfolio rotation walk-forward 結果格式化成 Markdown 附加章節，包含各窗口的群組曝險摘要。
     參數：window_results 是每個日期窗結果；retention_rows 是相鄰窗的保留率比較。
     回傳與錯誤：沒有 window 結果時回傳空字串；此函式不做 I/O。
     """
@@ -1284,8 +1319,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Liquidity blocks | Group cap | Group blocks | Consec cap | Consec blocks | Avg breadth | Avg liquid | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Liquidity blocks | Group cap | Group blocks | Consec cap | Consec blocks | Avg breadth | Avg liquid | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -1321,7 +1356,10 @@ def format_walk_forward_markdown(
                 f"{result.top3_symbol_abs_contribution_share:.2%} | "
                 f"{result.max_group_abs_contribution_group or 'none'} | "
                 f"{result.max_group_abs_contribution_share:.2%} | "
-                f"{result.top3_group_abs_contribution_share:.2%} |"
+                f"{result.top3_group_abs_contribution_share:.2%} | "
+                f"{result.max_group_average_weight_group or 'none'} | "
+                f"{result.max_group_average_weight:.2%} | "
+                f"{result.top3_group_average_weight:.2%} |"
             )
     lines.extend(
         _format_window_symbol_attribution_lines(

@@ -424,7 +424,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
 
     def test_group_attribution_aggregates_member_contributions(self) -> None:
         """
-        用途與流程：驗證 portfolio rotation 會把同一群組內多檔股票的報酬貢獻、持倉期間與入選次數彙總成 group attribution。
+        用途與流程：驗證 portfolio rotation 會把同一群組內多檔股票的報酬貢獻、曝險、持倉期間與入選次數彙總成 group attribution。
         參數：self 是 unittest 測試案例。
         回傳與錯誤：回傳 None；若群組彙總、最大群組集中度或 member 列表漂移，assertion 會失敗。
         """
@@ -489,6 +489,9 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.max_group_abs_contribution_group, "semiconductor")
         self.assertGreater(result.max_group_abs_contribution_share, 0.99)
         self.assertGreater(result.top3_group_abs_contribution_share, 0.99)
+        self.assertEqual(result.max_group_average_weight_group, "semiconductor")
+        self.assertAlmostEqual(result.max_group_average_weight, 0.50)
+        self.assertAlmostEqual(result.top3_group_average_weight, 0.50)
 
     def test_format_markdown_includes_symbol_attribution(self) -> None:
         """
@@ -509,6 +512,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("## Top Group Attribution", markdown)
         self.assertIn("Max contrib symbol", markdown)
         self.assertIn("Max group", markdown)
+        self.assertIn("Max exposure group", markdown)
+        self.assertIn("Top3 group avg weight", markdown)
         self.assertIn("Liquidity min", markdown)
         self.assertIn("Liquidity blocks", markdown)
         self.assertIn("Group cap", markdown)
@@ -853,6 +858,9 @@ def _rotation_result(
         max_group_abs_contribution_group="semiconductor",
         max_group_abs_contribution_share=0.80,
         top3_group_abs_contribution_share=0.80,
+        max_group_average_weight_group="semiconductor",
+        max_group_average_weight=0.30,
+        top3_group_average_weight=0.30,
         group_attribution=[
             PortfolioGroupAttribution(
                 group="semiconductor",

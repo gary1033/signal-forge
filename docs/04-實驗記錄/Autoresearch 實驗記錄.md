@@ -7704,3 +7704,61 @@ Top groups：
 - **Keep diagnostic**：本輪 `TWSE14 liq500m + groups` 診斷結果保留為 compare-only / diagnostic evidence。
 - **Do not promote**：不因 group attribution 而升級策略；這輪只揭露風險來源，沒有降低風險。
 - **Next**：優先測 adjusted price、canary universe、較慢批次 TWSE30+、或 group regime / group exposure diagnostic。下一輪若新增策略限制，必須同時看 symbol 與 group concentration，不能只看 full-window IR。
+
+## 2026-05-24 Portfolio rotation group exposure 診斷
+
+### 目的
+
+上一輪 group-level attribution 顯示 `TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 的報酬高度集中在少數群組，但還不能判斷集中度來源是「策略長期把資金壓在同一群組」還是「曝險不算最高的群組在特定 regime 報酬異常強」。本輪補上 group average-weight exposure 欄位，專門回答這個問題。
+
+研究假設：
+
+> 若最大貢獻群組和最大平均曝險群組不同，代表集中度不一定能靠硬性曝險 cap 解決；應優先檢查資料品質、股票池設計、調整後價格與 regime 驗證。
+
+### 程式改動
+
+- `tools/portfolio_rotation_sweep.py`
+  - `PortfolioRotationResult` 新增 `max_group_average_weight_group`、`max_group_average_weight` 與 `top3_group_average_weight`。
+  - 新增 `_group_exposure_metrics(...)`，用既有 `PortfolioGroupAttribution.average_weight` deterministic 推導最大群組平均曝險與前三群組平均曝險。
+  - Markdown full-window 與 walk-forward table 新增 Max exposure group / Max group avg weight / Top3 group avg weight。
+- `tests/test_portfolio_rotation_sweep_tool.py`
+  - 擴充 group attribution aggregation regression，鎖住 group exposure summary。
+  - 擴充 Markdown regression，確認新欄位會輸出。
+
+### 報表檔案
+
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-group-exposure-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-group-exposure-rolling24m-20260524.md`
+
+### Full-window 摘要
+
+以下皆看 `1x` 成本倍率。
+
+| Return | Excess | IR | MDD | Active MDD | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |
+|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|
+| `1745.89%` | `1409.71%` | `1.521` | `-18.61%` | `-19.81%` | `electronics` | `33.90%` | `89.27%` | `semiconductor` | `30.33%` | `65.99%` |
+
+### Rolling group exposure 摘要
+
+| Window | IR | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |
+|---|---:|---|---:|---:|---|---:|---:|
+| `roll01` | `1.524` | `shipping` | `42.93%` | `90.31%` | `semiconductor` | `31.16%` | `60.88%` |
+| `roll02` | `0.814` | `shipping` | `75.64%` | `93.74%` | `financial` | `15.64%` | `40.52%` |
+| `roll03` | `1.832` | `electronics` | `42.83%` | `96.81%` | `semiconductor` | `29.17%` | `52.05%` |
+| `roll04` | `1.123` | `electronics` | `43.16%` | `83.12%` | `semiconductor` | `29.03%` | `73.52%` |
+| `roll05` | `1.187` | `electronics` | `59.22%` | `89.59%` | `electronics` | `28.37%` | `62.07%` |
+| `roll06` | `1.323` | `electronics` | `53.05%` | `90.53%` | `electronics` | `28.37%` | `67.81%` |
+
+### 解讀
+
+1. **full-window 最大貢獻群組不是最大曝險群組**：最大貢獻是 `electronics`，但最大平均曝險是 `semiconductor`。這代表 full-window concentration 並不只是策略長期超配 electronics，而是 electronics 在持有期間的 realized return 較強。
+2. **`roll02` 是最關鍵警訊**：`shipping` 貢獻 share 高達 `75.64%`，但該 window 最大平均曝險是 `financial`，且 top-3 group avg weight 只有 `40.52%`。這表示 `2603/shipping` 的 regime return 影響遠大於平均曝險，硬上 group exposure cap 未必能解決問題。
+3. **後段 window 仍有群組曝險重疊**：`roll05`、`roll06` 的最大貢獻與最大曝險都指向 `electronics`，表示 2024-2026 的強勢期同時存在 exposure concentration 與 return concentration。
+4. **策略候選狀態不變**：`liq500m` 仍是 execution-aware compare candidate；group exposure 只補診斷能力，沒有降低 concentration 或證明穩定營利。
+
+### Keep / Discard 判斷
+
+- **Keep code**：group exposure summary 欄位與 Markdown / JSON 輸出。它是 deterministic、test-covered，能讓後續每個 portfolio rotation 回測同時檢查貢獻集中與曝險集中。
+- **Keep diagnostic**：本輪結果保留為 compare-only / diagnostic evidence。
+- **Do not promote**：不因為新增診斷欄位而升級策略；目前仍有 group regime dependency、未還原權息與小股票池限制。
+- **Next**：優先測 adjusted price、較慢批次 TWSE30+、canary universe 或 group regime validation。若要再做限制，應先確認限制能同時改善 `max_group_abs_contribution_share`、`top3_group_abs_contribution_share`、`max_group_average_weight` 與 min rolling IR，而不是只把曝險壓低。

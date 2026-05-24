@@ -28,6 +28,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Active max drawdown / 相對最大回撤**：用策略權益相對 benchmark 權益的 normalized relative equity 計算回撤，觀察策略相對基準是否曾長時間失速。
 - **Symbol attribution / 選股歸因**：把實際持倉期間的 `weight * close-to-close return` 分配回各股票，檢查報酬是否集中在少數高波動股票。
 - **Group attribution / 群組歸因**：把同一產業或自訂群組內的逐股貢獻彙總，檢查策略是否從單檔集中轉成 sector / group 集中。
+- **Group exposure / 群組曝險**：把同一群組的平均權重加總，檢查報酬集中是否來自長期高曝險，還是來自特定群組在持有期間的 realized return 過強。
 - **Concentration guard / 集中度防線**：把最大單檔、前三檔、最大群組與前三群組貢獻占比拉成一級欄位，避免只看總報酬或 IR 時忽略少數大贏家或少數產業依賴。
 
 ## 策略假設
@@ -88,7 +89,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 同條件下 `top_n=4` 是目前風險調整折衷候選：full-window return 約 `1546.66%`、excess 約 `1210.48%`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、IR 約 `1.401`；相對 `top_n=3` 犧牲總報酬，但明顯降低回撤且 IR 幾乎不變。
 - 選股歸因顯示 full-window 最大貢獻 `2603` 的絕對貢獻占比約 `23.77%`，不是單一股票完全壟斷；但 rolling window 仍有集中風險，`roll02` 的 `2603` 約 `68.75%`、`roll06` 的 `2308` 約 `48.75%`。
 - Concentration guard 進一步顯示 full-window top-3 絕對貢獻占比約 `55.04%`；rolling top-3 在 `roll01` 約 `73.33%`、`roll02` 約 `82.56%`、`roll03` 約 `72.39%`，代表部分分段仍過度集中。
-- 群組歸因已補上。`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 的 full-window 最大群組是 `electronics`，絕對貢獻占比約 `33.90%`；前三群組 `electronics / semiconductor / shipping` 合計約 `89.27%`。rolling 診斷更集中：`roll02` 的 `shipping` 群組約 `75.64%`，`roll03` 前三群組約 `96.81%`，`roll05` 的 `electronics` 約 `59.22%`。這表示目前 concentration 問題不只是單檔，還包含產業/群組 regime 依賴。
+- 群組歸因與群組曝險診斷已補上。`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 的 full-window 最大貢獻群組是 `electronics`，絕對貢獻占比約 `33.90%`；前三群組 `electronics / semiconductor / shipping` 合計約 `89.27%`。但 full-window 最大平均曝險群組是 `semiconductor`，平均權重約 `30.33%`，前三群組平均曝險約 `65.99%`。rolling 診斷更集中：`roll02` 的 `shipping` 群組貢獻約 `75.64%`，但最大平均曝險反而是 `financial`、約 `15.64%`，代表部分 concentration 來自 regime return，不是單純長期高曝險。
 - `top_n=4` 可把 full-window top-3 絕對貢獻占比降到約 `48.32%`，但 max rolling top-3 share 仍約 `81.68%`，所以它改善 full-window 集中度，還沒有解決最關鍵的 rolling concentration。
 - `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 績效 compare candidate：full-window IR 約 `1.515`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、min rolling IR 約 `0.814`；但 max rolling top-3 share 仍約 `82.62%`。
 - 新增 liquidity gate 後，`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 暫時是 execution-aware compare candidate：full-window return 約 `1745.89%`、excess 約 `1409.71%`、IR 約 `1.521`、MDD 約 `-18.61%`、active MDD 約 `-19.81%`，3x 成本後 IR 仍約 `1.490`。但 max rolling top-3 share 仍約 `82.62%`，所以它不是 concentration 修復。
@@ -103,11 +104,11 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 已測 sector/group cap。`groupcap2` full IR 約 `1.449`，但 min rolling IR 降到約 `0.610`，max rolling top-3 share 仍約 `81.68%`；`groupcap1` 傷害 edge。因此 group cap 只保留為可測工具，不作目前主候選。
 - 已測 TWSE23 擴大股票池。它把 rolling concentration 往下壓，但同時讓 min rolling excess / IR 轉弱，因此不升級；下一步不要只把股票池加大，應改善股票池品質、資料調整與流動性條件。
 - 已測 liquidity / capacity gate。`500M/20 bars` 幾乎不傷害原策略並小幅改善 active MDD，因此升為 execution-aware compare candidate；`1B` 雖提高報酬但回撤與 rolling IR tradeoff 較差，`2B` 明確 discard。
-- 下一步優先測 adjusted price、較慢批次完成 TWSE30+、canary universe、group regime / group exposure diagnostic 或流動性/容量條件，目標是同時降低 rolling `max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`、`max_group_abs_contribution_share` 與 `top3_group_abs_contribution_share`，並保留正 min rolling excess 與可接受 active drawdown。
+- 下一步優先測 adjusted price、較慢批次完成 TWSE30+、canary universe、group regime validation 或更嚴格的流動性/容量條件，目標是同時降低 rolling `max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`、`max_group_abs_contribution_share`、`top3_group_abs_contribution_share` 與 group exposure concentration，並保留正 min rolling excess 與可接受 active drawdown。
 - 再檢查 adjusted price、流動性與容量；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
-- 目前主比較錨點分成四個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是最新 execution-aware compare candidate。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池與 group attribution 本輪診斷保留為 discard / compare-only / diagnostic 對照，不取代核心錨點，也不是穩定營利證明。
+- 目前主比較錨點分成四個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是最新 execution-aware compare candidate。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、group attribution 與 group exposure 診斷保留為 discard / compare-only / diagnostic 對照，不取代核心錨點，也不是穩定營利證明。
 
 ## 參考來源
 
