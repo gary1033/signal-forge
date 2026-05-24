@@ -41,6 +41,13 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "--market-regime-filter",
                 "--market-regime-sma-bars",
                 "2",
+                "--breadth-filter",
+                "--breadth-lookback-bars",
+                "4",
+                "--breadth-min-positive-count",
+                "2",
+                "--breadth-positive-threshold",
+                "0.01",
                 "--volatility-target",
                 "--volatility-lookback-bars",
                 "3",
@@ -60,6 +67,10 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.cost_multipliers_list, "1,3")
         self.assertTrue(args.market_regime_filter)
         self.assertEqual(args.market_regime_sma_bars, 2)
+        self.assertTrue(args.breadth_filter)
+        self.assertEqual(args.breadth_lookback_bars, 4)
+        self.assertEqual(args.breadth_min_positive_count, 2)
+        self.assertEqual(args.breadth_positive_threshold, 0.01)
         self.assertTrue(args.volatility_target)
         self.assertEqual(args.volatility_lookback_bars, 3)
         self.assertEqual(args.target_annual_volatility, 0.15)
@@ -247,6 +258,73 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertAlmostEqual(result.total_return, 0.0)
         self.assertAlmostEqual(result.average_exposure, 0.0)
 
+    def test_breadth_filter_blocks_rotation_when_positive_count_is_too_low(self) -> None:
+        """
+        用途與流程：驗證 breadth filter 會在正動能股票數不足時阻擋原本可進場的相對動能輪動，避免只靠單檔強勢股承擔 crash-prone 曝險。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 breadth count、block count 或全現金語意漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 120.0),
+                    _bar("2026-01-04", 130.0),
+                ],
+            ),
+            (
+                "2317",
+                Path("2317.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 90.0),
+                    _bar("2026-01-03", 80.0),
+                    _bar("2026-01-04", 70.0),
+                ],
+            ),
+            (
+                "2454",
+                Path("2454.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 95.0),
+                    _bar("2026-01-03", 90.0),
+                    _bar("2026-01-04", 85.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            breadth_filter=True,
+            breadth_lookback_bars=1,
+            breadth_min_positive_count=2,
+        )
+
+        self.assertTrue(result.breadth_filter)
+        self.assertEqual(result.breadth_lookback_bars, 1)
+        self.assertEqual(result.breadth_min_positive_count, 2)
+        self.assertEqual(result.breadth_block_count, 3)
+        self.assertEqual(result.breadth_warmup_count, 0)
+        self.assertAlmostEqual(result.average_breadth_positive_count or 0.0, 1.0)
+        self.assertEqual(result.trade_count, 0)
+        self.assertAlmostEqual(result.total_return, 0.0)
+        self.assertAlmostEqual(result.average_exposure, 0.0)
+
     def test_volatility_target_scales_high_volatility_rotation_weights(self) -> None:
         """
         用途與流程：驗證 portfolio-level volatility target 會用目標投組近期波動下修權重，而不是改變相對動能選股。
@@ -393,6 +471,10 @@ def _rotation_result(
         min_return=0.0,
         market_regime_filter=False,
         market_regime_sma_bars=126,
+        breadth_filter=False,
+        breadth_lookback_bars=21,
+        breadth_min_positive_count=1,
+        breadth_positive_threshold=0.0,
         volatility_target=False,
         volatility_lookback_bars=21,
         target_annual_volatility=0.20,
@@ -419,10 +501,13 @@ def _rotation_result(
         trade_count=1,
         rebalance_count=1,
         regime_block_count=0,
+        breadth_block_count=0,
+        breadth_warmup_count=0,
         volatility_scaled_rebalance_count=0,
         volatility_warmup_count=0,
         total_cost=0.0,
         average_turnover=1.0,
+        average_breadth_positive_count=None,
         average_volatility_scale=None,
         average_exposure=1.0,
         average_selected_count=1.0,

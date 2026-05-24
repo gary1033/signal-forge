@@ -120,7 +120,7 @@ flowchart TD
 
 這個工具不接 broker、不產生 order intent，也不改變 `live` dry-run 邊界。它只用於研究完整持倉候選是否值得進一步加入風控、volatility scaling 或 walk-forward 驗證。
 
-`tools\portfolio_rotation_sweep.py` 是另一條 Phase 2 portfolio-level 研究路徑。它不把每檔股票各自回測，而是把同一批股票對齊成共同日期表，依 rebalance frequency 做相對動能排序與等權配置，並用 equal-weight buy-and-hold portfolio 作基準。這用來避免用逐檔 B&H 指標誤判輪動策略。
+`tools\portfolio_rotation_sweep.py` 是另一條 Phase 2 portfolio-level 研究路徑。它不把每檔股票各自回測，而是把同一批股票對齊成共同日期表，依 rebalance frequency 做相對動能排序與等權配置，並用 equal-weight buy-and-hold portfolio 作基準。它也支援預設關閉的 market regime filter、breadth filter 與 volatility target，用同一套 rolling / OOS / active-risk 報表比較不同風控 overlay。這用來避免用逐檔 B&H 指標誤判輪動策略。
 
 ## SignalDigest 與 trace summary
 

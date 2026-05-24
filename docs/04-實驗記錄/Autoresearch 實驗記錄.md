@@ -6826,3 +6826,112 @@ python tools\portfolio_rotation_sweep.py `
 - **Keep as compare tool**：portfolio-level volatility target 是 deterministic、test-covered、預設關閉的風控 overlay，可用來比較不同風險降曝險假設。
 - **Discard as current improvement**：本輪掃描沒有任何一組同時改善 full-window IR、`2021-2022` excess、rolling positive windows 與 MDD，因此不能升級主候選。
 - **下一步**：不要繼續只調 `target_annual_volatility` 或 lookback；若要修穩定性，下一步更合理的是擴大股票池，或加入更具體的 re-entry / breadth 條件，而不是單純波動縮放。
+
+## 2026-05-24 Portfolio rotation breadth filter
+
+### 假設
+
+前兩輪 market regime filter 與 volatility target 都是在「市場方向」或「波動」上降曝險，但沒有同時改善 full-window IR 與 `2021-2022` 失敗段。這輪改測更貼近 breadth momentum / protective asset allocation 的假設：
+
+> 若同一股票池中只有少數股票維持正動能，portfolio rotation 可能只是追逐單一強勢股，而不是承擔健康的市場寬度；因此在 rebalance date 先檢查正動能股票數，低於門檻就持有現金。
+
+這不是 broker、不是真實下單，也不是績效保證；它只是 deterministic、test-covered、預設關閉的 breadth gate。
+
+### 來源
+
+- Keller and Keuning, Protective Asset Allocation (PAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2759734
+- Keller and Keuning, Breadth Momentum and Vigilant Asset Allocation (VAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3002624
+- Keller and Keuning, Defensive Asset Allocation (DAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3212862
+- Antonacci, Absolute Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2244633
+
+這些來源的共通點不是照抄 ETF 配置，而是把「relative momentum 選攻擊資產」和「absolute / breadth momentum 做 crash protection」分開。SignalForge 版本因此只蒸餾為本地七檔 TWSE 股票池可驗證的研究假設：計算股票池中 `lookback` 報酬為正的檔數，低於 `breadth_min_positive_count` 時留現金。
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增 portfolio-level breadth filter：
+  - `--breadth-filter`
+  - `--breadth-lookback-bars`
+  - `--breadth-min-positive-count`
+  - `--breadth-positive-threshold`
+- `PortfolioRotationResult` 新增：
+  - `breadth_filter`
+  - `breadth_lookback_bars`
+  - `breadth_min_positive_count`
+  - `breadth_positive_threshold`
+  - `breadth_block_count`
+  - `breadth_warmup_count`
+  - `average_breadth_positive_count`
+- Markdown 報表新增 breadth 欄位；rolling windows 也會顯示 breadth blocks 與 avg breadth。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser 與「正動能檔數不足時轉現金」regression。
+
+### 參數掃描摘要
+
+固定主候選 `monthly + 21 bars + top3`，掃 `breadth_lookback_bars = 21 / 42 / 63 / 84` 與 `breadth_min_positive_count = 1..7`。下表列出代表組合：
+
+| Breadth lookback | Min positive | Full return | Full excess | Full IR | Full MDD | Avg exposure | `2021-2022` excess | `2021-2022` IR | Positive excess windows | 解讀 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| baseline | - | `968.64%` | `564.61%` | `0.858` | `-30.81%` | `91.84%` | `-24.62%` | `-0.881` | `5/6` | 原始候選，失敗段明確 |
+| `21` | `2` | `677.10%` | `273.07%` | `0.488` | `-27.47%` | `83.33%` | `-17.66%` | `-0.618` | `5/6` | 改善失敗段但犧牲 full IR |
+| `21` | `5` | `561.93%` | `157.90%` | `0.216` | `-16.30%` | `45.50%` | `3.59%` | `0.024` | `4/6` | roll02 轉正但主動 edge 太弱 |
+| `42` | `1` | `1081.40%` | `677.37%` | `0.946` | `-30.81%` | `90.30%` | `-28.94%` | `-1.053` | `5/6` | full-window 變強但失敗段惡化 |
+| `42` | `2` | `1193.44%` | `789.41%` | `1.017` | `-21.11%` | `84.39%` | `-16.91%` | `-0.598` | `5/6` | 本輪最佳折衷；仍未修好 roll02 |
+| `42` | `3` | `847.66%` | `443.64%` | `0.671` | `-21.11%` | `74.75%` | `-10.33%` | `-0.357` | `4/6` | 較保守但 full IR 低於 baseline |
+| `84` | `2` | `887.93%` | `483.90%` | `0.750` | `-31.88%` | `87.97%` | `-31.56%` | `-1.111` | `5/6` | full MDD 與失敗段不佳 |
+
+### 正式報表命令
+
+本輪保留 `breadth_lookback_bars=42`、`breadth_min_positive_count=2` 作為正式報表。它是目前第一個同時提高 full-window IR、降低 full-window MDD、改善 `2021-2022` 傷害的 overlay，但 `2021-2022` 仍是負 excess，因此不能視為穩定營利證明。
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --breadth-filter `
+  --breadth-lookback-bars 42 `
+  --breadth-min-positive-count 2 `
+  --breadth-positive-threshold 0.0 `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\twse-portfolio-rotation-monthly-lb21-top3-breadth42-min2-rolling24m-20260524.json `
+  --summary-md reports\generated\twse-portfolio-rotation-monthly-lb21-top3-breadth42-min2-rolling24m-20260524.md
+```
+
+### `breadth 42 / min positive 2` 結果摘要
+
+| Window | Cost | Return | Benchmark return | Excess | IR | MDD | Active MDD | Breadth blocks | Avg breadth | Avg exposure | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Full `2020-2026` | `1x` | `1193.44%` | `404.03%` | `789.41%` | `1.017` | `-21.11%` | `-18.89%` | `7` | `4.176` | `84.39%` | full-window 明顯優於 baseline |
+| Full `2020-2026` | `3x` | `1158.06%` | `403.83%` | `754.23%` | `0.988` | `-21.15%` | `-19.63%` | `7` | `4.176` | `84.39%` | 3x 成本後仍保留 |
+| `2020-2021` | `1x` | `113.86%` | `90.91%` | `22.95%` | `0.387` | `-16.30%` | `-17.56%` | `2` | `4.143` | `75.82%` | 比 baseline 的 early window 更好 |
+| `2021-2022` | `1x` | `-11.03%` | `5.88%` | `-16.91%` | `-0.598` | `-19.10%` | `-24.17%` | `5` | `2.941` | `55.53%` | 改善但仍失敗 |
+| `2022-2023` | `1x` | `21.75%` | `-1.77%` | `23.51%` | `0.686` | `-11.92%` | `-13.94%` | `5` | `3.471` | `60.05%` | 明顯改善原本弱中段 |
+| `2023-2024` | `1x` | `86.62%` | `68.20%` | `18.42%` | `0.514` | `-21.11%` | `-15.19%` | `1` | `4.450` | `83.98%` | 仍正，但低於原始強勢段 |
+| `2024-2025` | `1x` | `157.23%` | `81.93%` | `75.30%` | `1.330` | `-21.11%` | `-19.58%` | `0` | `4.632` | `87.36%` | 強勢段仍保留 |
+| `2025-2026-05` | `1x` | `228.51%` | `102.48%` | `126.03%` | `1.754` | `-13.23%` | `-16.88%` | `0` | `4.615` | `82.47%` | partial window 仍強 |
+
+### 解讀
+
+1. **breadth gate 是目前最有用的風控 overlay**：相較 market regime SMA84 與 volatility target，它是第一個讓 full-window IR 高於 baseline、MDD 低於 baseline，同時改善中段 rolling windows 的版本。
+2. **但它仍沒有解決 `2021-2022`**：`roll02` excess 從 `-24.62%` 改到 `-16.91%`，MDD 從 `-30.40%` 改到 `-19.10%`，但 IR 仍是 `-0.598`，不能稱為穩定。
+3. **強勢段報酬被削弱但未消失**：2024-2025 excess 從原始 `158.48%` 降到 `75.30%`，代表這個 gate 有明顯機會成本；好處是 MDD 與 2022-2023 穩定性改善。
+4. **breadth gate 比單純調曝險更像策略假設**：它不是一律縮小權重，而是在市場寬度不足時轉現金，較符合「相對動能需要足夠廣度支撐」的研究假設。
+
+### Keep / Discard 判斷
+
+- **Keep**：breadth filter 功能、CLI、JSON/Markdown 欄位與 tests。它是 deterministic、預設關閉、可重複驗證的 portfolio rotation overlay。
+- **Promote to current best compare candidate**：`monthly + 21 bars + top3 + breadth lookback 42 / min positive 2` 是目前 portfolio rotation 的最佳折衷候選。
+- **Not stable-profit proof**：因 `2021-2022` 仍輸 benchmark，且七檔股票池仍太小，不能宣稱已穩定營利。
+- **下一步**：先做更大股票池與 1x / 2x / 3x cost stress 的固定報表，再測 re-entry 或 canary universe；不要只繼續微調 breadth threshold。

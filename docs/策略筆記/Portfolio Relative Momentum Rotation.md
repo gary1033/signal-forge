@@ -20,6 +20,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Rebalance / 再平衡**：固定頻率重新計算排名與目標權重，例如每週或每月一次。
 - **Equal-weight benchmark / 等權買進持有基準**：把資金平均分配到同一批股票並長期持有，用來檢查輪動是否真的有 portfolio-level active return。
 - **Market regime filter / 市場狀態濾網**：用同一股票池的等權 normalized price index 當市場 proxy；若 index 低於自己的 SMA，該次 rebalance 改持現金。這是風險 overlay，不是新的選股 alpha。
+- **Breadth filter / 市場寬度濾網**：在 rebalance date 計算股票池中有多少檔股票的近期報酬大於門檻；若正動能檔數不足，代表強勢不夠廣，該次 rebalance 改持現金。
 - **Volatility target / 波動目標降曝險**：用已選出投組的近期 realized volatility 估算目前風險，若高於目標年化波動，就按比例縮小目標權重。SignalForge 版本預設 `max_scale=1.0`，所以只降曝險、不加槓桿。
 - **Turnover / 週轉率**：每次再平衡時權重變化的總量。週轉率越高，交易成本與滑價風險越大。
 - **Information Ratio / 資訊比率**：把策略相對 benchmark 的年化 active return 除以 tracking error，用來看每承擔一單位主動風險是否真的換到超額報酬。
@@ -37,14 +38,16 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 
 1. 對每檔股票計算 `close[t] / close[t - lookback_bars] - 1`。
 2. 排除近期報酬小於或等於 `min_return` 的股票。
-3. 在剩下股票中依近期報酬由高到低排序。
-4. 選前 `top_n` 檔股票。
-5. 入選股票等權配置；未入選股票權重為 `0.0`。
-6. 若沒有股票通過門檻，投組維持現金。
+3. 若啟用 breadth filter，另用 `breadth_lookback_bars` 計算股票池中正動能檔數；若低於 `breadth_min_positive_count`，本次 rebalance 全部留現金。
+4. 在剩下股票中依近期報酬由高到低排序。
+5. 選前 `top_n` 檔股票。
+6. 入選股票等權配置；未入選股票權重為 `0.0`。
+7. 若沒有股票通過門檻，投組維持現金。
 
 | 條件 | 目標權重 |
 |---|---:|
 | 股票進入 top-N 且近期報酬大於門檻 | `1 / 入選檔數` |
+| breadth filter 啟用且正動能檔數不足 | 全部 `0.0`，投組留現金 |
 | 股票落榜 | `0.0` |
 | 全部股票近期報酬不大於門檻 | 全部 `0.0`，投組留現金 |
 
@@ -54,6 +57,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `lookback_bars`：預設研究候選使用 `21`，約一個月交易日。
 - `top_n`：預設研究候選使用 `3`。
 - `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
+- `breadth_filter`：目前最佳折衷候選啟用；`breadth_lookback_bars=42`、`breadth_min_positive_count=2`、`breadth_positive_threshold=0.0`。
 - `cost_multipliers`：固定用 `1x` 與 `3x` 成本壓力檢查。
 - benchmark：同一批股票的 equal-weight buy-and-hold portfolio。
 
@@ -72,18 +76,23 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 24 個月 rolling 檢查已發現 2021-2022 失敗 window，代表策略可能需要 market regime 或 risk-off 條件，不能只看 2024-2026 強勢期。
 - 可選 `--market-regime-filter --market-regime-sma-bars 84` 已測：它把 2021-2022 excess 從約 `-24.62%` 改到約 `-13.59%`，但 full-window IR 從約 `0.858` 降到約 `0.544`，所以只能作 compare-only 風控工具，不能當作目前主候選改善。
 - 可選 `--volatility-target --volatility-lookback-bars 42 --target-annual-volatility 0.20` 已測：full excess 只剩約 `43.00%`、IR 約 `0.065`，2021-2022 excess 仍約 `-22.85%`，所以也只能作 compare-only 風控工具，不能當作目前主候選改善。
+- 可選 `--breadth-filter --breadth-lookback-bars 42 --breadth-min-positive-count 2` 是目前最佳折衷：full-window return 約 `1193.44%`、excess 約 `789.41%`、MDD 約 `-21.11%`、IR 約 `1.017`；但 2021-2022 excess 仍約 `-16.91%`、IR 約 `-0.598`，所以只能標為 current best compare candidate，不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
 ## 下一步
 
-- 針對 2021-2022 失敗 window 測更具體的 risk-off / re-entry overlay 或更大股票池；不要只繼續調 market regime SMA 長度、target volatility 或 volatility lookback。
+- 針對 2021-2022 失敗 window 擴大股票池與補 1x / 2x / 3x cost stress 固定報表；不要只微調 breadth threshold。
+- 若要再改善 breadth gate，優先測 canary universe / re-entry 條件，而不是把同一個七檔股票池的門檻調到剛好好看。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
-- 不急著加入更複雜的風控；先確認 `monthly + 21 bars + top3` 是否在更多資料窗仍保留 active return。
+- 目前主比較錨點改為 `monthly + 21 bars + top3 + breadth 42/min2`，但仍要和原始版本一起保留，避免只看單一 overlay。
 
 ## 參考來源
 
 - Goyal and Jegadeesh, Cross-Sectional and Time-Series Tests of Return Predictability: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2610288
 - Antonacci, Absolute Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2244633
 - Jegadeesh and Titman, Returns to Buying Winners and Selling Losers: https://www.jstor.org/stable/2328882
+- Keller and Keuning, Protective Asset Allocation (PAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2759734
+- Keller and Keuning, Breadth Momentum and Vigilant Asset Allocation (VAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3002624
+- Keller and Keuning, Defensive Asset Allocation (DAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3212862
