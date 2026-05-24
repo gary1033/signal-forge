@@ -7830,3 +7830,91 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Do not promote**：`no shipping`、`no electronics`、`no semiconductor` 都不升級為主候選。
 - **Current compare candidate unchanged**：仍維持 `TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 作 execution-aware compare candidate。
 - **Next**：不要靠固定排除群組處理 concentration；下一步優先測 adjusted price、較慢批次 TWSE30+、canary universe 或更高品質股票池。若繼續做 group-aware 策略，應是 regime-aware sizing / validation，而不是硬刪 dominant sector。
+
+## 2026-05-24 Portfolio rotation canary universe 診斷
+
+### 目的
+
+前幾輪已經證明 TWSE14 最新候選在 full-window、成本壓力與 rolling 6 窗口上表現不錯，但仍高度依賴少數股票與群組。這輪不用 TWSE14 內部再調參，而是把同一組 execution-aware candidate 原封不動套到新增的 9 檔股票，做 canary universe validation。
+
+研究假設：
+
+> 如果策略形狀真的具備可泛化 edge，則在未作為主調參錨點的 canary 股票池上，至少不應出現長期負 excess、rolling IR 大幅轉負或 concentration 更嚴重的情況。
+
+### Canary 股票池
+
+```text
+cement = 1101, 1102
+food = 1216
+petrochemical = 1326
+steel = 2002
+auto = 2207
+electronics = 2327, 2357, 2379
+```
+
+資料範圍：各檔皆使用 `2020-01-01` 到 `2026-05-20` 的 TWSE 日線資料。
+
+### 固定條件
+
+```text
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_min_positive_count = 3
+max_consecutive_selections_per_symbol = 5
+liquidity_lookback_bars = 20
+min_average_traded_value = 500M
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+報表檔案：
+
+- `reports/generated/twse-canary9-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- `reports/generated/twse-canary9-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.md`
+
+### Full-window 與 rolling 摘要
+
+以下皆看 `1x` 成本倍率。
+
+| Case | Full return | Full excess | Full IR | MDD | Active MDD | Liquidity blocks | Avg liquid count | Min rolling excess | Min rolling IR | Worst rolling active MDD | Max rolling top3 symbol share | Max rolling top3 group share |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `TWSE14 baseline` | `1745.89%` | `1409.71%` | `1.521` | `-18.61%` | `-19.81%` | `4` | `13.18` | `37.22%` | `0.814` | `-19.81%` | `82.62%` | `96.81%` |
+| `TWSE23 liq500m` | `750.26%` | `589.36%` | `1.286` | `-35.35%` | `-29.81%` | `16` | `18.72` | `-8.54%` | `-0.046` | `-26.80%` | `63.55%` | `n/a` |
+| `Canary9` | `14.92%` | `-0.91%` | `-0.002` | `-44.29%` | `-38.22%` | `32` | `5.46` | `-33.45%` | `-1.645` | `-35.02%` | `89.54%` | `98.45%` |
+
+### Canary rolling 明細
+
+| Window | Return | Excess | IR | MDD | Active MDD | Max symbol | Top3 symbol share | Max group | Top3 group share |
+|---|---:|---:|---:|---:|---:|---|---:|---|---:|
+| `roll01` | `37.72%` | `12.20%` | `0.216` | `-14.55%` | `-18.68%` | `2379` | `81.65%` | `electronics` | `98.00%` |
+| `roll02` | `-37.12%` | `-33.45%` | `-1.645` | `-42.92%` | `-35.02%` | `2379` | `89.54%` | `electronics` | `98.45%` |
+| `roll03` | `-24.88%` | `-22.16%` | `-1.028` | `-33.31%` | `-31.30%` | `2379` | `86.90%` | `electronics` | `95.14%` |
+| `roll04` | `23.73%` | `14.38%` | `0.553` | `-13.37%` | `-16.16%` | `2379` | `68.67%` | `electronics` | `89.81%` |
+| `roll05` | `-20.15%` | `-7.65%` | `-0.278` | `-31.79%` | `-23.63%` | `2327` | `86.99%` | `electronics` | `96.85%` |
+| `roll06` | `3.47%` | `8.63%` | `0.466` | `-22.23%` | `-23.63%` | `2327` | `84.75%` | `petrochemical` | `91.81%` |
+
+### 成本壓力摘要
+
+| Cost | Return | Excess | IR | MDD |
+|---:|---:|---:|---:|---:|
+| `1x` | `14.92%` | `-0.91%` | `-0.002` | `-44.29%` |
+| `2x` | `13.76%` | `-2.05%` | `-0.013` | `-44.69%` |
+| `3x` | `12.61%` | `-3.18%` | `-0.024` | `-45.09%` |
+
+### 解讀
+
+1. **Canary 沒有通過泛化驗證**：full-window excess 為負、IR 幾乎為 `0`，且 MDD 達 `-44.29%`。這和 TWSE14 baseline 的正 excess / 正 IR 明顯不同。
+2. **rolling failure 很嚴重**：`roll02` 與 `roll03` 連續兩個 rolling window 都是負 excess / 負 IR；`roll02` IR 為 `-1.645`。
+3. **concentration 也沒有改善**：Canary9 的 max rolling top-3 symbol share 達 `89.54%`，max rolling top-3 group share 達 `98.45%`，比 TWSE14 baseline 更集中。
+4. **liquidity gate 在 canary 池觸發更頻繁**：`32` 次 liquidity block，平均合格股票只有 `5.46` 檔，表示這個 canary 池容量與可選廣度都不足。
+
+### Keep / Discard 判斷
+
+- **Keep diagnostic**：canary universe validation 作為反證保留；它直接指出 TWSE14 候選尚未跨股票池泛化。
+- **Do not promote**：不得把目前 execution-aware compare candidate 升級為穩定營利或主策略。
+- **Current compare candidate unchanged**：仍可用 `TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 作 compare candidate，但它更像 TWSE14-specific candidate，而不是已泛化策略。
+- **Next**：優先處理資料品質與 universe quality：adjusted price、較慢批次 TWSE30+、更嚴格股票池篩選、canary 分層設計。不要再只微調 breadth / top-N；canary failure 表示問題不是單一門檻可解。

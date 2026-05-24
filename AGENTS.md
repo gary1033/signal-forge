@@ -94,6 +94,8 @@ Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\策略回測與優化評�
 
 策略研究任務若尚未讀取這份準則與最近實驗紀錄，不得開始回測、調參或導入新策略；若結論沒有依準則標示 `keep`、`discard` 或 `compare-only`，不得視為已完成。
 
+這份準則是策略研究 gate，不是可選背景資料；策略實驗紀錄、策略筆記、commit/PR 摘要都要能回扣到其中至少一項評估面向，否則不能宣稱本輪策略迭代朝正確方向前進。
+
 策略相關任務的必讀順序是：
 
 1. 先讀 `docs\02-規劃\策略回測與優化評估準則.md`，確認本輪要改善的指標與 keep / discard / compare-only gate。
