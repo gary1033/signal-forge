@@ -50,6 +50,10 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "2",
                 "--breadth-positive-threshold",
                 "0.01",
+                "--liquidity-lookback-bars",
+                "5",
+                "--min-average-traded-value",
+                "1000000",
                 "--symbol-group",
                 "2330:semiconductor",
                 "--symbol-group",
@@ -81,6 +85,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.breadth_lookback_bars, 4)
         self.assertEqual(args.breadth_min_positive_count, 2)
         self.assertEqual(args.breadth_positive_threshold, 0.01)
+        self.assertEqual(args.liquidity_lookback_bars, 5)
+        self.assertEqual(args.min_average_traded_value, 1_000_000.0)
         self.assertEqual(args.symbol_group, ["2330:semiconductor", "2317:electronics"])
         self.assertEqual(args.max_selections_per_group, 1)
         self.assertEqual(args.max_consecutive_selections_per_symbol, 2)
@@ -237,6 +243,62 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertGreater(result.max_symbol_abs_contribution_share, 0.99)
         self.assertGreater(result.top3_symbol_abs_contribution_share, 0.99)
 
+    def test_liquidity_filter_excludes_low_traded_value_momentum_leader(self) -> None:
+        """
+        用途與流程：驗證 liquidity filter 會排除平均成交金額不足的強勢股，讓較低動能但可交易性較好的股票補上。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若成交金額門檻、block count 或替代股票入選語意漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0, volume=1.0),
+                    _bar("2026-01-02", 110.0, volume=1.0),
+                    _bar("2026-01-03", 121.0, volume=1.0),
+                    _bar("2026-01-04", 133.1, volume=1.0),
+                ],
+            ),
+            (
+                "2317",
+                Path("2317.csv"),
+                [
+                    _bar("2026-01-01", 100.0, volume=2_000.0),
+                    _bar("2026-01-02", 102.0, volume=2_000.0),
+                    _bar("2026-01-03", 104.04, volume=2_000.0),
+                    _bar("2026-01-04", 106.1208, volume=2_000.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            liquidity_lookback_bars=1,
+            min_average_traded_value=100_000.0,
+        )
+
+        liquid = next(row for row in result.symbol_attribution if row.symbol == "2317")
+        illiquid = next(row for row in result.symbol_attribution if row.symbol == "2330")
+        self.assertEqual(result.liquidity_lookback_bars, 1)
+        self.assertEqual(result.min_average_traded_value, 100_000.0)
+        self.assertEqual(result.liquidity_block_count, 3)
+        self.assertEqual(result.liquidity_warmup_count, 0)
+        self.assertAlmostEqual(result.average_liquidity_eligible_count or 0.0, 1.0)
+        self.assertGreater(liquid.rebalance_selected_count, 0)
+        self.assertEqual(illiquid.rebalance_selected_count, 0)
+
     def test_max_consecutive_selection_limit_forces_symbol_to_sit_out(self) -> None:
         """
         用途與流程：驗證單檔連續入選上限會讓過度連續入選的股票暫停一次 rebalance，降低單檔主導風險。
@@ -373,6 +435,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
 
         self.assertIn("## Top Symbol Attribution", markdown)
         self.assertIn("Max contrib symbol", markdown)
+        self.assertIn("Liquidity min", markdown)
+        self.assertIn("Liquidity blocks", markdown)
         self.assertIn("Group cap", markdown)
         self.assertIn("Consec cap", markdown)
         self.assertIn("2330 | 75.00% | 75.00%", markdown)
@@ -606,10 +670,10 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertAlmostEqual(retention[0].active_drawdown_change, -0.05)
 
 
-def _bar(timestamp: str, close: float) -> Bar:
+def _bar(timestamp: str, close: float, volume: float = 1_000.0) -> Bar:
     """
     用途與流程：建立 portfolio rotation 測試用 Bar，讓測試聚焦 timestamp 與 close。
-    參數：timestamp 是日期字串；close 是收盤價，並同步填入 open/high/low。
+    參數：timestamp 是日期字串；close 是收盤價，並同步填入 open/high/low；volume 是成交量，供 liquidity filter 測試覆寫。
     回傳與錯誤：回傳 Bar；此 helper 不做 I/O，也不主動拋錯。
     """
     return Bar(
@@ -618,7 +682,7 @@ def _bar(timestamp: str, close: float) -> Bar:
         high=close,
         low=close,
         close=close,
-        volume=1_000.0,
+        volume=volume,
     )
 
 
@@ -648,6 +712,8 @@ def _rotation_result(
         breadth_lookback_bars=21,
         breadth_min_positive_count=1,
         breadth_positive_threshold=0.0,
+        liquidity_lookback_bars=20,
+        min_average_traded_value=None,
         symbol_groups={},
         max_selections_per_group=None,
         max_consecutive_selections_per_symbol=None,
@@ -679,6 +745,8 @@ def _rotation_result(
         regime_block_count=0,
         breadth_block_count=0,
         breadth_warmup_count=0,
+        liquidity_block_count=0,
+        liquidity_warmup_count=0,
         group_selection_block_count=0,
         consecutive_selection_block_count=0,
         volatility_scaled_rebalance_count=0,
@@ -686,6 +754,7 @@ def _rotation_result(
         total_cost=0.0,
         average_turnover=1.0,
         average_breadth_positive_count=None,
+        average_liquidity_eligible_count=None,
         average_volatility_scale=None,
         average_exposure=1.0,
         average_selected_count=1.0,

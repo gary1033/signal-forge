@@ -7520,3 +7520,91 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Do not promote**：所有 TWSE23 本輪設定都不取代 `TWSE14 top4 + breadth42/min3 + max consecutive 5`。
 - **Current compare candidate unchanged**：目前仍以 `TWSE14 top4 + breadth42/min3 + max consecutive 5` 作績效 compare candidate，但它仍不是穩定營利證明。
 - **Next**：優先測 adjusted price、較慢批次完成 TWSE30+、流動性/容量條件與 canary universe。若只繼續調 breadth min 或 top-N，會重複已知 tradeoff。
+
+## 2026-05-24 Portfolio rotation liquidity / capacity gate 比較
+
+### 目的
+
+TWSE23 擴大股票池顯示 concentration 可以下降，但 edge 與回撤惡化。這代表下一步不應只增加股票數量，而要定義「可交易股票池品質」。本輪新增可關閉的 liquidity / capacity gate，用平均成交金額排除成交金額不足的股票，檢查它是否能改善可執行性，同時不破壞 `top4 + breadth42/min3 + max consecutive 5` 的 active-risk 表現。
+
+研究假設：
+
+> 若部分不穩定性來自成交金額較弱或容量較差的標的，則在 rebalance 前排除近 N 日平均成交金額不足的股票，應能保留或改善 IR / active drawdown，且不應讓 min rolling excess 或 cost stress 失效。
+
+### 程式改動
+
+- `tools/portfolio_rotation_sweep.py`
+  - CLI 新增 `--liquidity-lookback-bars`，預設 `20`。
+  - CLI 新增 `--min-average-traded-value`，預設 `None`，未設定時不改既有策略語意。
+  - 每次 rebalance 時，用對齊後的 `close * volume` 計算近 N 根平均成交金額；低於門檻的股票不能進入 momentum ranking。
+  - `PortfolioRotationResult` 新增 `liquidity_lookback_bars`、`min_average_traded_value`、`liquidity_block_count`、`liquidity_warmup_count`、`average_liquidity_eligible_count`。
+  - Markdown full-window 與 walk-forward table 新增 Liquidity 欄位。
+- `tests/test_portfolio_rotation_sweep_tool.py`
+  - 新增 parser regression。
+  - 新增低成交金額強勢股測試，確認 liquidity filter 會排除低成交金額 momentum leader，讓較低動能但成交金額合格的股票補上。
+
+### 固定條件
+
+```text
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_positive_threshold = 0.0
+max_consecutive_selections_per_symbol = 5
+liquidity_lookback_bars = 20
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+主要報表檔案：
+
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq1000m-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq2000m-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq1000m-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq2000m-rolling24m-20260524.json`
+
+### Full-window 與 rolling 摘要
+
+以下皆看 `1x` 成本倍率。
+
+| Case | Liquidity min | Full return | Full excess | Full IR | Full MDD | Active MDD | Liquidity blocks | Avg liquid count | Full top-3 share | Min rolling excess | Min rolling IR | Worst rolling active MDD | Max rolling max share | Max rolling top-3 share | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `TWSE14 current` | `none` | `1738.80%` | `1402.62%` | `1.515` | `-18.61%` | `-20.21%` | `0` | `n/a` | `46.31%` | `37.22%` | `0.814` | `-20.21%` | `65.37%` | `82.62%` | 原 compare candidate |
+| `TWSE14 liq500m` | `500M` | `1745.89%` | `1409.71%` | `1.521` | `-18.61%` | `-19.81%` | `4` | `13.18` | `46.43%` | `37.22%` | `0.814` | `-19.81%` | `65.37%` | `82.62%` | 最新 execution-aware compare candidate |
+| `TWSE14 liq1000m` | `1B` | `2144.77%` | `1808.59%` | `1.615` | `-25.16%` | `-23.40%` | `25` | `10.23` | `48.46%` | `28.90%` | `0.636` | `-22.43%` | `61.13%` | `80.42%` | 報酬高但回撤與 rolling IR 變差 |
+| `TWSE14 liq2000m` | `2B` | `1445.01%` | `1108.83%` | `1.076` | `-43.53%` | `-42.00%` | `46` | `6.89` | `49.88%` | `-11.51%` | `-0.041` | `-42.00%` | `57.57%` | `78.56%` | discard |
+| `TWSE23 liq500m` | `500M` | `750.26%` | `589.36%` | `1.286` | `-35.35%` | `-29.81%` | `16` | `18.72` | `46.33%` | `-8.54%` | `-0.046` | `-26.80%` | `40.42%` | `63.55%` | diagnostic only |
+| `TWSE23 liq1000m` | `1B` | `798.58%` | `637.68%` | `1.256` | `-38.98%` | `-30.81%` | `25` | `13.15` | `47.68%` | `-16.91%` | `-0.230` | `-34.55%` | `39.37%` | `65.11%` | diagnostic only |
+| `TWSE23 liq2000m` | `2B` | `1149.40%` | `988.51%` | `1.532` | `-39.81%` | `-30.37%` | `37` | `7.89` | `52.28%` | `-21.67%` | `-0.341` | `-33.73%` | `43.65%` | `79.76%` | 不升級 |
+
+### 成本壓力檢查
+
+`TWSE14 liq500m` 在成本壓力下仍保留方向：
+
+| Cost | Return | Excess | IR | MDD | Total cost |
+|---:|---:|---:|---:|---:|---:|
+| `1x` | `1745.89%` | `1409.71%` | `1.521` | `-18.61%` | `830.17` |
+| `2x` | `1717.32%` | `1381.22%` | `1.505` | `-18.66%` | `1642.92` |
+| `3x` | `1689.18%` | `1353.18%` | `1.490` | `-18.71%` | `2438.58` |
+
+### 解讀
+
+1. **`TWSE14 liq500m` 是最合理的 execution-aware 改良**：只觸發 `4` 次 liquidity block，平均合格股票仍有 `13.18` 檔；full IR 從 `1.515` 微升到 `1.521`，active MDD 從 `-20.21%` 改到 `-19.81%`。
+2. **`liq500m` 沒有解 rolling concentration**：max rolling top-3 share 仍是 `82.62%`，所以它改善的是可交易性 gate 與小幅風險調整，不是 concentration 主解法。
+3. **`liq1000m` 不能被高報酬誤導**：full IR `1.615`、return `2144.77%` 很漂亮，但 MDD 惡化到 `-25.16%`，min rolling IR 降到 `0.636`，不符合穩健性優先。
+4. **`liq2000m` 明確 discard**：TWSE14 在 `2B` 門檻下 min rolling excess 轉負、MDD 到 `-43.53%`，代表過度限制讓策略集中到更糟的風險組合。
+5. **TWSE23 仍不升級**：liquidity gate 可改善部分 full-window IR，但 min rolling excess / IR 仍為負，且 MDD 仍在 `-35%` 到 `-40%` 附近，不能取代 TWSE14 候選。
+
+### Keep / Discard 判斷
+
+- **Keep code**：liquidity / capacity gate 與報表欄位。它是 deterministic、預設關閉、test-covered，符合策略評估準則的「可執行性與成本」層。
+- **Promote execution-aware compare candidate**：`TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars`。它保留原候選 edge，並加上一層基本成交金額 gate。
+- **Do not promote**：`TWSE14 liq1000m` 雖然報酬與 IR 更高，但回撤與 rolling IR tradeoff 較差；只能作高門檻對照。
+- **Discard**：`TWSE14 liq2000m`。
+- **Diagnostic only**：所有 TWSE23 liquidity 結果。
+- **Next**：若繼續處理 concentration，下一步不應再硬拉 liquidity threshold；應改測 adjusted price、canary universe、或 group-level attribution，確認是否能降低 rolling top-3 share 而不犧牲 min rolling excess / IR。
