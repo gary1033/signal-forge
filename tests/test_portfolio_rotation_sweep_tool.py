@@ -38,6 +38,9 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "0.02",
                 "--cost-multipliers-list",
                 "1,3",
+                "--market-regime-filter",
+                "--market-regime-sma-bars",
+                "2",
             ]
         )
 
@@ -46,6 +49,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.top_n, 2)
         self.assertEqual(args.min_return, 0.02)
         self.assertEqual(args.cost_multipliers_list, "1,3")
+        self.assertTrue(args.market_regime_filter)
+        self.assertEqual(args.market_regime_sma_bars, 2)
 
     def test_parser_accepts_rolling_window_options(self) -> None:
         """
@@ -175,6 +180,59 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.trade_count, 1)
         self.assertGreater(result.average_exposure, 0.0)
 
+    def test_market_regime_filter_blocks_rotation_when_market_index_below_sma(self) -> None:
+        """
+        用途與流程：驗證 market regime filter 會在等權市場指數低於 SMA 時阻擋原本可進場的相對動能輪動。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 regime gate、block count 或現金持有語意漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 100.0),
+                    _bar("2026-01-03", 110.0),
+                    _bar("2026-01-04", 120.0),
+                ],
+            ),
+            (
+                "2317",
+                Path("2317.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 70.0),
+                    _bar("2026-01-03", 50.0),
+                    _bar("2026-01-04", 35.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            market_regime_filter=True,
+            market_regime_sma_bars=2,
+        )
+
+        self.assertTrue(result.market_regime_filter)
+        self.assertEqual(result.market_regime_sma_bars, 2)
+        self.assertEqual(result.regime_block_count, 3)
+        self.assertEqual(result.trade_count, 0)
+        self.assertAlmostEqual(result.total_return, 0.0)
+        self.assertAlmostEqual(result.average_exposure, 0.0)
+
     def test_equal_weight_benchmark_applies_initial_entry_cost(self) -> None:
         """
         用途與流程：驗證 equal-weight benchmark 會套用初始入場成本，避免和有交易成本的輪動策略比較不一致。
@@ -261,6 +319,8 @@ def _rotation_result(
         lookback_bars=1,
         top_n=1,
         min_return=0.0,
+        market_regime_filter=False,
+        market_regime_sma_bars=126,
         symbol_count=2,
         start_timestamp="2026-01-01",
         end_timestamp="2026-01-02",
@@ -281,6 +341,7 @@ def _rotation_result(
         active_max_drawdown=mdd + 0.10,
         trade_count=1,
         rebalance_count=1,
+        regime_block_count=0,
         total_cost=0.0,
         average_turnover=1.0,
         average_exposure=1.0,

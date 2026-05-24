@@ -19,6 +19,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Absolute momentum gate / 絕對動能門檻**：除了排名高，也要求該股票自己的近期報酬大於門檻；若沒有股票通過，資金可以留在現金。
 - **Rebalance / 再平衡**：固定頻率重新計算排名與目標權重，例如每週或每月一次。
 - **Equal-weight benchmark / 等權買進持有基準**：把資金平均分配到同一批股票並長期持有，用來檢查輪動是否真的有 portfolio-level active return。
+- **Market regime filter / 市場狀態濾網**：用同一股票池的等權 normalized price index 當市場 proxy；若 index 低於自己的 SMA，該次 rebalance 改持現金。這是風險 overlay，不是新的選股 alpha。
 - **Turnover / 週轉率**：每次再平衡時權重變化的總量。週轉率越高，交易成本與滑價風險越大。
 - **Information Ratio / 資訊比率**：把策略相對 benchmark 的年化 active return 除以 tracking error，用來看每承擔一單位主動風險是否真的換到超額報酬。
 - **Active max drawdown / 相對最大回撤**：用策略權益相對 benchmark 權益的 normalized relative equity 計算回撤，觀察策略相對基準是否曾長時間失速。
@@ -68,12 +69,13 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 月再平衡降低交易頻率，但也可能錯過月內趨勢反轉。
 - 股票池只有七檔 TWSE 大型股，樣本太小，還不能證明策略在更廣股票池穩定有效。
 - 24 個月 rolling 檢查已發現 2021-2022 失敗 window，代表策略可能需要 market regime 或 risk-off 條件，不能只看 2024-2026 強勢期。
+- 可選 `--market-regime-filter --market-regime-sma-bars 84` 已測：它把 2021-2022 excess 從約 `-24.62%` 改到約 `-13.59%`，但 full-window IR 從約 `0.858` 降到約 `0.544`，所以只能作 compare-only 風控工具，不能當作目前主候選改善。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
 ## 下一步
 
-- 針對 2021-2022 失敗 window 測 market regime、risk-off overlay 或更大股票池。
+- 針對 2021-2022 失敗 window 測更具體的 risk-off / re-entry overlay 或更大股票池；不要只繼續調 market regime SMA 長度。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
 - 不急著加入更複雜的風控；先確認 `monthly + 21 bars + top3` 是否在更多資料窗仍保留 active return。

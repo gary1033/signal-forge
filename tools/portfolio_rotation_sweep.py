@@ -49,6 +49,8 @@ class PortfolioRotationResult:
     lookback_bars: int
     top_n: int
     min_return: float
+    market_regime_filter: bool
+    market_regime_sma_bars: int
     symbol_count: int
     start_timestamp: str
     end_timestamp: str
@@ -69,6 +71,7 @@ class PortfolioRotationResult:
     active_max_drawdown: float
     trade_count: int
     rebalance_count: int
+    regime_block_count: int
     total_cost: float
     average_turnover: float
     average_exposure: float
@@ -168,10 +171,12 @@ def run_portfolio_rotation(
     top_n: int,
     min_return: float,
     periods_per_year: int,
+    market_regime_filter: bool = False,
+    market_regime_sma_bars: int = 126,
 ) -> PortfolioRotationResult:
     """
-    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有。
-    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化。
+    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金。
+    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網。
     回傳與錯誤：回傳 PortfolioRotationResult；頻率、lookback、top_n 或資料矩陣不合法時拋出 ValueError。
     """
     if lookback_bars <= 0:
@@ -180,6 +185,8 @@ def run_portfolio_rotation(
         raise ValueError("top-n must be positive")
     if rebalance_frequency not in {"daily", "weekly", "monthly"}:
         raise ValueError("rebalance frequency must be daily, weekly, or monthly")
+    if market_regime_sma_bars <= 0:
+        raise ValueError("market regime SMA bars must be positive")
 
     timestamps, closes_by_symbol = align_close_table(loaded)
     symbols = sorted(closes_by_symbol)
@@ -210,6 +217,8 @@ def run_portfolio_rotation(
     turnover_values: list[float] = []
     selected_counts: list[int] = [0]
     exposure_values: list[float] = [0.0]
+    regime_block_count = 0
+    market_index_values = _equal_weight_price_index(symbols, closes_by_symbol)
 
     for index in range(1, len(timestamps)):
         equity *= 1.0 + _portfolio_price_return(
@@ -225,14 +234,22 @@ def run_portfolio_rotation(
             index=index,
             frequency=rebalance_frequency,
         ):
-            target_weights = _target_rotation_weights(
-                symbols,
-                closes_by_symbol,
+            if market_regime_filter and not _market_regime_is_risk_on(
+                market_index_values,
                 index=index,
-                lookback_bars=lookback_bars,
-                top_n=top_n,
-                min_return=min_return,
-            )
+                sma_bars=market_regime_sma_bars,
+            ):
+                target_weights = {symbol: 0.0 for symbol in symbols}
+                regime_block_count += 1
+            else:
+                target_weights = _target_rotation_weights(
+                    symbols,
+                    closes_by_symbol,
+                    index=index,
+                    lookback_bars=lookback_bars,
+                    top_n=top_n,
+                    min_return=min_return,
+                )
             turnover = sum(
                 abs(target_weights[symbol] - weights[symbol])
                 for symbol in symbols
@@ -299,6 +316,8 @@ def run_portfolio_rotation(
         lookback_bars=lookback_bars,
         top_n=top_n,
         min_return=min_return,
+        market_regime_filter=market_regime_filter,
+        market_regime_sma_bars=market_regime_sma_bars,
         symbol_count=len(symbols),
         start_timestamp=timestamps[0],
         end_timestamp=timestamps[-1],
@@ -327,6 +346,7 @@ def run_portfolio_rotation(
         ),
         trade_count=trade_count,
         rebalance_count=rebalance_count,
+        regime_block_count=regime_block_count,
         total_cost=total_cost,
         average_turnover=_average(turnover_values),
         average_exposure=_average(exposure_values),
@@ -426,10 +446,12 @@ def run_portfolio_rotation_sweep(
     top_n: int,
     min_return: float,
     periods_per_year: int,
+    market_regime_filter: bool = False,
+    market_regime_sma_bars: int = 126,
 ) -> list[PortfolioRotationResult]:
     """
     用途與流程：對同一批股票資料在多個成本倍率下執行 portfolio rotation 回測。
-    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；其餘參數傳給 run_portfolio_rotation。
+    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；其餘參數傳給 run_portfolio_rotation。
     回傳與錯誤：回傳每個成本倍率一筆 PortfolioRotationResult；資料或參數不合法時由底層拋出 ValueError。
     """
     loaded = load_rotation_inputs(csv_paths, start=start, end=end)
@@ -449,6 +471,8 @@ def run_portfolio_rotation_sweep(
             top_n=top_n,
             min_return=min_return,
             periods_per_year=periods_per_year,
+            market_regime_filter=market_regime_filter,
+            market_regime_sma_bars=market_regime_sma_bars,
         )
         for cost_multiplier in cost_multipliers
     ]
@@ -468,10 +492,12 @@ def run_walk_forward_rotation(
     top_n: int,
     min_return: float,
     periods_per_year: int,
+    market_regime_filter: bool = False,
+    market_regime_sma_bars: int = 126,
 ) -> tuple[list[PortfolioWalkForwardResult], list[PortfolioRetentionRow]]:
     """
     用途與流程：依 walk-forward windows 重跑 portfolio rotation，並計算相鄰 window 的 OOS retention。
-    參數：windows 是分段日期；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
+    參數：windows 是分段日期；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
     回傳與錯誤：回傳 window 結果與 retention rows；若某 window 資料不足，底層會拋出 ValueError。
     """
     window_results: list[PortfolioWalkForwardResult] = []
@@ -493,6 +519,8 @@ def run_walk_forward_rotation(
                     top_n=top_n,
                     min_return=min_return,
                     periods_per_year=periods_per_year,
+                    market_regime_filter=market_regime_filter,
+                    market_regime_sma_bars=market_regime_sma_bars,
                 ),
             )
         )
@@ -633,15 +661,16 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Avg turnover | Avg exposure | Avg selected |",
-        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Avg turnover | Avg exposure | Avg selected |",
+        "|---|---:|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for result in results:
         lines.append(
             "| "
             f"{result.strategy} | {result.cost_label} | "
             f"{result.rebalance_frequency} | {result.lookback_bars} | "
-            f"{result.top_n} | {result.total_return:.2%} | "
+            f"{result.top_n} | {_format_bool(result.market_regime_filter)} | "
+            f"{result.market_regime_sma_bars} | {result.total_return:.2%} | "
             f"{_format_optional_percent(result.cagr)} | "
             f"{result.benchmark_total_return:.2%} | "
             f"{result.benchmark_excess_return:.2%} | "
@@ -656,6 +685,7 @@ def format_markdown(
             f"{_format_optional_ratio(result.sortino_ratio)} | "
             f"{_format_optional_ratio(result.calmar_ratio)} | "
             f"{result.trade_count} | {result.rebalance_count} | "
+            f"{result.regime_block_count} | "
             f"{result.average_turnover:.2f} | "
             f"{result.average_exposure:.2%} | "
             f"{result.average_selected_count:.2f} |"
@@ -678,8 +708,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Avg exposure |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Avg exposure |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -698,7 +728,8 @@ def format_walk_forward_markdown(
                 f"{result.benchmark_max_drawdown:.2%} | "
                 f"{result.active_max_drawdown:.2%} | "
                 f"{_format_optional_ratio(result.sharpe_ratio)} | "
-                f"{result.trade_count} | {result.average_exposure:.2%} |"
+                f"{result.trade_count} | {result.regime_block_count} | "
+                f"{result.average_exposure:.2%} |"
             )
     lines.extend(
         [
@@ -762,6 +793,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-return", type=float, default=0.0)
     parser.add_argument("--periods-per-year", type=int, default=252)
     parser.add_argument(
+        "--market-regime-filter",
+        action="store_true",
+        help="hold cash on rebalance dates when equal-weight market index is below its SMA",
+    )
+    parser.add_argument(
+        "--market-regime-sma-bars",
+        type=int,
+        default=126,
+        help="SMA bars for the equal-weight market regime filter",
+    )
+    parser.add_argument(
         "--walk-forward-windows",
         help=(
             "comma-separated label:start:end windows, for example "
@@ -813,6 +855,8 @@ def main(argv: list[str] | None = None) -> int:
         top_n=args.top_n,
         min_return=args.min_return,
         periods_per_year=args.periods_per_year,
+        market_regime_filter=args.market_regime_filter,
+        market_regime_sma_bars=args.market_regime_sma_bars,
     )
     markdown = format_markdown(
         results,
@@ -850,6 +894,8 @@ def main(argv: list[str] | None = None) -> int:
             top_n=args.top_n,
             min_return=args.min_return,
             periods_per_year=args.periods_per_year,
+            market_regime_filter=args.market_regime_filter,
+            market_regime_sma_bars=args.market_regime_sma_bars,
         )
         markdown += format_walk_forward_markdown(walk_forward_results, retention_rows)
 
@@ -939,6 +985,48 @@ def _target_rotation_weights(
     for symbol in selected:
         target[symbol] = weight
     return target
+
+
+def _equal_weight_price_index(
+    symbols: list[str],
+    closes_by_symbol: dict[str, list[float]],
+) -> list[float]:
+    """
+    用途與流程：把多檔 close matrix 轉成以第一根為 1 的等權價格指數，供 market regime filter 判斷大盤趨勢。
+    參數：symbols 是已排序股票代號；closes_by_symbol 是共同 timestamp 對齊後的 close matrix。
+    回傳與錯誤：回傳每根 bar 的等權 normalized index；若 symbol 為空或起始 close 非正時拋出 ValueError。
+    """
+    if not symbols:
+        raise ValueError("market regime index requires at least one symbol")
+    base_closes = {symbol: closes_by_symbol[symbol][0] for symbol in symbols}
+    if any(close <= 0 for close in base_closes.values()):
+        raise ValueError("market regime index requires positive base closes")
+    length = len(closes_by_symbol[symbols[0]])
+    return [
+        sum(closes_by_symbol[symbol][index] / base_closes[symbol] for symbol in symbols)
+        / len(symbols)
+        for index in range(length)
+    ]
+
+
+def _market_regime_is_risk_on(
+    market_index_values: list[float],
+    *,
+    index: int,
+    sma_bars: int,
+) -> bool:
+    """
+    用途與流程：判斷等權市場指數是否站上自身 SMA；未累積足夠 SMA 樣本時保守視為 risk-off。
+    參數：market_index_values 是 _equal_weight_price_index 的結果；index 是目前 rebalance 索引；sma_bars 是 SMA 視窗長度。
+    回傳與錯誤：回傳 True 表示可持有輪動標的；sma_bars 非正時拋出 ValueError。
+    """
+    if sma_bars <= 0:
+        raise ValueError("market regime SMA bars must be positive")
+    if index + 1 < sma_bars:
+        return False
+    window = market_index_values[index + 1 - sma_bars:index + 1]
+    sma = sum(window) / len(window)
+    return market_index_values[index] >= sma
 
 
 def _is_rebalance_index(
@@ -1280,6 +1368,15 @@ def _format_optional_ratio(value: float | None) -> str:
     if value is None:
         return "undefined"
     return f"{value:.3f}"
+
+
+def _format_bool(value: bool) -> str:
+    """
+    用途與流程：將布林設定轉成 Markdown 報表可讀文字，避免 True/False 與策略欄位混淆。
+    參數：value 是布林值。
+    回傳與錯誤：True 回傳 `on`，False 回傳 `off`；此函式不主動拋錯。
+    """
+    return "on" if value else "off"
 
 
 if __name__ == "__main__":

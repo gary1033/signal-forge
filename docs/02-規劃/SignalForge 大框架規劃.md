@@ -146,10 +146,10 @@ python -m signal_forge.cli fetch-data `
 
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
-- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics；portfolio rotation 已補 IR / tracking error / active drawdown，下一步重點轉向更多 rolling / OOS 檢查。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics；portfolio rotation 已補 IR / tracking error / active drawdown / rolling windows / market regime compare tool，下一步重點轉向更具體的 risk-off / re-entry 條件或更大股票池。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
 - 針對 Absolute Momentum 的 benchmark-relative 問題做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可降低回撤但 2024-2026 OOS 是 `0/7` beat B&H；relative-momentum top-N 股票池也沒有改善 `Beat B&H`。下一步應測 re-entry 條件、weekly rebalance 或市場 regime，不要只靠降曝險或 top-N 過濾。
-- 針對 portfolio rotation，下一步不要直接宣稱穩定營利；active-risk 與 rolling windows 已顯示 2021-2022 會輸給 benchmark，後續應測 market regime / risk-off overlay 或更大股票池，確認 `monthly + 21 bars + top3` 不只吃到 2024-2026 強勢行情。
+- 針對 portfolio rotation，下一步不要直接宣稱穩定營利；active-risk 與 rolling windows 已顯示 2021-2022 會輸給 benchmark，market regime SMA84 雖改善該段但讓 full-window IR 從 `0.858` 降到 `0.544`，因此後續應測更具體的 risk-off / re-entry overlay 或更大股票池，確認 `monthly + 21 bars + top3` 不只吃到 2024-2026 強勢行情。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

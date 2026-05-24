@@ -6624,3 +6624,96 @@ python tools\portfolio_rotation_sweep.py `
 - **Keep**：rolling window generator 與 tests。它讓每次 portfolio rotation 調參都能固定檢查多個滑動區間。
 - **Downgrade candidate confidence**：`monthly + 21 bars + top3` 仍是目前最強候選之一，但因 `roll02` 失敗，不能稱為穩定營利候選。
 - **下一步**：先研究 market regime / risk-off overlay 對 `roll02` 的影響，或擴大股票池；不要只用 2024-2026 做主論據。
+
+## 2026-05-24 Portfolio rotation market regime filter
+
+### 假設
+
+24 個月 rolling windows 顯示 `2021-2022` 是 portfolio rotation 的明確失敗區間。這輪參考 moving-average market timing / trend filter 文獻，測一個最小 market regime overlay：用同一股票池的等權 normalized price index 作為市場 proxy，當 index 低於自身 SMA 時，該次 rebalance 不持股、留現金。
+
+### 來源
+
+- Meb Faber, Relative Strength Strategies for Investing: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1585517
+- The real-life performance of market timing with moving average and time-series momentum rules: https://link.springer.com/article/10.1057/jam.2014.25
+- Market Timing with Moving Averages: https://www.mdpi.com/2071-1050/10/7/2125
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增：
+  - `--market-regime-filter`
+  - `--market-regime-sma-bars`
+  - `_equal_weight_price_index(...)`
+  - `_market_regime_is_risk_on(...)`
+- `PortfolioRotationResult` 新增：
+  - `market_regime_filter`
+  - `market_regime_sma_bars`
+  - `regime_block_count`
+- Markdown 報表新增 regime 欄位，walk-forward windows 也會顯示每段被 regime 擋掉的 rebalance 次數。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 market regime parser / block regression。
+
+### 參數掃描摘要
+
+先用 `market_regime_sma_bars = 42 / 63 / 84 / 126 / 168 / 200 / 252` 做小範圍掃描，固定其餘參數為 `monthly + 21 bars + top3`。
+
+| SMA bars | Full return | Full excess | Full IR | `2021-2022` return | `2021-2022` excess | `2021-2022` IR | Positive excess windows | 解讀 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `42` | `414.89%` | `10.86%` | `0.019` | `-21.83%` | `-27.71%` | `-0.936` | `3/6` | 太敏感，幾乎消滅 active edge |
+| `63` | `604.95%` | `200.92%` | `0.340` | `-11.33%` | `-17.21%` | `-0.570` | `3/6` | 改善 roll02，但整體弱 |
+| `84` | `780.38%` | `376.35%` | `0.544` | `-7.71%` | `-13.59%` | `-0.463` | `5/6` | 本輪較合理折衷，但仍輸原始候選 |
+| `126` | `610.77%` | `206.74%` | `0.340` | `-2.20%` | `-8.08%` | `-0.319` | `2/6` | 最能降低 roll02 傷害，但犧牲多數 window |
+| `168` | `668.25%` | `264.22%` | `0.411` | `-2.02%` | `-7.90%` | `-0.319` | `2/6` | 和 126 類似，仍不夠好 |
+| `200` | `701.57%` | `297.54%` | `0.450` | `-0.99%` | `-6.87%` | `-0.290` | `2/6` | roll02 最接近修復，但整體 window 太少過關 |
+| `252` | `482.21%` | `78.18%` | `0.149` | `-2.58%` | `-8.46%` | `-0.345` | `2/6` | 太慢，整體 active edge 明顯下降 |
+
+### 正式 compare-only 報表命令
+
+本輪保留 `84` bar SMA 作為折衷版本的正式報表，不代表它升級為主候選。
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --market-regime-filter `
+  --market-regime-sma-bars 84 `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\twse-portfolio-rotation-monthly-lb21-top3-regime84-rolling24m-20260524.json `
+  --summary-md reports\generated\twse-portfolio-rotation-monthly-lb21-top3-regime84-rolling24m-20260524.md
+```
+
+### `84` bar SMA 結果摘要
+
+| Window | Cost | Return | Benchmark return | Excess | IR | Active MDD | Regime blocks | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Full `2020-2026` | `1x` | `780.38%` | `404.03%` | `376.35%` | `0.544` | `-24.82%` | `21` | 比原始候選弱 |
+| `2020-2021` | `1x` | `98.29%` | `90.91%` | `7.38%` | `0.150` | `-23.02%` | `5` | 正但很弱 |
+| `2021-2022` | `1x` | `-7.71%` | `5.88%` | `-13.59%` | `-0.463` | `-26.76%` | `11` | 改善但仍失敗 |
+| `2022-2023` | `1x` | `3.11%` | `-1.77%` | `4.88%` | `0.074` | `-23.49%` | `10` | 幾乎沒有 edge |
+| `2023-2024` | `1x` | `72.07%` | `68.20%` | `3.86%` | `0.167` | `-19.30%` | `6` | 大幅低於原始候選 |
+| `2024-2025` | `1x` | `97.82%` | `81.93%` | `15.90%` | `0.249` | `-26.96%` | `8` | 大幅低於原始候選 |
+| `2025-2026-05` | `1x` | `182.65%` | `102.48%` | `80.17%` | `1.200` | `-22.08%` | `3` | 仍強，但少於原始候選 |
+
+### 解讀
+
+1. **market regime filter 可以降低 `2021-2022` 傷害，但沒有修好**：`roll02` excess 從原始 `-24.62%` 改到 `-13.59%`，但仍是負值。
+2. **代價是整體 active edge 明顯下降**：full-window IR 從原始 `0.858` 降到 `0.544`，full excess 從 `564.61%` 降到 `376.35%`。
+3. **過濾器主要是降曝險，不是增加穩定 edge**：`84` bar SMA 讓 avg exposure 降到約 `67.37%`；這可降低局部傷害，但也錯過 2024-2025 的強勢輪動。
+
+### Keep / Discard 判斷
+
+- **Keep as compare tool**：market regime filter 是 deterministic、test-covered、預設關閉的可選工具，保留給後續比較。
+- **Discard as current improvement**：`market_regime_sma_bars=84` 不能升級主候選，因為它雖改善 `roll02`，但 full-window 與多數強勢 window 明顯變弱。
+- **下一步**：不要繼續只調 SMA 長度；若要修 `2021-2022`，應測更具體的 risk-off / re-entry 條件，或擴大股票池確認是否只是七檔大型股結構造成。
