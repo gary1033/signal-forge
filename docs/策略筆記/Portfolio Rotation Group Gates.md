@@ -119,3 +119,10 @@ python tools\portfolio_rotation_sweep.py `
 
 - 對每個 group gate 候選都補 `group_regime_validation` 與 `group_breadth_validation` artifact。
 - 若 gate 只改善單一集中度欄位但犧牲 rolling edge，應維持 compare-only 或 discard。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifact：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-greg21-r000-liq500m-promotion-gate-20260524.md`
+- Gate 組合：在 TWSE35 adjusted portfolio rotation 上同時啟用 `--group-breadth-filter` 與 `--group-regime-filter`，最佳目前是 `gb21/share0.50/min1 + greg21/r0.00`。
+- 結果：Decision `compare-only`，Gate pass `false`；1x IR `2.005`、3x IR `1.987`、MDD `-32.85%`、active MDD `-19.44%`、max rolling top3 group share `99.09%`。
+- 刪減判斷：`keep tool / compare-only strategy`。Group breadth 與 group regime gates 有明確改善 IR 與 rolling edge，但 concentration 與 drawdown 尚未過 gate；group cap、single-member guard、contribution gate 不能因單一指標改善就升級。

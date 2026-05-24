@@ -90,3 +90,10 @@ python tools\multi_stock_target_state_sweep.py `
 ## 下一步
 
 - 用它作為單檔策略到 portfolio rotation 之間的過渡檢查，不要把它誤讀成完整投組策略。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifact：`reports\generated\twse-target-state-absolute-momentum-relmom-top3-oos-20260524.md`
+- 樣本：七檔 TWSE，`absolute-momentum + relative-momentum top3`，`2020-01-01` 到 `2026-05-20`，含 1x/3x 成本壓力與 OOS。
+- 結果：1x 成本平均報酬 `111.85%`，`0/7` beat B&H，avg excess `-340.88%`，worst MDD `-37.86%`；OOS 也是 `0/7` beat B&H，avg excess `-124.63%`。
+- 刪減判斷：`discard as strategy upgrade / compare-only artifact`。它降低曝險與部分 MDD，但沒有改善 benchmark-relative edge；真正投組比較應改看 [[Portfolio Relative Momentum Rotation]]。

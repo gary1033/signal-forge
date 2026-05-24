@@ -85,3 +85,10 @@ python -m signal_forge.cli entry-edge `
 ## 下一步
 
 - 比較同一底層策略在開關 volume filter 前後，訊號數是否只是被壓縮，還是真的改善 edge。
+
+## 最新回測註記（2026-05-21）
+
+- 最新 artifact：`reports\generated\tsmc-volume-filter-comparison.md`
+- 樣本：台積電日線 `2010-01-04` 到 `2026-05-20`，`entry-edge` 一日持有，volume rule 為 `volume >= SMA(volume, 20) * 1.2`。
+- 結果：三個 filtered 版本都未達 PF `>1.2`；`confluence-score + volume filter` PF `1.080`、max drawdown `-18.18%`，是相對較好的方向但仍未通過。
+- 刪減判斷：`compare-only / not upgrade`。可保留作為可重跑 wrapper，但目前不能作為通用量能濾網升級。

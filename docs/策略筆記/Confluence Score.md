@@ -96,3 +96,10 @@ python -m signal_forge.cli entry-edge `
 
 - 先用多持有期比較確認訊號是否只在特定 hold bars 有效。
 - 若要升級條件，先檢查每個 score component 是否真的補到新資訊。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifacts：`reports\generated\twse-multistock-baseline-20260523.md`、`reports\generated\twse-target-state-confluence-coststress-20260524.md`
+- Entry-edge 結果：七檔 TWSE `hold=10` aggregate PF `2.299`，通過 `7/7` 檔，交易數 `349`，worst max drawdown `-27.56%`。
+- Target-state 結果：1x 成本下平均報酬 `176.57%`，但 `0/7` beat buy-and-hold，avg excess `-276.16%`，worst MDD `-51.40%`。
+- 刪減判斷：`compare-only`。可保留為 entry-edge 候選與 wrapper 測試底層策略，但完整持倉語意仍輸給 B&H，不應直接升級。

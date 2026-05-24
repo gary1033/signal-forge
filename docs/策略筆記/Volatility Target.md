@@ -90,3 +90,10 @@ python tools\portfolio_rotation_sweep.py `
 ## 下一步
 
 - 同時看 excess return、MDD、Sortino、Calmar 與 OOS retention，再決定 keep / discard / compare-only。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifacts：`reports\generated\twse-target-state-absolute-momentum-voltarget040-coststress-20260524.md`、`reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-oos-20260524.md`
+- 單獨 overlay 結果：`absolute-momentum + vol-target 0.40` 在七檔 TWSE 1x 成本下平均報酬 `180.83%`，`1/7` beat B&H，avg excess `-271.90%`，worst MDD `-47.45%`。
+- 疊加 risk-off 的 OOS 結果：`vol-target 0.40 + dd-risk-off 25%/120` 在 OOS `0/7` beat B&H，avg excess `-127.67%`。
+- 刪減判斷：`compare-only`。它能降低部分曝險與回撤，但 benchmark-relative edge 仍不足，不能只因 MDD 下降就升級。

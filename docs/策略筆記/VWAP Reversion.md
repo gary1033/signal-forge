@@ -91,3 +91,10 @@ python -m signal_forge.cli entry-edge `
 
 - 若回撤太集中，先加 `--vwap-regime-filter` 比直接調小 `entry_z` 更容易解釋。
 - 若要測量能確認，搭配 [[Volume Filter]]。
+
+## 最新回測註記（2026-05-23）
+
+- 最新 artifact：`reports\generated\twse-multistock-baseline-20260523.md`
+- 樣本：七檔 TWSE 日線，`2020-01-01` 到 `2026-05-20`，固定持有期 `1/3/5/10`，成本為 commission `1 bps` + slippage `1 bps`。
+- 最佳讀法：`hold=3` 的 aggregate PF `1.218`，只通過 `1/7` 檔，交易數 `242`，worst max drawdown `-15.44%`。
+- 刪減判斷：`discard as current main candidate`。單檔台積電可看到局部均值回歸，但多股票 baseline 沒有達到跨股票 PF 目標，後續只能在加上 regime filter 後重新驗證。

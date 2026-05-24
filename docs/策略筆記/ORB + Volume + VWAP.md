@@ -116,3 +116,10 @@ python -m signal_forge.cli entry-edge `
 
 - 先確保 intraday CSV 與 market-clock metadata 可重現。
 - 若要新增出場規則，先定義 session close、extended-hours 與 forced-flat 的 reporting contract。
+
+## 最新回測註記（2026-05-21）
+
+- 最新 artifact：`reports\generated\tsmc-orb-rerun-20260521_hold_comparison.md`
+- 樣本：台積電 `TWSE_2330_5M.csv`，`2026-02-23T09:00:00+08:00` 到 `2026-05-21T13:30:00+08:00`，固定持有期 `1/3/5/10`。
+- 結果：所有 hold bars 都未通過 PF `>1.20`；最佳 `hold=5` PF `0.852`、交易數 `24`、win rate `41.67%`、max drawdown `-5.44%`。
+- 刪減判斷：`discard as current main candidate`。目前只能保留 intraday session / artifact contract，不能拿來做策略升級。

@@ -104,3 +104,10 @@ python tools\portfolio_rotation_sweep.py `
 
 - 對每個候選先跑 universe audit，再跑 sweep / grid search。
 - group breadth / group regime / group contribution 的使用方式集中在 [[Portfolio Rotation Group Gates]]。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifacts：`reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb21-share050-m1-greg21-r000-liq500m-rolling24m-20260524.md`、`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-greg21-r000-liq500m-promotion-gate-20260524.md`
+- 最新強錨點：TWSE35 adjusted `monthly + lookback21 + ranking_skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M + group breadth 21/share0.50 + group regime 21/r0.00`。
+- 結果：1x full IR `2.005`，3x IR `1.987`，full excess `3888.38%`，MDD `-32.85%`，active MDD `-19.44%`，min rolling IR `1.034`，min rolling excess `48.53%`。
+- 刪減判斷：`compare-only`。這是目前最強 portfolio-level anchor，但 promotion gate 仍失敗，原因包含 drawdown above threshold、group concentration、group regime/breadth diagnostics、single-member dominant group 與 narrow group momentum。

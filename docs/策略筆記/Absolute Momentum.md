@@ -96,3 +96,10 @@ python tools\multi_stock_target_state_sweep.py `
 
 - 用 target-state sweep 檢查成本壓力、MDD、Sortino、Calmar 與 OOS retention。
 - 若 overlay 只降低報酬但沒有改善風險，應標示為 compare-only 或 discard。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifacts：`reports\generated\twse-target-state-absolute-momentum-oos-20260524.md`、`reports\generated\twse-absolute-momentum-entry-edge-20260524.md`
+- Target-state 結果：七檔 TWSE 1x 成本平均報酬 `225.78%`，`1/7` beat B&H，avg excess `-226.95%`，worst MDD `-50.74%`，最差回撤來自 `2454`。
+- OOS 結果：`2024-01-01` 到 `2026-05-20` 只有 `1/7` beat B&H，avg excess `-105.25%`。
+- 刪減判斷：`compare-only`。它是長期趨勢持有錨點，但 benchmark-relative edge 不足；未通過前不要把它當主策略。

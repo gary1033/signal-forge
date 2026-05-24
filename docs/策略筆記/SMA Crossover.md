@@ -90,3 +90,10 @@ python -m signal_forge.cli entry-edge `
 
 - 若要降低盤整噪音，優先測 [[Volume Filter]] 或 [[Signal Cooldown]]，不要先改成更複雜的多因子策略。
 - 若要比較長期趨勢，和 [[Absolute Momentum]] 一起跑同一批股票與同一組成本壓力。
+
+## 最新回測註記（2026-05-23）
+
+- 最新 artifact：`reports\generated\twse-multistock-baseline-20260523.md`
+- 樣本：七檔 TWSE 日線，`2020-01-01` 到 `2026-05-20`，固定持有期 `1/3/5/10`，成本為 commission `1 bps` + slippage `1 bps`。
+- 最佳讀法：`hold=10` 的 aggregate PF `1.818`，通過 `5/7` 檔，交易數 `45`，worst max drawdown `-10.45%`。
+- 刪減判斷：`compare-only`。它可保留為趨勢 baseline，但交易數偏少且跨股票通過率不如 `confluence-score + cooldown`，不應升級為主候選。

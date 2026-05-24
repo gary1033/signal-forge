@@ -87,3 +87,10 @@ python tools\multi_stock_target_state_sweep.py `
 ## 下一步
 
 - 對 `threshold` 與 `risk_off_bars` 做小範圍 sweep，避免只因單一樣本好看就升級。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifacts：`reports\generated\twse-target-state-absolute-momentum-ddriskoff25b120-20260524.md`、`reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-oos-20260524.md`
+- 單獨 overlay 結果：`absolute-momentum + dd-risk-off 25%/120` 在七檔 TWSE 1x 成本下平均報酬 `207.18%`，`1/7` beat B&H，avg excess `-245.55%`，worst MDD `-46.95%`。
+- 疊加 vol-target 的 OOS 結果：`0/7` beat B&H，avg excess `-127.67%`，雖降低部分回撤但沒有修好相對績效。
+- 刪減判斷：`compare-only`。`20%/60` 已不適合作為升級方向；`25%/120` 可保留研究，但仍不能升級。

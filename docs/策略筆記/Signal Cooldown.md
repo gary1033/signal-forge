@@ -84,3 +84,10 @@ python tools\multi_stock_target_state_sweep.py `
 ## 下一步
 
 - 對同一策略比較 `0 / 5 / 10 / 20` bars，確認 edge 是否只來自密集重複訊號。
+
+## 最新回測註記（2026-05-24）
+
+- 最新 artifacts：`reports\generated\twse-multistock-confluence-cooldown10-risk-baseline-20260524.md`、`reports\generated\twse-target-state-confluence-cooldown10-oos-20260524.md`
+- Entry-edge 結果：`confluence-score + hold=10 + signal_cooldown_bars=10` 通過 `7/7` 檔，aggregate PF `2.324`，交易數 `439`，total overlap `0`。
+- Target-state/OOS 結果：1x 成本平均報酬 `108.16%`，但 `0/7` beat B&H，avg excess `-344.57%`；OOS 也為 `0/7` beat B&H，avg excess `-143.90%`。
+- 刪減判斷：`compare-only`。Cooldown 成功處理重複 entry，但不是 alpha 來源；可保留 wrapper，不能單獨升級策略。
