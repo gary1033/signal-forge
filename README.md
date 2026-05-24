@@ -1,171 +1,566 @@
 # SignalForge
 
-SignalForge 是研究導向的交易訊號沙盒，用來把 TradingView / Pine Script 的策略想法拆成可驗證的 Python 研究流程。現在的主線是 Phase 工作流，可以在兩種模式之間切換：
+SignalForge 是研究導向的交易訊號沙盒。它的用途不是直接下單，而是把 TradingView / Pine Script 或自己的策略想法拆成 Python 可驗證的研究假設，再用固定資料、固定成本、固定 artifact contract 做回測與稽核。
 
-- `backtest`：優先穩定性、可重複性與機械驗證。
-- `live`：回測穩定前只允許 dry-run，不接 broker、不讀 API key、不送真實訂單。
+目前主線分成三層：
 
-## Live 安全邊界
+| 層級 | 你要回答的問題 | 主要入口 |
+|---|---|---|
+| 資料準備 | 我要回測哪一檔股票、哪段日期？ | `fetch-data`、`data\processed\TWSE_<symbol>_1D.csv` |
+| 單策略進場檢查 | 這個進場訊號在固定持有期下有沒有 entry edge？ | `entry-edge` |
+| Phase / 多股票研究 | 同一策略能否產生 deterministic artifacts，或跨股票、成本、OOS 比較？ | `phase`、`tools\*.py` |
 
-`live` 模式目前只能產生 order intent，也就是乾跑用的下單意圖紀錄。以下條件必須永遠成立：
+> SignalForge 只做研究、回測與 dry-run intent，不構成投資建議。`live` 模式目前固定 dry-run only，不接 broker、不讀 API key、不送真實訂單。
 
-- `dry_run=True`
-- `submitted=False`
-- 不建立 broker 連線
-- 不讀取 credential
-- 不送出真實訂單
+## 先看哪份文件
 
-## 快速執行（PowerShell）
-
-目前有兩個等價的命令列入口：
-
-| 場景 | 呼叫方式 |
+| 需求 | 文件 |
 |---|---|
-| 直接跑 source tree | 先設定 `$env:PYTHONPATH='src'`，再用 `python -m signal_forge.cli ...`。 |
-| 安裝後使用 console script | 先跑 `python -m pip install -e .`，再用 `signal-forge ...`。 |
+| 想理解整個 project、資料流、每個 module/function 在哪裡 | `docs\01-架構\SignalForge 資料夾與程式碼導覽.md` |
+| 想看更完整的 CLI、工具與 Python API 呼叫方式 | `docs\01-架構\SignalForge 呼叫程式方式.md` |
+| 想理解 Phase、Entry Edge、SignalDigest、live dry-run 架構 | `docs\01-架構\SignalForge 架構總覽.md` |
+| 想判斷策略結果是 keep、discard 還是 compare-only | `docs\02-規劃\策略回測與優化評估準則.md` |
+| 想看目前策略研究與實驗結論 | `docs\04-實驗記錄\Autoresearch 實驗記錄.md` |
 
-完整呼叫方式、subcommand 參數與 Python API 範例整理在 `docs\01-架構\SignalForge 呼叫程式方式.md`。
+## 環境設定
 
-一般執行不需要把策略參數全部打出來。`entry-edge` 與 `phase` 會使用各策略自己的 default parameters；只有在比較同一策略的不同設定時，才覆寫 `--fast-window`、`--slow-window`、`--entry-z` 等參數。
-
-| 策略 | Default parameters |
-|---|---|
-| `sma-crossover` | `fast_window=20`、`slow_window=200`、Phase 1 `allow_short=False`。 |
-| `vwap-reversion` | `vwap_window=20`、`entry_z=1.5`、`exit_z=0.25`、`vwap_regime_filter=False`、`vwap_regime_window=50`、Phase 1 `allow_short=False`。 |
-| `confluence-score` | `fast_window=20`、`slow_window=50`、`rsi_window=14`、`vwap_window=20`、`threshold=3.0`、Phase 1 `allow_short=False`。 |
-| volume filter wrapper | 只有啟用 `--volume-filter` 時套用，預設 `volume_window=20`、`volume_multiplier=1.2`。 |
-
-```powershell
-# readiness metric
-python tools\phase_readiness_score.py
-
-# guard
-$env:PYTHONPATH='src'
-python -m unittest discover -s tests
-git diff --check
-
-# Download TWSE daily OHLCV into data/raw and data/processed
-python -m signal_forge.cli fetch-data `
-  --market twse `
-  --symbol 2330 `
-  --start 2024-01-01 `
-  --end 2024-01-31
-
-# Download US daily OHLCV from Stooq.
-# Stooq currently requires a free API key for the CSV endpoint.
-$env:STOOQ_API_KEY='<your-free-stooq-key>'
-python -m signal_forge.cli fetch-data `
-  --market us `
-  --symbol AAPL `
-  --start 2024-01-01 `
-  --end 2024-01-31
-
-# Phase backtest 範例
-python -m signal_forge.cli phase `
-  --csv data\sample\phase1_demo_ohlcv.csv `
-  --mode backtest `
-  --strategy sma-crossover `
-  --output-dir reports\generated `
-  --run-name phase-backtest-demo
-
-# Entry-edge with optional relative-volume filter.
-# Strategy and wrapper parameters use defaults unless explicitly overridden.
-python -m signal_forge.cli entry-edge `
-  --csv data\sample\phase1_demo_ohlcv.csv `
-  --strategy sma-crossover `
-  --volume-filter `
-  --output-dir reports\generated `
-  --run-name sma-volume-filter-demo
-
-# Phase live dry-run 範例
-python -m signal_forge.cli phase `
-  --csv data\sample\phase1_demo_ohlcv.csv `
-  --mode live `
-  --strategy sma-crossover `
-  --output-dir reports\generated `
-  --run-name phase-live-demo
-
-# Only override parameters when comparing variants of the same strategy
-python -m signal_forge.cli entry-edge `
-  --csv data\sample\phase1_demo_ohlcv.csv `
-  --strategy sma-crossover `
-  --fast-window 2 `
-  --slow-window 3 `
-  --output-dir reports\generated `
-  --run-name sma-fast2-slow3-demo
-```
-
-## 簡單策略執行版：台積電 2330
-
-下面是一個最短的台積電研究流程。第一次先下載 `2330` 日線資料；之後若 `data\processed\TWSE_2330_1D.csv` 已存在，可以直接從策略執行開始。
+在 repo 內直接跑 source tree，使用這組 PowerShell 前置設定：
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 cd C:\Projects\signal-forge
 $env:PYTHONPATH = "src"
+```
 
-# 1. 下載台積電日線 OHLCV
+也可以安裝 editable package 後使用 console script：
+
+```powershell
+cd C:\Projects\signal-forge
+python -m pip install -e .
+signal-forge --help
+```
+
+本 README 以下範例使用 `python -m signal_forge.cli`，因為它最適合直接在 repo source tree 內執行。
+
+## 固定驗證命令
+
+文件或程式改完後固定跑：
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+cd C:\Projects\signal-forge
+$env:PYTHONPATH = "src"
+python tools\phase_readiness_score.py
+python -m unittest discover -s tests
+git diff --check
+```
+
+通過條件：readiness score `110`、unit tests 全部通過、`git diff --check` clean。
+
+## 下載股票資料
+
+台股日線資料會輸出到 `data\raw\` 與 `data\processed\`，回測通常使用 processed CSV。
+
+```powershell
 python -m signal_forge.cli fetch-data `
   --market twse `
   --symbol 2330 `
   --start 2024-01-01 `
   --end 2024-12-31
-
-# 2. 用策略 default parameters 跑三個 entry-edge
-
-# SMA Crossover
-python -m signal_forge.cli entry-edge `
-  --csv data\processed\TWSE_2330_1D.csv `
-  --strategy sma-crossover
-
-# VWAP Reversion
-python -m signal_forge.cli entry-edge `
-  --csv data\processed\TWSE_2330_1D.csv `
-  --strategy vwap-reversion
-
-# Confluence Score
-python -m signal_forge.cli entry-edge `
-  --csv data\processed\TWSE_2330_1D.csv `
-  --strategy confluence-score
 ```
 
-輸出預設會放在 `reports\generated\`，檔名前綴預設使用策略名稱。每個 run 會產生 markdown、summary JSON 與 trade log CSV。這些報表只是研究與回測稽核，不構成投資建議。
+下載完成後，台積電日線會在：
 
-若要測同一策略不同參數，再覆寫參數即可：
+```text
+data\processed\TWSE_2330_1D.csv
+```
+
+要換股票，只改 `--symbol` 和後續 `--csv` 檔名。例如聯發科用 `2454`：
+
+```powershell
+python -m signal_forge.cli fetch-data `
+  --market twse `
+  --symbol 2454 `
+  --start 2024-01-01 `
+  --end 2024-12-31
+```
+
+美股入口是 `--market us`，目前 Stooq CSV 端點要求免費 API key：
+
+```powershell
+$env:STOOQ_API_KEY = "<your-free-stooq-key>"
+python -m signal_forge.cli fetch-data `
+  --market us `
+  --symbol AAPL `
+  --start 2024-01-01 `
+  --end 2024-12-31
+```
+
+## 單檔股票快速回測
+
+先把要測的 CSV 放進變數，後面換股票只改這一行：
+
+```powershell
+$Csv = "data\processed\TWSE_2330_1D.csv"
+```
+
+用 default parameter 跑四個日線策略：
+
+```powershell
+python -m signal_forge.cli entry-edge --csv $Csv --strategy sma-crossover
+python -m signal_forge.cli entry-edge --csv $Csv --strategy vwap-reversion
+python -m signal_forge.cli entry-edge --csv $Csv --strategy confluence-score
+python -m signal_forge.cli entry-edge --csv $Csv --strategy absolute-momentum
+```
+
+輸出預設在 `reports\generated\`。每次 `entry-edge` 會產生：
+
+| 檔案 | 用途 |
+|---|---|
+| `*_entry_edge.md` | 人讀的回測摘要 |
+| `*_entry_edge_summary.json` | 機器可比對的 summary |
+| `*_entry_edge_trades.csv` | 每筆 entry / exit trade log |
+
+## 策略呼叫方式
+
+SignalForge 的 CLI 策略參數都在 `src\signal_forge\cli\strategy_options.py` 註冊，策略 factory 在 `src\signal_forge\strategies\registry.py`。未填的參數會使用該策略自己的 default。
+
+### SMA Crossover
+
+用途：趨勢追蹤 baseline。當 fast SMA 大於 slow SMA 時做多，否則空手。Phase 1 版本固定 long-only。
+
+Default parameters：
+
+| 參數 | 預設 |
+|---|---:|
+| `fast_window` | `20` |
+| `slow_window` | `200` |
+| `allow_short` | `False` |
+
+精簡版：
+
+```powershell
+python -m signal_forge.cli entry-edge --csv $Csv --strategy sma-crossover
+```
+
+完整版：
 
 ```powershell
 python -m signal_forge.cli entry-edge `
-  --csv data\processed\TWSE_2330_1D.csv `
+  --csv $Csv `
   --strategy sma-crossover `
-  --fast-window 10 `
-  --slow-window 60 `
+  --fast-window 20 `
+  --slow-window 200 `
+  --hold-bars-per-day 1 `
+  --initial-equity 10000 `
+  --commission-bps 1 `
+  --slippage-bps 1 `
+  --transaction-tax-bps 0 `
+  --pass-profit-factor 1.2 `
   --output-dir reports\generated `
-  --run-name tsmc-sma-10-60
+  --run-name tsmc-sma-20-200
 ```
 
-## Phase 核心概念
+### VWAP Reversion
 
-- `PhaseConfig`：`backtest` / `live` 共用設定；`dry_run` 由 mode 推導，避免 CLI 與核心設定各自維護一份語意。
-- `PhaseRunner`：依照 mode 路由到對應 execution adapter。
-  - `BacktestExecutionAdapter`：透過 `EntryEdgeEvaluator` 產生可驗證的回測結果。
-  - `LiveExecutionAdapter`：只產生 dry-run `OrderIntent`，不送出訂單。
-- `OrderIntent`：live dry-run 的意圖紀錄；`safety_note` 會帶有 `LIVE_DRY_RUN_ONLY` 方便稽核。
-- `VolumeFilteredStrategy`：可選策略 wrapper；啟用 `--volume-filter` 時，只有 `volume >= sma(volume, volume_window) * volume_multiplier` 的 positive target 會保留。預設不啟用，避免改變既有 regression contract。
+用途：均值回歸 baseline。價格跌到 rolling VWAP 下方一定 z-score 後做多，回到 VWAP 附近出場。Phase 1 版本固定 long-only。
 
-## Autoresearch 筆記
+Default parameters：
 
-- `docs/00-SignalForge 專案筆記索引.md`
-- `docs/01-架構/SignalForge 架構總覽.md`
-- `docs/02-規劃/SignalForge 大框架規劃.md`
-- `docs/03-程式疊代/Phase 程式疊代紀錄.md`
-- `docs/04-實驗記錄/Autoresearch 實驗記錄.md`
-- `docs/策略筆記/策略筆記索引.md`
+| 參數 | 預設 |
+|---|---:|
+| `vwap_window` | `20` |
+| `entry_z` | `1.5` |
+| `exit_z` | `0.25` |
+| `vwap_regime_filter` | `False` |
+| `vwap_regime_window` | `50` |
+| `allow_short` | `False` |
 
-`docs/` 是 Obsidian 專案筆記的 repo 鏡像。筆記主來源是
-`C:\Users\gary1\OneDrive\桌面\obsidian\project開發\SignalForge`；每次 push 前先從 Obsidian 同步回 `docs/`，再執行驗證、commit、push。
+精簡版：
 
-## 免費資料來源
+```powershell
+python -m signal_forge.cli entry-edge --csv $Csv --strategy vwap-reversion
+```
 
-- 台股：`fetch-data --market twse` 使用 TWSE 官方個股日成交資訊，輸出未調整日線 OHLCV。
-- 美股：`fetch-data --market us` 使用 Stooq daily CSV。Stooq 單檔 CSV 端點目前要求免費 API key；沒有 key 時工具會中止並提示，不會產生空檔。
-- 替代來源：Yahoo Finance / yfinance 與 Alpha Vantage 可作為後續 provider，但第一版不新增 Python dependency，也不要求交易 credential。
+完整版：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv $Csv `
+  --strategy vwap-reversion `
+  --vwap-window 20 `
+  --entry-z 1.5 `
+  --exit-z 0.25 `
+  --vwap-regime-filter `
+  --vwap-regime-window 50 `
+  --hold-bars-per-day 1 `
+  --initial-equity 10000 `
+  --commission-bps 1 `
+  --slippage-bps 1 `
+  --transaction-tax-bps 0 `
+  --pass-profit-factor 1.2 `
+  --output-dir reports\generated `
+  --run-name tsmc-vwap-regime
+```
+
+### Confluence Score
+
+用途：多因子共振策略。用趨勢、價格相對 slow SMA、VWAP、RSI、成交量確認累積 score，達 threshold 後做多。
+
+Default parameters：
+
+| 參數 | 預設 |
+|---|---:|
+| `fast_window` | `20` |
+| `slow_window` | `50` |
+| `rsi_window` | `14` |
+| `vwap_window` | `20` |
+| `threshold` | `3.0` |
+| `allow_short` | `False` |
+
+精簡版：
+
+```powershell
+python -m signal_forge.cli entry-edge --csv $Csv --strategy confluence-score
+```
+
+完整版：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv $Csv `
+  --strategy confluence-score `
+  --fast-window 20 `
+  --slow-window 50 `
+  --rsi-window 14 `
+  --vwap-window 20 `
+  --threshold 3.0 `
+  --signal-cooldown-bars 10 `
+  --hold-bars-per-day 10 `
+  --initial-equity 10000 `
+  --commission-bps 1 `
+  --slippage-bps 1 `
+  --transaction-tax-bps 0 `
+  --pass-profit-factor 1.2 `
+  --output-dir reports\generated `
+  --run-name tsmc-confluence-cooldown10-hold10
+```
+
+### Absolute Momentum
+
+用途：長期趨勢持有候選。回看報酬為正，且收盤價站上長期 SMA 時做多。這是 compare-only 研究候選，不是穩定營利結論。
+
+Default parameters：
+
+| 參數 | 預設 |
+|---|---:|
+| `momentum_window` | `126`，CLI 用 `--fast-window` 覆寫 |
+| `trend_window` | `200`，CLI 用 `--slow-window` 覆寫 |
+
+精簡版：
+
+```powershell
+python -m signal_forge.cli entry-edge --csv $Csv --strategy absolute-momentum
+```
+
+完整版：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv $Csv `
+  --strategy absolute-momentum `
+  --fast-window 126 `
+  --slow-window 200 `
+  --hold-bars-per-day 20 `
+  --initial-equity 10000 `
+  --commission-bps 1 `
+  --slippage-bps 1 `
+  --transaction-tax-bps 0 `
+  --pass-profit-factor 1.2 `
+  --output-dir reports\generated `
+  --run-name tsmc-absolute-momentum-126-200-hold20
+```
+
+### ORB + Volume + VWAP
+
+用途：intraday opening range breakout 研究候選。它需要 intraday CSV，例如 `data\processed\TWSE_2330_5M.csv`。目前仍受 session / market-clock contract 限制，解讀時要特別看資料頻率與交易時段。
+
+Default parameters：
+
+| 參數 | 預設 |
+|---|---:|
+| `opening_range_minutes` | 策略檔預設 |
+| `session_start_hour` / `session_start_minute` | 策略檔預設 |
+| `session_end_hour` / `session_end_minute` | 策略檔預設 |
+| `session_timezone` | 策略檔預設 |
+| `ema_window` | 策略檔預設 |
+
+精簡版：
+
+```powershell
+$Csv5m = "data\processed\TWSE_2330_5M.csv"
+python -m signal_forge.cli entry-edge --csv $Csv5m --strategy orb-volume-vwap
+```
+
+完整版：
+
+```powershell
+$Csv5m = "data\processed\TWSE_2330_5M.csv"
+python -m signal_forge.cli entry-edge `
+  --csv $Csv5m `
+  --strategy orb-volume-vwap `
+  --orb-opening-range-minutes 15 `
+  --orb-session-start-hour 9 `
+  --orb-session-start-minute 0 `
+  --orb-session-end-hour 13 `
+  --orb-session-end-minute 30 `
+  --orb-session-timezone Asia/Taipei `
+  --orb-vwap-slope-confirmation `
+  --orb-ema-trend-confirmation `
+  --orb-ema-window 20 `
+  --orb-reject-ema-inside-range `
+  --orb-signal-window-minutes 90 `
+  --orb-min-range-pct 0.001 `
+  --orb-max-range-pct 0.03 `
+  --orb-min-breakout-pct 0.0005 `
+  --orb-full-bar-above-range `
+  --orb-min-breakout-body-pct 0.5 `
+  --orb-fresh-breakout-from-or `
+  --orb-use-opening-range-volume-baseline `
+  --hold-bars-per-day 6 `
+  --output-dir reports\generated `
+  --run-name tsmc-orb-full
+```
+
+## Wrapper 與共用參數
+
+這些不是獨立策略，而是包在底層策略外面的研究控制。
+
+| Wrapper / 參數 | 預設 | 用途 |
+|---|---:|---|
+| `--volume-filter` | 關閉 | 只有成交量高於相對門檻時才保留 long signal |
+| `--volume-window` | `20` | 成交量 SMA 視窗 |
+| `--volume-multiplier` | `1.2` | 成交量需達均量倍數 |
+| `--signal-cooldown-bars` | 關閉 | 接受 long entry 後，封鎖指定 bar 數內的新 long entry |
+| `--hold-bars-per-day` | `1` | entry-edge 固定持有幾根 bar |
+| `--hold-bars-list` | 關閉 | 產生多持有期比較報表，例如 `1,3,5,10` |
+| `--commission-bps` | `1` | 單邊手續費 bps |
+| `--slippage-bps` | `1` | 單邊滑價 bps |
+| `--transaction-tax-bps` | `0` | 賣出交易稅 bps |
+| `--pass-profit-factor` | `1.2` | Entry-edge 初篩 PF 門檻 |
+
+成交量濾網範例：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv $Csv `
+  --strategy sma-crossover `
+  --volume-filter `
+  --volume-window 20 `
+  --volume-multiplier 1.2 `
+  --run-name tsmc-sma-volume-filter
+```
+
+多持有期比較範例：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv $Csv `
+  --strategy confluence-score `
+  --hold-bars-per-day 1 `
+  --hold-bars-list 1,3,5,10 `
+  --run-name tsmc-confluence-hold-comparison
+```
+
+## Phase backtest 與 live dry-run
+
+`phase` 會把資料、策略、adapter、reporting 串成主工作流。
+
+Backtest：
+
+```powershell
+python -m signal_forge.cli phase `
+  --csv $Csv `
+  --mode backtest `
+  --strategy sma-crossover `
+  --output-dir reports\generated `
+  --run-name tsmc-phase-backtest
+```
+
+Live dry-run，只產生 `OrderIntent`，不送單：
+
+```powershell
+python -m signal_forge.cli phase `
+  --csv $Csv `
+  --mode live `
+  --strategy sma-crossover `
+  --output-dir reports\generated `
+  --run-name tsmc-phase-live-dry-run
+```
+
+`live` 的安全 invariant：
+
+| 欄位 | 必須維持 |
+|---|---|
+| `dry_run` | `True` |
+| `submitted` | `False` |
+| `safety_note` | 包含 `LIVE_DRY_RUN_ONLY` |
+| broker/API key | 不連線、不讀取 |
+| 真實訂單 | 不送出 |
+
+## 多股票與進階研究工具
+
+當單檔策略有初步結果後，不要只看單一 PF 或單一股票。策略研究要回到 `docs\02-規劃\策略回測與優化評估準則.md`，至少檢查 edge、MDD、benchmark relative、cost stress、OOS / rolling、資料邊界。
+
+### 多股票 entry-edge
+
+用同一策略與持有期比較多檔股票：
+
+```powershell
+python tools\multi_stock_entry_edge_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --strategy confluence-score `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --hold-bars-list 1,3,5,10 `
+  --pass-profit-factor 1.5 `
+  --signal-cooldown-bars 10 `
+  --summary-json reports\generated\multi-stock-entry-edge.json `
+  --summary-md reports\generated\multi-stock-entry-edge.md
+```
+
+### 多股票 target-state
+
+用完整 target exposure 回測，包含成本壓力、風控 overlay 與 walk-forward / OOS：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --volatility-target `
+  --volatility-lookback-bars 20 `
+  --target-annual-volatility 0.40 `
+  --volatility-min-observations 20 `
+  --drawdown-risk-off `
+  --drawdown-risk-off-threshold 0.25 `
+  --drawdown-risk-off-bars 120 `
+  --walk-forward-windows is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20 `
+  --summary-json reports\generated\target-state.json `
+  --summary-md reports\generated\target-state.md
+```
+
+### Portfolio rotation
+
+把多檔股票視為同一資金池，和 equal-weight buy-and-hold portfolio 比較：
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_1301_1D.csv `
+  --csv data\processed\TWSE_1303_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2382_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2603_1D.csv `
+  --csv data\processed\TWSE_2881_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --csv data\processed\TWSE_2891_1D.csv `
+  --csv data\processed\TWSE_3711_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 4 `
+  --min-return 0 `
+  --breadth-filter `
+  --breadth-lookback-bars 42 `
+  --breadth-min-positive-count 3 `
+  --max-consecutive-selections-per-symbol 5 `
+  --liquidity-lookback-bars 20 `
+  --min-average-traded-value 500000000 `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\portfolio-rotation.json `
+  --summary-md reports\generated\portfolio-rotation.md
+```
+
+### 調整價資料與 raw / adjusted 對照
+
+單檔調整價：
+
+```powershell
+python tools\build_twse_adjusted_ohlcv.py `
+  --symbol 2330 `
+  --source-csv data\processed\TWSE_2330_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --output-csv reports\generated\adjusted-data\TWSEADJ_2330_1D.csv `
+  --manifest-json reports\generated\adjusted-data\TWSEADJ_2330_1D_manifest.json
+```
+
+TWSE14 批次調整價：
+
+```powershell
+python tools\build_twse_adjusted_ohlcv_batch.py `
+  --symbols-list 1301,1303,2303,2308,2317,2330,2382,2412,2454,2603,2881,2882,2891,3711 `
+  --source-dir data\processed `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --output-dir reports\generated\adjusted-data `
+  --batch-manifest-json reports\generated\adjusted-data\TWSE14_adjusted_batch_manifest_20260524.json
+```
+
+Raw / adjusted portfolio rotation 對照：
+
+```powershell
+python tools\compare_portfolio_rotation_reports.py `
+  --raw-summary-json reports\generated\raw-portfolio-rotation.json `
+  --adjusted-summary-json reports\generated\adjusted-portfolio-rotation.json `
+  --adjusted-batch-manifest-json reports\generated\adjusted-data\TWSE14_adjusted_batch_manifest_20260524.json `
+  --raw-label raw-twse `
+  --adjusted-label adjusted-ratio-batch `
+  --rolling-cost-label 1x `
+  --output-json reports\generated\raw-vs-adjusted-compare.json `
+  --output-md reports\generated\raw-vs-adjusted-compare.md
+```
+
+## 要修改功能時去哪裡
+
+| 想改的東西 | 優先找 |
+|---|---|
+| CSV 載入、OHLCV 驗證、欄位規則 | `src\signal_forge\core\market_data.py` |
+| SMA、EMA、RSI、VWAP 等指標 | `src\signal_forge\core\indicators.py` |
+| Strategy / Signal contract、逐 bar template | `src\signal_forge\core\strategy.py` |
+| 新增策略或修改策略邏輯 | `src\signal_forge\strategies\*.py`、`src\signal_forge\strategies\registry.py` |
+| 新增 CLI 策略參數 | `src\signal_forge\cli\strategy_options.py` |
+| 新增 subcommand 或調整 CLI 參數 | `src\signal_forge\cli\parser.py`、`src\signal_forge\cli\commands.py` |
+| Entry-edge 計算與 trade log | `src\signal_forge\backtesting\entry_edge.py` |
+| Phase mode、backtest/live 分流 | `src\signal_forge\phase\config.py`、`adapters.py`、`runner.py` |
+| Markdown / JSON / CSV artifacts | `src\signal_forge\reporting\` |
+| 多股票 sweep、target-state、portfolio rotation | `tools\multi_stock_*.py`、`tools\portfolio_rotation_sweep.py` |
+| 測試 fixture 或測試替身 | `tests\helpers.py` |
+| 策略筆記與研究結論 | `docs\策略筆記\`、`docs\04-實驗記錄\` |
+
+更完整的 function map 與維護路徑在 `docs\01-架構\SignalForge 資料夾與程式碼導覽.md`。
+
+## 文件與 Obsidian 同步
+
+`docs\` 是 Obsidian 專案筆記的 repo 鏡像。筆記主來源是：
+
+```text
+C:\Users\gary1\OneDrive\桌面\obsidian\project開發\SignalForge
+```
+
+push 前要先從 Obsidian 同步回 repo `docs\`，再跑固定驗證、commit、push。
