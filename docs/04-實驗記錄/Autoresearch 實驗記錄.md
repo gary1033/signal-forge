@@ -8595,3 +8595,61 @@ Require adjusted 後仍 eligible 的股票：
 - **Do not promote strategy**：這輪沒有改善策略績效，也沒有證明 portfolio rotation 穩定營利；它只讓下一輪股票池擴充的資料邊界更清楚。
 - **Current state**：`TWSE23 raw` 仍只適合作 concentration diagnostic；要做真正的 expanded adjusted candidate，至少要補齊 `1101,2327,2357,2379` 的 adjusted CSV 或直接做 TWSE30+ adjusted batch。
 - **Next**：優先補齊 eligible 但缺 adjusted 的股票，再重跑 adjusted universe audit、portfolio rotation sweep、raw/adjusted comparison、group regime / breadth validation 與 promotion gate。
+
+## 2026-05-24 TWSE16 adjusted universe follow-up
+
+### 目的
+
+上一輪 universe audit 顯示 TWSE23 裡有 16 檔通過歷史長度、流動性與群組成員數，但其中 `1101,2327,2357,2379` 尚缺 adjusted CSV。這輪先補齊這四檔 adjusted OHLCV，再用同一組 portfolio rotation gate 驗證：更完整的 adjusted 小股票池是否能改善 `top4 / breadth42-min3 / maxconsec5 / liq500M` 的 rolling 穩健性。
+
+研究假設：
+
+> 如果 TWSE14 adjusted 的缺口只是股票池太小，補齊符合品質門檻的四檔股票後，rolling IR、rolling excess 與 group concentration 應該改善；若仍失敗，下一步就不該繼續在同一 TWSE16 小池微調 top-N / breadth / max consecutive。
+
+### 產生 artifact
+
+- 補齊 adjusted CSV：`reports\generated\adjusted-data\TWSE16_missing4_adjusted_batch_manifest_20260524.json`
+- 建立 TWSE16 adjusted batch：`reports\generated\adjusted-data\TWSE16_adjusted_batch_manifest_20260524.json`
+- 重跑 adjusted universe audit：`reports\generated\twse23-universe-audit-require-adjusted-after-missing4-20260524.json`
+- 重跑 raw / adjusted comparison：`reports\generated\twse16-raw-vs-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-compare-20260524.json`
+- 重跑 group regime validation：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-group-regime-validation-20260524.json`
+- 重跑 group breadth validation：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-group-breadth-validation-20260524.json`
+- 重跑 promotion gate：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-promotion-gate-20260524.json`
+- 跑小網格：`reports\generated\twse16-adjusted-portfolio-rotation-grid-search-20260524.json`
+
+### 主要結果
+
+| Field | Value |
+|---|---:|
+| Symbols | `16` |
+| Batch rows | `24391` |
+| Missing adjustment | `30` |
+| Skipped rows | `2486` |
+| Full 1x IR | `0.863` |
+| Full 1x excess | `436.45%` |
+| Full 1x MDD | `-29.50%` |
+| Stress 3x IR | `0.832` |
+| Min rolling IR | `-1.123` |
+| Min rolling excess | `-29.26%` |
+| Max rolling top3 group | `98.26%` |
+| Grid candidates | `36` |
+| Grid passing candidates | `0` |
+| Best grid min rolling IR | `-0.978` |
+
+補齊 adjusted 後，require-adjusted universe audit 的 eligible 股票變成：
+
+```text
+1101,1301,1303,2303,2308,2317,2327,2330,2357,2379,2382,2454,2881,2882,2891,3711
+```
+
+同一 `top4 / breadth42-min3 / maxconsec5 / liq500M` 在 raw 價格下 full 1x IR 約 `0.910`，adjusted 後 full 1x IR 約 `0.863`；adjusted full excess 較高，但 rolling `roll02` 更差，excess 約 `-29.26%`、IR 約 `-1.123`。這代表問題不是單純缺四檔 adjusted 資料，而是小股票池在特定 regime 下仍高度依賴少數群組貢獻。
+
+36 組小網格全部維持 `compare-only`。排名第一的 `top4 / breadth min4 / maxconsec6` full IR 只有 `0.647`、min rolling IR `-0.978`、min rolling excess `-27.86%`、max rolling top3 group `99.68%`，沒有比既有設定更接近升級 gate。
+
+### Keep / Discard 判斷
+
+- **Keep data/process**：保留 `1101,2327,2357,2379` adjusted CSV 與 TWSE16 batch manifest；它們讓 expanded adjusted universe 的資料邊界可重跑、可稽核。
+- **Keep artifact**：raw/adjusted comparison、group regime validation、group breadth validation 與 promotion gate 共同證明失敗原因不是單一 summary 指標誤讀。
+- **Compare-only strategy**：full-window excess 與 3x IR 仍有研究價值，但 full IR 未達 `1.0`、`roll02` rolling IR 轉負、min rolling excess 低於 `0`，且 rolling top3 group share 高達 `98.26%`，不能升級為主候選。
+- **Discard same-pool micro-tune**：36 組 top-N / breadth / max consecutive 小網格全數失敗；下一輪不要再只在同一 TWSE16 股票池微調這三個參數。
+- **Next**：改往 TWSE30+、更高品質股票池、re-entry 條件，或 realized group contribution concentration gate；每個方向都必須重新跑 universe audit、adjusted batch、raw/adjusted comparison、group validation 與 promotion gate。
