@@ -106,3 +106,43 @@ python tools\portfolio_rotation_grid_search.py `
 - **Keep diagnostic**：`top3 / breadth4 / maxconsec5 / liq500M` 可作下一個 compare anchor，因為 adjusted min rolling IR 與 MDD 都比 current baseline 好。
 - **Do not promote strategy**：所有掃描結果都未通過 group concentration gate；目前仍不是穩定營利證明。
 - **Next**：針對 `top3 / breadth4 / maxconsec5 / liq500M` 做 raw/adjusted comparison artifact，並優先測 group regime validation 或更高品質股票池，而不是繼續只擴 top-N / breadth / consecutive cap 網格。
+
+## 2026-05-24 follow-up：top3 / breadth4 raw-adjusted comparison
+
+### 目的
+
+上一段 grid search 把 `top3 / breadth4 / maxconsec5 / liq500M` 標成下一個 compare anchor，但當時還缺 raw / adjusted 對照 artifact。本段補上同一設定在未調整 TWSE 價格與 TWSE14 adjusted batch 價格下的 deterministic comparison，確認它是否真的比 current baseline 更值得繼續追蹤。
+
+### 產生 artifact
+
+```powershell
+python tools\compare_portfolio_rotation_reports.py `
+  --raw-summary-json reports\generated\twse14-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-rolling24m-20260524.json `
+  --adjusted-summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-rolling24m-20260524.json `
+  --adjusted-batch-manifest-json reports\generated\adjusted-data\TWSE14_adjusted_batch_manifest_20260524.json `
+  --raw-label raw-twse `
+  --adjusted-label adjusted-ratio-batch `
+  --rolling-cost-label 1x `
+  --output-json reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-compare-20260524.json `
+  --output-md reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-compare-20260524.md
+```
+
+### 主要結果
+
+| Scope | Raw | Adjusted | Delta |
+|---|---:|---:|---:|
+| Full 1x return | `1559.26%` | `1890.64%` | `+331.38%` |
+| Full 1x excess | `1223.08%` | `1406.71%` | `+183.63%` |
+| Full 1x IR | `1.236` | `1.141` | `-0.095` |
+| Full 1x MDD | `-21.93%` | `-22.67%` | `-0.73%` |
+| Full top3 group share | `91.64%` | `92.78%` | `+1.14%` |
+| Weakest adjusted rolling IR | n/a | `roll02 = 0.264` | n/a |
+
+Rolling 1x 對照中，adjusted 版本的最弱 window 仍是 `roll02`：excess `10.73%`、IR `0.264`、MDD `-18.94%`。相對 current baseline adjusted `top4 / breadth3 / maxconsec5 / liq500M` 的 `roll02 IR 0.104` 與 `MDD -27.97%`，這個 anchor 的 rolling robustness 較好；但 adjusted rolling top3 group share 最高仍到 `97.38%`，集中度比 current baseline 更差。
+
+### Keep / Discard 判斷
+
+- **Keep artifact**：raw / adjusted comparison 已補齊，後續可直接用這組 artifact 比較 `top3/breadth4` 與 current baseline。
+- **Keep diagnostic**：`top3 / breadth4 / maxconsec5 / liq500M` 比 current baseline 更適合作為下一個 compare anchor，因為 adjusted min rolling IR 與 MDD 較好。
+- **Do not promote strategy**：group concentration gate 仍失敗，adjusted top3 group share full-window `92.78%`，rolling 最高 `97.38%`；這不是穩定營利證明。
+- **Next**：不要繼續只微調 top-N / breadth / consecutive cap。下一步應做 group regime validation 或更高品質股票池，目標是降低 rolling group contribution concentration，同時保留 adjusted min rolling excess、IR 與可接受 MDD。
