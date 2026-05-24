@@ -43,6 +43,7 @@ updated: 2026-05-24
 - `volatility-target`：可選風控 wrapper，只在 realized volatility 過高時縮小 target exposure；目前 `absolute-momentum + vol-target` 是 drawdown control compare-only，不是主候選，因為 drawdown attribution 顯示 worst MDD 仍集中在 `2454` 且 trough 當天仍滿倉。
 - `drawdown-risk-off`：可選風控 wrapper，用策略層 proxy equity 追蹤單檔回撤並暫時降到 flat；`20%/60` 已 discard，`25%/120` 與 `vol-target 0.40 + dd-risk-off 25%/120` 只保留 compare-only。
 - `walk-forward / OOS`：target-state sweep 已支援 `--walk-forward-windows`；2024-2026 樣本外檢查顯示 Absolute Momentum 系列仍缺 benchmark-relative edge，尚未能視為穩定營利主候選。
+- `relative-momentum filter`：target-state sweep 已支援 `--relative-momentum-filter`，用跨股票 lookback return top-N 當股票池白名單；2024-2026 OOS 掃描 `lookback=63/126/252` 與 `topN=1/2/3/4/5/7` 後沒有改善 `Beat B&H`，目前只作 compare-only / discard 結論。
 - `live`：只產生 dry-run `OrderIntent`，安全邊界由 `LIVE_DRY_RUN_ONLY` 鎖住。
 - 最新整理基線：readiness score 目標仍為 `110`，固定 guard 是 `python -m unittest discover -s tests` 與 `git diff --check`。
 

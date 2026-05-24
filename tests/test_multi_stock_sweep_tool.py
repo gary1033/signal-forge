@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
 from tools.multi_stock_entry_edge_sweep import (
@@ -8,16 +9,19 @@ from tools.multi_stock_entry_edge_sweep import (
     parse_hold_bars_list,
 )
 from tools.multi_stock_target_state_sweep import (
+    RelativeMomentumFilteredStrategy,
     TargetStateRow,
     WalkForwardWindow,
     WalkForwardWindowResult,
     _drawdown_attribution,
+    build_relative_momentum_allowlist,
     build_walk_forward_retention,
     build_aggregates as build_target_state_aggregates,
     build_parser as build_target_state_parser,
     parse_cost_multipliers_list,
     parse_walk_forward_windows,
 )
+from signal_forge import Bar, Signal, Strategy
 from signal_forge.backtesting.backtester import BacktestResult, EquityPoint
 
 
@@ -289,6 +293,92 @@ class MultiStockSweepToolTests(unittest.TestCase):
             "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20",
         )
 
+    def test_target_state_parser_accepts_relative_momentum_filter_options(self) -> None:
+        """
+        用途與流程：驗證 target-state CLI 可接收相對動能股票池篩選參數，讓研究報表可重現 top-N stock-pool filter。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；parser 參數名稱或預設型別漂移時 assertion 失敗。
+        """
+        args = build_target_state_parser().parse_args(
+            [
+                "--csv",
+                "data.csv",
+                "--relative-momentum-filter",
+                "--relative-momentum-lookback-bars",
+                "2",
+                "--relative-momentum-top-n",
+                "1",
+                "--relative-momentum-min-return",
+                "0.05",
+            ]
+        )
+
+        self.assertTrue(args.relative_momentum_filter)
+        self.assertEqual(args.relative_momentum_lookback_bars, 2)
+        self.assertEqual(args.relative_momentum_top_n, 1)
+        self.assertEqual(args.relative_momentum_min_return, 0.05)
+
+    def test_relative_momentum_allowlist_selects_only_top_ranked_symbols(self) -> None:
+        """
+        用途與流程：驗證相對動能白名單會依同一 timestamp 的 lookback return 排名，只選 top-N 且自身動能為正的股票。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；排名、門檻或 timestamp 對齊規則漂移時 assertion 失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path(__file__),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 120.0),
+                ],
+            ),
+            (
+                "2317",
+                Path(__file__),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 105.0),
+                    _bar("2026-01-03", 106.0),
+                ],
+            ),
+        ]
+
+        allowlist = build_relative_momentum_allowlist(
+            loaded,
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+        )
+
+        self.assertEqual(allowlist["2330"], {"2026-01-02", "2026-01-03"})
+        self.assertEqual(allowlist["2317"], set())
+
+    def test_relative_momentum_filter_flattens_blocked_nonzero_targets(self) -> None:
+        """
+        用途與流程：驗證相對動能 wrapper 只攔截未入選日期的非零 target，已入選日期與空手訊號維持底層策略輸出。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；wrapper 的 target 或 reason contract 漂移時 assertion 失敗。
+        """
+        bars = [
+            _bar("2026-01-01", 100.0),
+            _bar("2026-01-02", 101.0),
+            _bar("2026-01-03", 102.0),
+        ]
+        strategy = RelativeMomentumFilteredStrategy(
+            _AlwaysLongStrategy(),
+            symbol="2330",
+            allowed_timestamps={"2026-01-02"},
+        )
+
+        signals = strategy.generate_signals(bars)
+
+        self.assertEqual([signal.target_position for signal in signals], [0.0, 1.0, 0.0])
+        self.assertEqual(signals[0].reason, "relative_momentum_filter_blocked")
+        self.assertEqual(signals[1].reason, "always_long")
+        self.assertEqual(signals[2].reason, "relative_momentum_filter_blocked")
+
 
 def _row(symbol: str, *, gross_profit: float, gross_loss: float) -> SweepRow:
     """
@@ -320,6 +410,22 @@ def _row(symbol: str, *, gross_profit: float, gross_loss: float) -> SweepRow:
         gross_loss=gross_loss,
         end_equity=10_100.0,
         overlapping_signal_count=0,
+    )
+
+
+def _bar(timestamp: str, close: float) -> Bar:
+    """
+    用途與流程：建立測試用 Bar，讓相對動能測試能直接指定 timestamp 與 close。
+    參數：timestamp 是日期字串；close 是收盤價，並同步填入 open/high/low 以降低測試雜訊。
+    回傳與錯誤：回傳 Bar；此 helper 不做 I/O，也不主動拋錯。
+    """
+    return Bar(
+        timestamp=timestamp,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        volume=1_000.0,
     )
 
 
@@ -370,6 +476,29 @@ def _target_state_row(
         max_drawdown_trough_position=0.5,
         max_drawdown_average_abs_position=0.4,
     )
+
+
+class _AlwaysLongStrategy(Strategy):
+    """測試用 target-state 策略，每根 bar 都要求 1.0 目標部位。"""
+
+    name = "always_long"
+
+    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        """
+        用途與流程：把輸入 bars 轉成等長 always-long signals，供 wrapper 測試攔截非零部位。
+        參數：self 是測試策略實例；bars 是測試用 OHLCV 序列。
+        回傳與錯誤：回傳 list[Signal]；此測試策略不做 I/O，也不主動拋錯。
+        """
+        return [
+            Signal(
+                index=index,
+                timestamp=bar.timestamp,
+                target_position=1.0,
+                reason="always_long",
+                score=1.0,
+            )
+            for index, bar in enumerate(bars)
+        ]
 
 
 if __name__ == "__main__":

@@ -6292,3 +6292,78 @@ python tools\multi_stock_target_state_sweep.py `
 1. 不再把「降低 worst MDD」當成唯一優化方向；下一輪必須同時看 OOS active return。
 2. 若繼續 Absolute Momentum，優先做 re-entry / weekly rebalance / stock-pool 或 regime filter，目標是改善 `Beat B&H`，不是只壓低 MDD。
 3. 若上網找新策略，第一版就要用這個 OOS split 和 1x/3x cost stress 檢查，不接受只有 full-window equity curve 的策略。
+
+## 2026-05-24 Relative Momentum stock-pool filter
+
+### 假設
+
+前一輪 OOS 顯示 Absolute Momentum 系列「平均報酬為正，但 benchmark-relative 不合格」。本輪參考 momentum 文獻中的兩條線索：
+
+- time-series / absolute momentum：用標的自己的過去報酬判斷是否有趨勢。
+- cross-sectional / relative momentum：在同一股票池內偏好近期相對強的標的。
+
+因此本輪假設是：先保留 Absolute Momentum 的 `126/200` long/flat 判斷，再加一層多股票相對動能白名單，只允許同日 lookback return 排名前 N 且自身 return 大於 0 的股票保留非零 target。
+
+### 本輪程式改動
+
+- `tools\multi_stock_target_state_sweep.py` 新增：
+  - `build_relative_momentum_allowlist(...)`
+  - `RelativeMomentumFilteredStrategy`
+- CLI 新增：
+  - `--relative-momentum-filter`
+  - `--relative-momentum-lookback-bars`
+  - `--relative-momentum-top-n`
+  - `--relative-momentum-min-return`
+- `tests\test_multi_stock_sweep_tool.py` 新增：
+  - parser regression
+  - allowlist top-N ranking regression
+  - wrapper flatten regression
+
+### Target-state OOS 報表命令
+
+正式留存的 top-3 報表：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --relative-momentum-filter `
+  --relative-momentum-lookback-bars 126 `
+  --relative-momentum-top-n 3 `
+  --relative-momentum-min-return 0.0 `
+  --walk-forward-windows "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20" `
+  --summary-json reports\generated\twse-target-state-absolute-momentum-relmom-top3-oos-20260524.json `
+  --summary-md reports\generated\twse-target-state-absolute-momentum-relmom-top3-oos-20260524.md
+```
+
+### OOS 結果摘要
+
+| Candidate | Cost | OOS positive | OOS beat B&H | OOS avg return | OOS avg excess | OOS worst MDD | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `absolute-momentum + rel-mom top3` | `1x` | `6/7` | `0/7` | `65.21%` | `-124.63%` | `-32.95%` | discard as improvement：降曝險但沒有 benchmark edge |
+| `absolute-momentum + rel-mom top3` | `3x` | `6/7` | `0/7` | `64.08%` | `-125.52%` | `-33.33%` | discard as improvement：成本壓力後仍沒有 beat B&H |
+
+額外掃描 `lookback=63/126/252`、`topN=1/2/3/4/5/7`：
+
+| Lookback | Top N | Cost | OOS Avg return | OOS Avg excess | Beat B&H | Worst MDD | 解讀 |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| `126` | `7` | `1x` | `84.58%` | `-105.25%` | `1/7` | `-36.32%` | 最佳 active return，但等同幾乎不篩選 |
+| `252` | `7` | `1x` | `81.35%` | `-108.48%` | `1/7` | `-32.88%` | 回撤略好，active return 較差 |
+| `63` | `7` | `1x` | `76.09%` | `-113.75%` | `1/7` | `-30.87%` | 仍是寬鬆篩選，沒有改善勝率 |
+| `126` | `3` | `1x` | `65.21%` | `-124.63%` | `0/7` | `-32.95%` | 嚴格 top-N 後報酬下降 |
+| `252` | `1` | `1x` | `50.66%` | `-139.18%` | `0/7` | `-17.21%` | 回撤最低之一，但犧牲太多 upside |
+
+### Keep / Discard 判斷
+
+- **Keep as tool**：相對動能白名單是 deterministic、test-covered、預設關閉的研究能力，可保留供後續 portfolio allocation 或其他策略使用。
+- **Discard as Absolute Momentum improvement**：top-N 股票池篩選沒有改善 OOS `Beat B&H` 或 avg excess，不能當成穩定營利方向。
+- **下一步**：不要再只靠股票池 top-N 降曝險；若繼續 Absolute Momentum，應改測 re-entry、weekly rebalance 或市場 regime，且仍用同一 OOS split 和 1x/3x cost stress 驗證。

@@ -113,7 +113,7 @@ python -m signal_forge.cli fetch-data `
 - [[../策略筆記/SMA Crossover|SMA Crossover]]：趨勢追蹤 baseline。
 - [[../策略筆記/VWAP Reversion|VWAP Reversion]]：rolling VWAP 均值回歸。
 - [[../策略筆記/Confluence Score|Confluence Score]]：趨勢、VWAP、RSI、量能共振打分。
-- [[../策略筆記/Absolute Momentum|Absolute Momentum]]：長期趨勢持有候選，要求回看報酬為正且收盤站上長期 SMA；可搭配 volatility target 與 drawdown risk-off 風控 overlay，但目前只作 compare-only，不是主候選。
+- [[../策略筆記/Absolute Momentum|Absolute Momentum]]：長期趨勢持有候選，要求回看報酬為正且收盤站上長期 SMA；可搭配 volatility target、drawdown risk-off 與 relative-momentum stock-pool filter，但目前都只作 compare-only，不是主候選。
 
 ## 已完成里程碑摘要
 
@@ -131,6 +131,7 @@ python -m signal_forge.cli fetch-data `
 - `VolatilityTargetStrategy` 支援只降曝險、不加槓桿的 realized-volatility target overlay，並已接入 target-state sweep 的 `--volatility-target`。
 - `DrawdownRiskOffStrategy` 支援單檔 proxy equity drawdown-state risk-off overlay，並已接入 target-state sweep 的 `--drawdown-risk-off`。
 - `multi_stock_target_state_sweep.py` 支援 `--walk-forward-windows`，可用 `label:start:end` 指定樣本內 / 樣本外分段，並輸出 OOS retention 報表。
+- `multi_stock_target_state_sweep.py` 支援 `--relative-momentum-filter`，可用跨股票 lookback return top-N 建立股票池白名單；目前 OOS 參數掃描顯示它降低曝險但沒有改善 benchmark-relative edge。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
@@ -146,6 +147,6 @@ python -m signal_forge.cli fetch-data `
 - 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics：Information Ratio、active drawdown tradeoff 與更多 rolling / OOS 檢查。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
-- 針對 Absolute Momentum 的 drawdown control 結果做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可把 full-window worst MDD 降到約 `-44.93%`，但 2024-2026 OOS 只有 `0/7` beat B&H；下一步應測 re-entry 條件、weekly rebalance、股票池 / regime 過濾，而不是直接升級。
+- 針對 Absolute Momentum 的 benchmark-relative 問題做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可降低回撤但 2024-2026 OOS 是 `0/7` beat B&H；relative-momentum top-N 股票池也沒有改善 `Beat B&H`。下一步應測 re-entry 條件、weekly rebalance 或市場 regime，不要只靠降曝險或 top-N 過濾。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

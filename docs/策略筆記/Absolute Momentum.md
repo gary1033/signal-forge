@@ -22,6 +22,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\absolute_momentu
 - **Warmup / 暖機期**：資料不足以計算動能或 SMA 時，策略保持空手。
 - **Volatility target / 波動目標**：用最近一段 close-to-close 報酬估算 realized volatility；若當下波動高於目標年化波動，就把 `target_position` 從 `1.0` 縮小到較低曝險。SignalForge 第一版只降曝險，不加槓桿。
 - **Drawdown risk-off / 回撤風控**：用策略自己的 proxy equity 追蹤單檔高點回撤；若回撤超過門檻，就暫時把非零部位改成空手，等待固定 bar 數後再重新允許底層策略進場。
+- **Relative momentum / 相對動能**：把同一日期的多檔股票依過去一段期間報酬排序，只允許排名前幾名且自身報酬為正的股票保留非零部位。它是股票池篩選，不是保證會勝過 buy-and-hold。
 
 ## 策略假設
 
@@ -53,6 +54,8 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - 若 realized volatility 高於目標，`target_position = 原始 target_position * target_annual_volatility / realized_annual_volatility`，並受到 `max_scale` 上限限制。
 - `DrawdownRiskOffStrategy` 不改變底層動能進場條件；它只在 wrapper 追蹤到 proxy equity 從本地高點回撤超過門檻時，把非零 target 改成 `0.0`，reason 是 `drawdown_risk_off`。
 - Drawdown risk-off 期間結束後，wrapper 會用當下 proxy equity 重設本地 high-water mark，避免因舊高點造成永久空手；這是可回測的研究假設，不代表真實停損保證。
+- `RelativeMomentumFilteredStrategy` 不改變底層 Absolute Momentum 的 long/flat 判斷；它先用多檔股票同日 lookback return 排名建立白名單，只有 top-N 且 lookback return 大於 `min_return` 的 symbol 可以保留非零 target。
+- 若底層策略輸出非零 target，但該 symbol 當日不在相對動能白名單，wrapper 會把 target 改成 `0.0`，reason 是 `relative_momentum_filter_blocked`。
 
 ## 小例子
 
@@ -75,6 +78,7 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - 完整持倉檢查：使用 `tools\multi_stock_target_state_sweep.py` 做 close-to-close target exposure、cost stress 與 benchmark-relative 檢查。
 - `volatility-target` overlay：目前研究設定使用 `lookback_bars=20`、`min_observations=20`，比較 `target_annual_volatility=0.25/0.30/0.35/0.40`，`max_scale=1.0`。
 - `drawdown-risk-off` overlay：目前研究設定比較 `drawdown_threshold=0.10/0.15/0.20/0.25/0.30` 與 `risk_off_bars=20/40/60/120`；較可追蹤的版本是 `0.25/120`，但仍只屬 compare-only。
+- `relative-momentum-filter` overlay：目前研究設定比較 `lookback_bars=63/126/252`、`top_n=1/2/3/4/5/7`、`min_return=0.0`；這是股票池白名單，不是完整 portfolio allocation。
 
 ## 股價走勢解說圖
 
@@ -94,6 +98,7 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - 單獨 drawdown risk-off 可以降低部分版本的 worst MDD，但容易錯過後續趨勢或把最差回撤轉移到其他股票；`20%/60 bars` 甚至讓 worst MDD 惡化，因此不可直接升級。
 - `vol-target 0.40 + drawdown-risk-off 25%/120 bars` 是目前較好的 drawdown-control compare-only 組合，但 `Beat B&H` 仍只有 `1/7`，且 `2454` trough 當天仍是滿倉 `1.000`。
 - walk-forward / OOS 顯示 2024-2026 樣本外總報酬仍為正，但 benchmark-relative 沒有改善；原始 Absolute Momentum OOS 只有 `1/7` beat B&H，疊加 `vol-target 0.40 + drawdown-risk-off 25%/120` 後變成 `0/7` beat B&H。
+- relative-momentum stock-pool filter 在 2024-2026 OOS 中沒有改善 active return；嚴格 top-N 主要降低 time-in-market，但 `Beat B&H` 仍沒有變好。
 
 ## 回測解讀
 
@@ -135,11 +140,35 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 
 這輪結論是：風控 overlay 讓 OOS worst MDD 從原始版本約 `-36%` 降到約 `-27%`，但代價是 OOS avg return 降低，且 `Beat B&H` 從 `1/7` 變成 `0/7`。因此它只能作為 drawdown-control 對照，不能升級為穩定營利候選。
 
+### Relative momentum stock-pool filter 補充
+
+這輪參考 time-series momentum、absolute momentum 與 cross-sectional momentum 文獻，把「自己的趨勢為正」和「同池股票中相對強」合併成可回測假設：底層 Absolute Momentum 先判斷 long/flat，再用同日 lookback return top-N 當股票池白名單。
+
+2024-2026 OOS 以七檔 TWSE、1x/3x 成本壓力掃描 `lookback=63/126/252` 與 `topN=1/2/3/4/5/7`。結果是：
+
+| Lookback | Top N | Cost | OOS Avg return | OOS Avg excess | OOS Beat B&H | OOS Worst MDD | 判斷 |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| `126` | `7` | `1x` | `84.58%` | `-105.25%` | `1/7` | `-36.32%` | 近似不篩選，仍只是原始 Absolute Momentum 的 compare-only 錨點 |
+| `252` | `7` | `1x` | `81.35%` | `-108.48%` | `1/7` | `-32.88%` | 回撤稍低，但 active return 更差 |
+| `126` | `3` | `1x` | `65.21%` | `-124.63%` | `0/7` | `-32.95%` | 降曝險但沒有 benchmark edge |
+| `252` | `1` | `1x` | `50.66%` | `-139.18%` | `0/7` | `-17.21%` | 回撤最低之一，但報酬與 active return 犧牲過大 |
+
+Keep / discard 判斷：
+
+- **Keep as tool**：相對動能白名單與 CLI 參數，因為它是 deterministic、test-covered，之後可用於其他策略或 portfolio allocation 實驗。
+- **Discard as strategy improvement**：目前 top-N stock-pool filter 沒有改善 OOS `Beat B&H` 或 avg excess，不能作為 Absolute Momentum 主線升級。
+
 ## 下一步
 
 - 不先擴大 `momentum_window` / `trend_window` 搜尋；避免把 2020-2026 強趨勢樣本擬合成漂亮回測。
 - 不把 `DD risk-off 20%/60` 作為候選；它已經被 1x/3x cost stress 證明會惡化 worst MDD。
 - 保留 `DD risk-off 25%/120` 與 `vol-target 0.40 + DD risk-off 25%/120` 為 compare-only；OOS 已證明它們主要改善回撤，不改善 benchmark-relative edge。
 - 後續若要深化，優先改善 OOS `Beat B&H` 與 active return，而不是只降低 MDD。
-- 若繼續做風控，優先測 re-entry 條件、weekly rebalance 或股票池 / regime 過濾，不要只擴大參數 grid。
+- 若繼續做風控，優先測 re-entry 條件、weekly rebalance 或市場 regime；relative-momentum top-N 股票池已測過，不能重複當成主要突破口。
 - 與 `confluence-score + hold=10 + signal_cooldown_bars=10` 固定在同一批七檔股票與同一期間比較。
+
+## 參考來源
+
+- Moskowitz, Ooi and Pedersen, Time Series Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2089463
+- Antonacci, Absolute Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2244633
+- Jegadeesh and Titman, Returns to Buying Winners and Selling Losers: https://www.jstor.org/stable/2328882

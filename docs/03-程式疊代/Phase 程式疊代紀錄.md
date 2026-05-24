@@ -175,6 +175,14 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - `tests\test_multi_stock_sweep_tool.py` 新增 parser、retention 對齊與 OOS CLI regression，確保分段驗證是 deterministic、test-covered 的報表功能。
 - 本輪用同一批七檔 TWSE common window 驗證 `absolute-momentum`、`absolute-momentum + vol-target 0.40 + dd-risk-off 25%/120`、`confluence-score + cooldown10`。三者樣本外平均報酬沒有崩潰，但 OOS benchmark-relative 仍不合格，不能升級成穩定營利主候選。
 
+### 15. Relative momentum stock-pool filter
+
+- `tools\multi_stock_target_state_sweep.py` 新增 `build_relative_momentum_allowlist(...)` 與 `RelativeMomentumFilteredStrategy`，以跨股票 lookback return 排名建立每檔股票可持倉 timestamp 白名單。
+- CLI 新增 `--relative-momentum-filter`、`--relative-momentum-lookback-bars`、`--relative-momentum-top-n` 與 `--relative-momentum-min-return`，預設關閉，不改既有 target-state sweep 行為。
+- Wrapper 語意是：底層策略先產生逐 bar signal；若某 timestamp 不在該 symbol 的相對動能白名單，非零 target 會被改成 `0.0`，reason 為 `relative_momentum_filter_blocked`。
+- `tests\test_multi_stock_sweep_tool.py` 新增 parser、allowlist ranking 與 wrapper flatten regression，確保這個股票池濾網是 deterministic、test-covered。
+- 研究結果屬 compare-only / discard：2024-2026 OOS 掃描 `lookback=63/126/252` 與 `topN=1/2/3/4/5/7` 後，最佳 active return 仍是 `lookback=126, topN=7`，等同幾乎不做相對排名篩選；較嚴格 top-N 只降低曝險，沒有改善 `Beat B&H`。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |
@@ -192,7 +200,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；walk-forward / OOS 已證明 benchmark-relative 問題仍存在，下一步應測 re-entry 條件、weekly rebalance、股票池 / regime 過濾，而不是只調整動能 / 均線視窗或 risk-off bars。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；walk-forward / OOS 與 relative-momentum stock-pool filter 都已證明 benchmark-relative 問題仍存在，下一步應測 re-entry 條件、weekly rebalance 或市場 regime，而不是只調整動能 / 均線視窗、risk-off bars 或 top-N 股票池。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

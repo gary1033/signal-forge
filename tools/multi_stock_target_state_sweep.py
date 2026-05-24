@@ -11,6 +11,8 @@ from typing import Iterable
 from signal_forge import (
     BacktestConfig,
     Backtester,
+    Signal,
+    Strategy,
     build_phase1_strategy,
     load_bars_from_csv,
 )
@@ -239,6 +241,96 @@ def load_filtered_bars(path: Path, *, start: str | None, end: str | None) -> lis
     return bars
 
 
+def build_relative_momentum_allowlist(
+    loaded: list[tuple[str, Path, list[Bar]]],
+    *,
+    lookback_bars: int,
+    top_n: int,
+    min_return: float,
+) -> dict[str, set[str]]:
+    """
+    用途與流程：依多股票同日相對動能排名建立每檔股票可持倉日期白名單，供 target-state sweep 做 stock-pool filter。
+    參數：loaded 是 `(symbol, path, bars)` 清單；lookback_bars 是回看 bar 數；top_n 是每個 timestamp 允許保留非零部位的股票數；min_return 是自身動能下限。
+    回傳與錯誤：回傳 symbol 到可持倉 timestamp set 的 dict；lookback_bars 或 top_n 非正時拋出 ValueError。
+    """
+    if lookback_bars <= 0:
+        raise ValueError("relative momentum lookback bars must be positive")
+    if top_n <= 0:
+        raise ValueError("relative momentum top-n must be positive")
+
+    allowlist = {symbol: set() for symbol, _, _ in loaded}
+    candidates_by_timestamp: dict[str, list[tuple[str, float]]] = {}
+    for symbol, _, bars in loaded:
+        for index in range(lookback_bars, len(bars)):
+            previous_close = bars[index - lookback_bars].close
+            if previous_close <= 0:
+                continue
+            momentum_return = (bars[index].close / previous_close) - 1.0
+            if momentum_return <= min_return:
+                continue
+            candidates_by_timestamp.setdefault(bars[index].timestamp, []).append(
+                (symbol, momentum_return)
+            )
+
+    for timestamp, candidates in candidates_by_timestamp.items():
+        ranked = sorted(candidates, key=lambda item: (-item[1], item[0]))
+        for symbol, _ in ranked[:top_n]:
+            allowlist[symbol].add(timestamp)
+    return allowlist
+
+
+class RelativeMomentumFilteredStrategy(Strategy):
+    """以跨股票相對動能白名單包住既有策略，只在入選日期允許非零 target position。"""
+
+    def __init__(
+        self,
+        base_strategy: Strategy,
+        *,
+        symbol: str,
+        allowed_timestamps: set[str],
+    ) -> None:
+        """
+        用途與流程：保存底層策略、股票代號與允許持倉日期，並建立報表可辨識的 strategy name。
+        參數：base_strategy 是已建好的 target-state 策略；symbol 是目前股票代號；allowed_timestamps 是該股票通過相對動能篩選的 timestamp 集合。
+        回傳與錯誤：回傳 None；此建構子不做 I/O，也不主動拋錯。
+        """
+        self.base_strategy = base_strategy
+        self.symbol = symbol
+        self.allowed_timestamps = allowed_timestamps
+        self.name = f"{base_strategy.name}_relative_momentum_filter"
+
+    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        """
+        用途與流程：先呼叫底層策略產生 signals，再把未通過相對動能白名單的非零部位改成空手。
+        參數：self 是 wrapper 實例；bars 是目前股票的 OHLCV 序列，需與底層策略輸出逐 bar 對齊。
+        回傳與錯誤：回傳與 bars 等長的 Signal 清單；若底層策略輸出長度不一致，拋出 ValueError。
+        """
+        signals = self.base_strategy.generate_signals(bars)
+        if len(signals) != len(bars):
+            raise ValueError(
+                "relative momentum filter requires signals aligned with input bars"
+            )
+
+        filtered: list[Signal] = []
+        for signal in signals:
+            if (
+                signal.target_position != 0.0
+                and signal.timestamp not in self.allowed_timestamps
+            ):
+                filtered.append(
+                    Signal(
+                        index=signal.index,
+                        timestamp=signal.timestamp,
+                        target_position=0.0,
+                        reason="relative_momentum_filter_blocked",
+                        score=signal.score,
+                    )
+                )
+            else:
+                filtered.append(signal)
+        return filtered
+
+
 def run_sweep(
     *,
     csv_paths: list[Path],
@@ -260,10 +352,14 @@ def run_sweep(
     drawdown_risk_off: bool = False,
     drawdown_risk_off_threshold: float | None = None,
     drawdown_risk_off_bars: int | None = None,
+    relative_momentum_filter: bool = False,
+    relative_momentum_lookback_bars: int | None = None,
+    relative_momentum_top_n: int | None = None,
+    relative_momentum_min_return: float | None = None,
 ) -> tuple[list[TargetStateRow], list[TargetStateAggregate]]:
     """
     用途與流程：對多個股票、策略與成本倍率執行完整 target-state 回測，並彙總跨股票風險指標。
-    參數：csv_paths 是股票 CSV；strategies 是 strategy registry 名稱；cost_multipliers 會等比例放大 commission/slippage/tax；start/end 控制 common window；initial_equity 與成本欄位傳給 Backtester；periods_per_year 用於日線風險年化；signal_cooldown_bars 可沿用 Phase 1 進場冷卻 wrapper；volatility_target 及其參數會套用只降曝險的波動目標 wrapper；drawdown_risk_off 及其參數會套用單檔 proxy equity 回撤風控 wrapper。
+    參數：csv_paths 是股票 CSV；strategies 是 strategy registry 名稱；cost_multipliers 會等比例放大 commission/slippage/tax；start/end 控制 common window；initial_equity 與成本欄位傳給 Backtester；periods_per_year 用於日線風險年化；signal_cooldown_bars 可沿用 Phase 1 進場冷卻 wrapper；volatility_target 及其參數會套用只降曝險的波動目標 wrapper；drawdown_risk_off 及其參數會套用單檔 proxy equity 回撤風控 wrapper；relative_momentum_filter 及其參數會依跨股票相對動能排名篩掉非 top-N 持倉。
     回傳與錯誤：回傳逐檔 TargetStateRow 與 aggregate；策略名稱、資料或成本不合法時由底層拋出 ValueError。
     """
     rows: list[TargetStateRow] = []
@@ -271,6 +367,20 @@ def run_sweep(
         (infer_symbol_from_path(path), path, load_filtered_bars(path, start=start, end=end))
         for path in csv_paths
     ]
+    relative_momentum_allowlist: dict[str, set[str]] = {}
+    if relative_momentum_filter:
+        relative_momentum_allowlist = build_relative_momentum_allowlist(
+            loaded,
+            lookback_bars=relative_momentum_lookback_bars
+            if relative_momentum_lookback_bars is not None
+            else 126,
+            top_n=relative_momentum_top_n
+            if relative_momentum_top_n is not None
+            else 3,
+            min_return=relative_momentum_min_return
+            if relative_momentum_min_return is not None
+            else 0.0,
+        )
 
     for strategy_name in strategies:
         for cost_multiplier in cost_multipliers:
@@ -295,6 +405,15 @@ def run_sweep(
                     drawdown_risk_off_threshold=drawdown_risk_off_threshold,
                     drawdown_risk_off_bars=drawdown_risk_off_bars,
                 )
+                if relative_momentum_filter:
+                    strategy = RelativeMomentumFilteredStrategy(
+                        strategy,
+                        symbol=symbol,
+                        allowed_timestamps=relative_momentum_allowlist.get(
+                            symbol,
+                            set(),
+                        ),
+                    )
                 result = backtester.run(strategy, bars)
                 rows.append(
                     _build_row(
@@ -304,6 +423,7 @@ def run_sweep(
                             strategy_name,
                             volatility_target=volatility_target,
                             drawdown_risk_off=drawdown_risk_off,
+                            relative_momentum_filter=relative_momentum_filter,
                         ),
                         result=result,
                         bars=bars,
@@ -336,10 +456,14 @@ def run_walk_forward_sweep(
     drawdown_risk_off: bool = False,
     drawdown_risk_off_threshold: float | None = None,
     drawdown_risk_off_bars: int | None = None,
+    relative_momentum_filter: bool = False,
+    relative_momentum_lookback_bars: int | None = None,
+    relative_momentum_top_n: int | None = None,
+    relative_momentum_min_return: float | None = None,
 ) -> tuple[list[WalkForwardWindowResult], list[WalkForwardRetentionRow]]:
     """
     用途與流程：依指定 walk-forward windows 重跑同一批 target-state sweep，並計算相鄰 window 的樣本外保留率。
-    參數：windows 是 parse_walk_forward_windows 的結果；csv_paths、strategies、cost_multipliers 與成本/風控參數和 run_sweep 相同，確保每個 window 只改日期邊界。
+    參數：windows 是 parse_walk_forward_windows 的結果；csv_paths、strategies、cost_multipliers 與成本/風控/相對動能參數和 run_sweep 相同，確保每個 window 只改日期邊界。
     回傳與錯誤：回傳每個 window 的 rows/aggregates 與 retention rows；資料視窗無 bar 或策略參數不合法時由 run_sweep 拋出 ValueError。
     """
     results: list[WalkForwardWindowResult] = []
@@ -364,6 +488,10 @@ def run_walk_forward_sweep(
             drawdown_risk_off=drawdown_risk_off,
             drawdown_risk_off_threshold=drawdown_risk_off_threshold,
             drawdown_risk_off_bars=drawdown_risk_off_bars,
+            relative_momentum_filter=relative_momentum_filter,
+            relative_momentum_lookback_bars=relative_momentum_lookback_bars,
+            relative_momentum_top_n=relative_momentum_top_n,
+            relative_momentum_min_return=relative_momentum_min_return,
         )
         results.append(
             WalkForwardWindowResult(
@@ -848,6 +976,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="number of bars to keep risk-off active after a drawdown breach",
     )
     parser.add_argument(
+        "--relative-momentum-filter",
+        action="store_true",
+        help="allow nonzero targets only for symbols ranked in the top-N by lookback return",
+    )
+    parser.add_argument(
+        "--relative-momentum-lookback-bars",
+        type=int,
+        default=126,
+        help="lookback bars used to rank cross-sectional relative momentum",
+    )
+    parser.add_argument(
+        "--relative-momentum-top-n",
+        type=int,
+        default=3,
+        help="number of highest relative momentum symbols allowed to hold exposure",
+    )
+    parser.add_argument(
+        "--relative-momentum-min-return",
+        type=float,
+        default=0.0,
+        help="minimum lookback return required before a symbol can enter the top-N allowlist",
+    )
+    parser.add_argument(
         "--walk-forward-windows",
         help=(
             "comma-separated label:start:end windows, for example "
@@ -861,8 +1012,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """
-    用途與流程：CLI 入口，解析 target-state sweep、成本壓力、風控 overlay 與 walk-forward/OOS 參數，執行回測、列印 Markdown，並可寫出 JSON/Markdown 摘要。
-    參數：argv 是可選命令列參數清單；None 時使用 sys.argv；策略 wrapper 與 walk-forward 相關選項會透過 run_sweep 或 run_walk_forward_sweep 傳給報表流程。
+    用途與流程：CLI 入口，解析 target-state sweep、成本壓力、風控/相對動能 overlay 與 walk-forward/OOS 參數，執行回測、列印 Markdown，並可寫出 JSON/Markdown 摘要。
+    參數：argv 是可選命令列參數清單；None 時使用 sys.argv；策略 wrapper、相對動能與 walk-forward 相關選項會透過 run_sweep 或 run_walk_forward_sweep 傳給報表流程。
     回傳與錯誤：成功回傳 0；參數、資料或回測錯誤會由 argparse 或底層函式拋出。
     """
     args = build_parser().parse_args(argv)
@@ -889,6 +1040,10 @@ def main(argv: list[str] | None = None) -> int:
         drawdown_risk_off=args.drawdown_risk_off,
         drawdown_risk_off_threshold=args.drawdown_risk_off_threshold,
         drawdown_risk_off_bars=args.drawdown_risk_off_bars,
+        relative_momentum_filter=args.relative_momentum_filter,
+        relative_momentum_lookback_bars=args.relative_momentum_lookback_bars,
+        relative_momentum_top_n=args.relative_momentum_top_n,
+        relative_momentum_min_return=args.relative_momentum_min_return,
     )
     markdown = format_markdown(
         rows,
@@ -921,6 +1076,10 @@ def main(argv: list[str] | None = None) -> int:
             drawdown_risk_off=args.drawdown_risk_off,
             drawdown_risk_off_threshold=args.drawdown_risk_off_threshold,
             drawdown_risk_off_bars=args.drawdown_risk_off_bars,
+            relative_momentum_filter=args.relative_momentum_filter,
+            relative_momentum_lookback_bars=args.relative_momentum_lookback_bars,
+            relative_momentum_top_n=args.relative_momentum_top_n,
+            relative_momentum_min_return=args.relative_momentum_min_return,
         )
         markdown += format_walk_forward_markdown(
             walk_forward_results,
@@ -1032,10 +1191,11 @@ def _strategy_label(
     *,
     volatility_target: bool,
     drawdown_risk_off: bool,
+    relative_momentum_filter: bool,
 ) -> str:
     """
     用途與流程：為 target-state 報表建立人類可讀策略標籤，避免 wrapper 啟用時 aggregate 仍顯示成未縮放版本。
-    參數：strategy 是 registry key；volatility_target 表示本輪是否啟用波動目標曝險縮放；drawdown_risk_off 表示本輪是否啟用回撤狀態 risk-off。
+    參數：strategy 是 registry key；volatility_target 表示本輪是否啟用波動目標曝險縮放；drawdown_risk_off 表示本輪是否啟用回撤狀態 risk-off；relative_momentum_filter 表示是否啟用跨股票相對動能股票池篩選。
     回傳與錯誤：回傳策略標籤字串；不會主動拋錯。
     """
     label = strategy
@@ -1043,6 +1203,8 @@ def _strategy_label(
         label = f"{label}+vol-target"
     if drawdown_risk_off:
         label = f"{label}+dd-risk-off"
+    if relative_momentum_filter:
+        label = f"{label}+rel-mom"
     return label
 
 
