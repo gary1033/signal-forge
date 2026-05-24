@@ -123,6 +123,22 @@ python tools\build_twse_adjusted_ohlcv_batch.py `
 
 Batch manifest 目前可重建 14 檔 adjusted CSV 與 14 份 per-symbol manifest，總 rows `21479`、缺 Yahoo ratio `26`、skip rows `2482`。後續 portfolio rotation 評估必須能追到這個 batch manifest 或同等 manifest，不應再使用無來源說明的暫存 adjusted CSV。
 
+Raw / adjusted portfolio rotation 比較工具：
+
+```powershell
+python tools\compare_portfolio_rotation_reports.py `
+  --raw-summary-json reports\generated\twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-group-exposure-rolling24m-20260524.json `
+  --adjusted-summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json `
+  --adjusted-batch-manifest-json reports\generated\adjusted-data\TWSE14_adjusted_batch_manifest_20260524.json `
+  --raw-label raw-twse `
+  --adjusted-label adjusted-ratio-batch `
+  --rolling-cost-label 1x `
+  --output-json reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-compare-20260524.json `
+  --output-md reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-compare-20260524.md
+```
+
+這個工具把 raw 與 adjusted summary 對齊後輸出 deterministic JSON / Markdown，比較 total return、benchmark excess、Information Ratio、MDD、active MDD、symbol concentration 與 group concentration。2026-05-24 對照顯示同一 execution-aware candidate 從 raw `IR 1.521 / MDD -18.61%` 降成 adjusted `IR 1.156 / MDD -27.97%`，最弱 rolling IR 從 `0.814` 降到 `0.104`；因此後續 portfolio rotation 優化必須先通過 raw/adjusted comparison gate。
+
 ## 策略蒸餾規則
 
 每個策略先整理成獨立策略筆記，並保留：
@@ -174,7 +190,7 @@ Batch manifest 目前可重建 14 檔 adjusted CSV 與 14 份 per-symbol manifes
 
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
-- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics；portfolio rotation 已補 IR / tracking error / active drawdown / rolling windows / market regime compare tool / breadth filter / volatility target compare tool / symbol attribution / group attribution / group exposure summary / concentration guard / 單檔連續入選上限 / group cap / TWSE23 擴大股票池診斷 / liquidity gate / dominant group exclusion 診斷 / canary universe 診斷 / adjusted price 診斷，並已把 adjusted price 資料來源正式化為可重跑 per-symbol manifest 與 TWSE14 batch manifest。下一步重點轉向讓後續報表同時引用 raw / adjusted-ratio 結果與 batch manifest path、較慢批次完成 TWSE30+、更高品質股票池、group regime validation，或更具體的 re-entry 條件。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics；portfolio rotation 已補 IR / tracking error / active drawdown / rolling windows / market regime compare tool / breadth filter / volatility target compare tool / symbol attribution / group attribution / group exposure summary / concentration guard / 單檔連續入選上限 / group cap / TWSE23 擴大股票池診斷 / liquidity gate / dominant group exclusion 診斷 / canary universe 診斷 / adjusted price 診斷，並已把 adjusted price 資料來源正式化為可重跑 per-symbol manifest、TWSE14 batch manifest 與 raw/adjusted comparison artifact。下一步重點轉向較慢批次完成 TWSE30+、更高品質股票池、group regime validation，或更具體的 re-entry 條件。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
 - 針對 Absolute Momentum 的 benchmark-relative 問題做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可降低回撤但 2024-2026 OOS 是 `0/7` beat B&H；relative-momentum top-N 股票池也沒有改善 `Beat B&H`。下一步應測 re-entry 條件、weekly rebalance 或市場 regime，不要只靠降曝險或 top-N 過濾。

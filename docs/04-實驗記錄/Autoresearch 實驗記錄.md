@@ -8151,3 +8151,62 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Do not promote strategy**：adjusted-ratio 版本仍只有 `IR 1.156`、`MDD -27.97%`、min rolling IR `0.104`，且 top3 group share 仍約 `91.29%`；這不是穩定營利證明。
 - **Current state**：`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 仍是 execution-aware compare candidate，但策略品質判斷必須以 adjusted batch 報表為主要風險版本。
 - **Next**：讓後續 portfolio rotation 報表同時列出 raw / adjusted-ratio 來源與 batch manifest path；再做 TWSE30+ 或更高品質股票池，優先降低 rolling group concentration，而不是只微調 top-N 或 breadth threshold。
+
+## 2026-05-24 raw / adjusted portfolio rotation 比較 artifact
+
+### 目的
+
+上一輪已正式化 TWSE14 adjusted batch manifest，但 raw 與 adjusted portfolio rotation 結果仍需要人工比對。本輪新增 deterministic 比較工具，讓策略評估 gate 可以直接引用同一份 raw summary、adjusted summary 與 batch manifest，避免只看未調整價結果而誤判策略品質。
+
+研究假設：
+
+> 若 adjusted-ratio 版本要作為策略品質主要風險版本，raw / adjusted 對照本身也必須成為可重跑 artifact，而不是筆記中的手動表格。
+
+### 程式改動
+
+- 新增 `tools/compare_portfolio_rotation_reports.py`。
+- 新增 `tests/test_compare_portfolio_rotation_reports_tool.py`。
+- 工具會讀取兩份 portfolio rotation summary JSON，對齊 full-window cost label 與 rolling window label，輸出 adjusted-minus-raw 的 return、excess、IR、MDD、active MDD、top3 symbol share 與 top3 group share。
+- 可選 `--adjusted-batch-manifest-json` 會把 adjusted batch 的 rows、missing adjustment、skipped rows 與調整方法摘要寫進比較 artifact。
+
+### 產生 artifact
+
+```powershell
+python tools\compare_portfolio_rotation_reports.py `
+  --raw-summary-json reports\generated\twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-group-exposure-rolling24m-20260524.json `
+  --adjusted-summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json `
+  --adjusted-batch-manifest-json reports\generated\adjusted-data\TWSE14_adjusted_batch_manifest_20260524.json `
+  --raw-label raw-twse `
+  --adjusted-label adjusted-ratio-batch `
+  --rolling-cost-label 1x `
+  --output-json reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-compare-20260524.json `
+  --output-md reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top4-liq500m-compare-20260524.md
+```
+
+### 主要結果
+
+| Scope | Raw | Adjusted | Delta |
+|---|---:|---:|---:|
+| Full 1x return | `1745.89%` | `1644.65%` | `-101.24%` |
+| Full 1x excess | `1409.71%` | `1160.72%` | `-248.99%` |
+| Full 1x IR | `1.521` | `1.156` | `-0.364` |
+| Full 1x MDD | `-18.61%` | `-27.97%` | `-9.36%` |
+| Full top3 group share | `89.27%` | `91.29%` | `+2.02%` |
+| Weakest rolling IR | `roll02 = 0.814` | `roll02 = 0.104` | `-0.711` |
+
+Adjusted batch manifest 摘要：
+
+| Field | Value |
+|---|---:|
+| Symbols | `14` |
+| Adjusted rows | `21479` |
+| Missing adjustment count | `26` |
+| Skipped rows | `2482` |
+
+### Keep / Discard 判斷
+
+- **Keep code**：raw / adjusted 比較工具與 regression tests。這是回測可驗證性與策略 gate 改動，不是績效最佳化。
+- **Keep artifact**：比較 artifact 直接暴露 adjusted 後 IR、MDD 與 rolling robustness 的降級，後續 portfolio rotation 迭代應先引用這份對照或同等 artifact。
+- **Do not promote strategy**：adjusted 後 full IR 仍有 `1.156`，但 MDD 惡化到 `-27.97%`，最弱 rolling IR 只有 `0.104`，top3 group share 仍超過 `91%`；不能視為穩定營利。
+- **Current state**：`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 保留為 execution-aware compare candidate，但策略品質判斷以 adjusted-ratio 與 raw/adjusted comparison gate 為準。
+- **Next**：下一步不是再微調 top-N 或 breadth threshold，而是做 TWSE30+、更高品質股票池、group regime validation，或更嚴格的容量/流動性 gate，並要求 adjusted 版本的 min rolling IR、MDD 與 concentration 同時改善。
