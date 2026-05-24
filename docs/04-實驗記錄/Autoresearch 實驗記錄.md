@@ -8057,3 +8057,97 @@ python tools\build_twse_adjusted_ohlcv.py `
 - **Keep code**：這是回測可驗證性改動，讓 adjusted-ratio 資料來源從一次性診斷升級成可重跑工具。
 - **Do not promote strategy**：本輪沒有改善策略績效，也不代表 portfolio rotation 已穩定營利；它只是把資料品質 gate 補上。
 - **Next**：用這個工具批次重建 TWSE14 adjusted CSV 與 manifest，再把 portfolio rotation 報表改成同時引用 raw / adjusted-ratio 結果；之後再慢批次擴到 TWSE30+ 或更高品質股票池。
+
+## 2026-05-24 TWSE14 adjusted batch manifest 與重跑報表
+
+### 目的
+
+上一輪已把單檔 adjusted price 工具正式化，但 TWSE14 portfolio rotation 仍缺一個可重跑、可稽核的批次入口。本輪補上 batch 工具與 regression test，並用同一批 14 檔股票重新產生 adjusted CSV、per-symbol manifest、batch manifest，再重跑 execution-aware compare candidate。
+
+研究假設：
+
+> 若 adjusted-ratio 版本是後續策略品質判斷的主要風險版本，TWSE14 的每檔 adjusted CSV 與 portfolio rotation 報表都必須能從同一個 batch manifest 重建，否則後續 raw / adjusted 對照無法當成穩定 gate。
+
+### 程式改動
+
+- 新增 `tools/build_twse_adjusted_ohlcv_batch.py`。
+- 新增 `tests/test_build_twse_adjusted_ohlcv_batch_tool.py`。
+- Batch 工具用固定命名規則讀取 `data/processed/TWSE_<symbol>_1D.csv`，輸出：
+  - `reports/generated/adjusted-data/TWSEADJ_<symbol>_1D.csv`
+  - `reports/generated/adjusted-data/TWSEADJ_<symbol>_1D_manifest.json`
+  - `reports/generated/adjusted-data/TWSE14_adjusted_batch_manifest_20260524.json`
+- Batch manifest 不寫入 current timestamp，固定記錄 `adjustment_method`、`adjustment_source`、`volume_source`、每檔結果與 total counts。
+
+### 批次命令
+
+```powershell
+python tools\build_twse_adjusted_ohlcv_batch.py `
+  --symbols-list 1301,1303,2303,2308,2317,2330,2382,2412,2454,2603,2881,2882,2891,3711 `
+  --source-dir data\processed `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --output-dir reports\generated\adjusted-data `
+  --batch-manifest-json reports\generated\adjusted-data\TWSE14_adjusted_batch_manifest_20260524.json
+```
+
+批次結果：
+
+| Field | Value |
+|---|---:|
+| Symbols | `14` |
+| Adjusted rows | `21479` |
+| Per-symbol CSVs | `14` |
+| Per-symbol manifests | `14` |
+| Missing adjustment count | `26` |
+| Skipped row count | `2482` |
+
+`skipped_row_count_total` 主要包含來源 CSV 中日期窗外資料列；`missing_adjustment_count_total=26` 需要保留在 manifest 中，後續若擴 TWSE30+ 時必須一起檢查。
+
+### 重跑 portfolio rotation
+
+使用剛建立的 adjusted CSV 重跑同一組 execution-aware compare candidate：
+
+```text
+universe = TWSE14 adjusted batch
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+breadth_filter = 42 / min positive 3
+max_consecutive_selections_per_symbol = 5
+liquidity_lookback_bars = 20
+min_average_traded_value = 500M
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+報表檔案：
+
+- `reports/generated/twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- `reports/generated/twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.md`
+
+### Full-window 與成本壓力
+
+| Cost | Return | Excess | IR | MDD | Active MDD | Top3 symbol share | Top3 group share |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| `1x` | `1644.65%` | `1160.72%` | `1.156` | `-27.97%` | `-20.62%` | `47.26%` | `91.29%` |
+| `2x` | `1616.61%` | `1132.79%` | `1.140` | `-28.20%` | `-20.79%` | `47.26%` | `91.29%` |
+| `3x` | `1589.02%` | `1105.32%` | `1.125` | `-28.44%` | `-20.98%` | `47.26%` | `91.29%` |
+
+### Rolling 摘要
+
+| Window | Excess | IR | MDD | Active MDD | Max symbol | Top3 symbol share | Max group | Top3 group share |
+|---|---:|---:|---:|---:|---|---:|---|---:|
+| `roll01` | `157.89%` | `1.563` | `-17.65%` | `-19.81%` | `2603` | `65.72%` | `shipping` | `91.03%` |
+| `roll02` | `1.54%` | `0.104` | `-27.10%` | `-20.61%` | `2603` | `76.90%` | `shipping` | `91.39%` |
+| `roll03` | `40.96%` | `1.000` | `-18.41%` | `-14.49%` | `2382` | `68.29%` | `electronics` | `94.77%` |
+| `roll04` | `55.26%` | `1.252` | `-17.04%` | `-13.77%` | `2382` | `59.60%` | `electronics` | `83.06%` |
+| `roll05` | `26.18%` | `0.638` | `-18.61%` | `-18.11%` | `2308` | `54.05%` | `electronics` | `85.83%` |
+| `roll06` | `44.78%` | `0.779` | `-13.79%` | `-20.62%` | `2308` | `63.07%` | `electronics` | `92.51%` |
+
+### Keep / Discard 判斷
+
+- **Keep code**：batch adjusted 工具與 regression tests。它把 TWSE14 adjusted 資料從單檔手動流程提升成可重跑 batch contract。
+- **Keep diagnostic**：batch adjusted portfolio report 與前一輪 adjusted 診斷一致，證明結果不是臨時檔案造成的偶然差異。
+- **Do not promote strategy**：adjusted-ratio 版本仍只有 `IR 1.156`、`MDD -27.97%`、min rolling IR `0.104`，且 top3 group share 仍約 `91.29%`；這不是穩定營利證明。
+- **Current state**：`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 仍是 execution-aware compare candidate，但策略品質判斷必須以 adjusted batch 報表為主要風險版本。
+- **Next**：讓後續 portfolio rotation 報表同時列出 raw / adjusted-ratio 來源與 batch manifest path；再做 TWSE30+ 或更高品質股票池，優先降低 rolling group concentration，而不是只微調 top-N 或 breadth threshold。
