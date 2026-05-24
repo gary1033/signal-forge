@@ -9329,3 +9329,80 @@ Group breadth validation 有一個明確改善：`single_member_dominant_windows
 - **Discard as current strategy upgrade**：TWSE44 selected21 的 MDD / active MDD 明顯惡化，rolling IR 與 rolling excess 轉負；`groupcap2` 只部分降低 drawdown，但仍未修 rolling edge，也沒有通過 group gates。
 - **Do not promote strategy**：這輪沒有達到穩定營利證明，也不能取代 TWSE35 baseline 或 reentry6 compare-only anchor。
 - **Next**：不要再只補低流動性 food / cement 或只加 group cap。下一步應改測可驗證的 drawdown / risk-off 條件、shipping regime 風險、market / industry regime filter，或搜尋新的策略 family；若繼續股票池方向，必須找真正通過 `500M` liquidity gate 的同群組替代標的，再重跑 adjusted promotion gate。
+
+## 2026-05-24 TWSE35 market regime risk-off follow-up
+
+### 目的
+
+這輪接續 TWSE44 thin-group expansion 的結論：補 `shipping` / `steel` 替代標的可以降低 single-member dominance，但 adjusted rolling edge 與 drawdown 反而惡化。因此這輪不再擴股票池、不再掃 group cap，也不再調 re-entry cooldown，而是測既有的 `market_regime_filter` 是否能作為簡單 risk-off overlay，降低 TWSE35 adjusted baseline 的 drawdown，同時保住 rolling edge。
+
+研究假設：
+
+> 若 TWSE35 baseline 的大回撤主要來自整體市場弱勢時仍維持輪動曝險，使用等權市場 proxy 跌破 SMA 時留現金，應可降低 MDD / active MDD；若它只是錯過後段強勢行情、讓 rolling IR 或 rolling excess 轉負，則只能保留為 compare-only 風控對照。
+
+### 產生 artifact
+
+- Regime SMA scan adjusted summaries：
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-regime63-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-regime84-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-regime126-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-regime168-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-regime200-liq500m-rolling24m-20260524.json`
+- Regime63 raw summary：`reports\generated\twse35-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-regime63-liq500m-rolling24m-20260524.json`
+- Regime63 raw / adjusted comparison：`reports\generated\twse35-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-regime63-liq500m-compare-20260524.json`
+- Regime63 group regime validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-regime63-liq500m-group-regime-validation-20260524.json`
+- Regime63 group breadth validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-regime63-liq500m-group-breadth-validation-20260524.json`
+- Regime63 promotion gate：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-regime63-liq500m-promotion-gate-20260524.json`
+
+### Regime SMA scan
+
+固定設定：TWSE35 adjusted `monthly + lookback21 + skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M/20 bars`，只額外啟用 `--market-regime-filter` 並掃 `market_regime_sma_bars`。
+
+| Candidate | Full IR | Stress 3x IR | MDD | Active MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Regime blocks |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `baseline` | `1.685` | `1.668` | `-37.80%` | `-29.98%` | `0.429` | `11.33%` | `100.00%` | `0` |
+| `regime63` | `1.698` | `1.685` | `-26.55%` | `-29.01%` | `0.383` | `14.59%` | `100.00%` | `11` |
+| `regime84` | `1.603` | `1.589` | `-26.55%` | `-29.01%` | `-0.636` | `-20.95%` | `100.00%` | `10` |
+| `regime126` | `1.675` | `1.660` | `-37.80%` | `-26.65%` | `-0.877` | `-33.29%` | `100.00%` | `10` |
+| `regime168` | `1.283` | `1.267` | `-37.80%` | `-40.31%` | `-2.851` | `-76.99%` | `100.00%` | `11` |
+| `regime200` | `1.092` | `1.076` | `-37.80%` | `-43.60%` | `-2.851` | `-76.99%` | `100.00%` | `12` |
+
+`regime63` 是唯一值得補完整 diagnostics 的候選：它把 full MDD 從 `-37.80%` 壓到 `-26.55%`，full IR 小幅提高，3x 成本後 IR 仍有 `1.685`；但 min rolling IR 從 baseline 的 `0.429` 降到 `0.383`，仍低於 promotion threshold `0.5`，且 max rolling top3 group share 沒有改善。
+
+### Regime63 promotion gate
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.698` |
+| Full 1x excess | `3253.02%` |
+| Full 1x MDD | `-26.55%` |
+| Full 1x active MDD | `-29.01%` |
+| Stress 3x IR | `1.685` |
+| Min rolling IR | `0.383` |
+| Min rolling excess | `14.59%` |
+| Worst active MDD | `-30.63%` |
+| Max rolling top3 group share | `100.00%` |
+| Regime blocks | `11` |
+
+Failure reasons：
+
+```text
+rolling_ir_below_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+single_member_dominant_group
+narrow_group_momentum
+```
+
+Raw / adjusted comparison gate 通過，且 adjusted 版本比 raw 更好：adjusted 1x full IR `1.698` 高於 raw `1.654`，MDD 由 raw `-27.26%` 小幅改善到 adjusted `-26.55%`。但 group diagnostics 仍失敗：group regime validation 有 `6` 個 high concentration windows，其中 `5` 個 return-regime dominated、`2` 個 exposure-dominated；group breadth validation 也有 `6` 個 high concentration windows，其中 `2` 個 single-member dominant、`1` 個 narrow group momentum。
+
+### Keep / Discard 判斷
+
+- **Keep existing tool**：`--market-regime-filter --market-regime-sma-bars 63` 仍是 deterministic、預設關閉、可重跑的 risk-off overlay；本輪不需要新增程式碼。
+- **Compare-only artifact**：`regime63` 對 TWSE35 adjusted baseline 有明確風控價值，full IR 小幅提高，MDD 從 `-37.80%` 改到 `-26.55%`，且 raw / adjusted comparison gate 通過。
+- **Discard as current strategy upgrade**：`regime63` 讓 min rolling IR 降到 `0.383`，未達 `0.5` gate；max rolling top3 group share 仍是 `100%`，group regime / breadth gate 仍失敗，所以不能升級為主候選。
+- **Do not promote strategy**：這輪沒有證明穩定營利，只證明短 SMA market regime 是比長 SMA 更合理的風控對照。`regime84+` 在 rolling IR / excess 上明顯失敗，應 discard as improvement。
+- **Next**：若繼續沿 drawdown / risk-off 主線，不要只掃更長 market SMA。下一步應測更直接的「shipping regime 風險」或「industry breadth / market breadth」條件，也可以開始搜尋新的策略 family，但仍要套用 adjusted、rolling、cost-stress、raw/adjusted、group regime 與 group breadth promotion gate。

@@ -95,6 +95,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 股票池已從七檔擴到 14 檔，再暫時擴到 23 檔做 concentration diagnostic；樣本仍偏小，且 TWSE STOCK_DAY 資料未還原權息，還不能證明策略在更廣股票池穩定有效。
 - 24 個月 rolling 檢查已發現 2021-2022 失敗 window，代表策略可能需要 market regime 或 risk-off 條件，不能只看 2024-2026 強勢期。
 - 可選 `--market-regime-filter --market-regime-sma-bars 84` 已測：它把 2021-2022 excess 從約 `-24.62%` 改到約 `-13.59%`，但 full-window IR 從約 `0.858` 降到約 `0.544`，所以只能作 compare-only 風控工具，不能當作目前主候選改善。
+- TWSE35 adjusted 上也已重新測 market regime risk-off。`SMA63` 是唯一有研究價值的 window：full IR 約 `1.698`、3x IR 約 `1.685`，MDD 從 baseline `-37.80%` 改到 `-26.55%`，raw / adjusted comparison gate 通過；但 min rolling IR 降到約 `0.383`，max rolling top3 group share 仍是 `100%`，group regime / breadth gate 仍失敗。因此 `regime63` 只能作 compare-only 風控對照，不能升級為主候選；`SMA84/126/168/200` 會讓 rolling IR 或 rolling excess 轉負，屬 discard as improvement。
 - 可選 `--volatility-target --volatility-lookback-bars 42 --target-annual-volatility 0.20` 已測：full excess 只剩約 `43.00%`、IR 約 `0.065`，2021-2022 excess 仍約 `-22.85%`，所以也只能作 compare-only 風控工具，不能當作目前主候選改善。
 - 可選 `--breadth-filter --breadth-lookback-bars 42 --breadth-min-positive-count 2` 在七檔股票池是最佳折衷：full-window IR 約 `1.017`，但 2021-2022 仍輸 benchmark。
 - 擴大到 14 檔 TWSE 股票池後，`--breadth-min-positive-count 3` 是目前最佳 breadth gate。`top_n=3` 是最高報酬錨點：full-window return 約 `1974.85%`、excess 約 `1638.67%`、MDD 約 `-23.01%`、IR 約 `1.417`，1x/2x/3x 成本與 6 個 rolling windows 都維持正 excess。
@@ -125,6 +126,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Re-entry cooldown 已正式接進工具並測過。TWSE35 adjusted `reentry6` 把 MDD 改到約 `-28.76%`、active MDD 改到約 `-25.74%`，min rolling excess 提高到約 `18.63%`，但 full IR 降到約 `1.046`、min rolling IR 精確值約 `0.4996`，max rolling top3 group contribution 仍可到 `100%`，promotion gate 仍是 `compare-only`。因此功能 keep as diagnostic / compare tool，當前設定不能升級。
 - Balanced-quality universe selector 已正式接進工具並測過。TWSE35 audit eligible rows 經 `min_eligible_members_per_group=2`、`max_symbols_per_group=4` 選出 16 檔後，adjusted full IR 約 `1.460`、active MDD 約 `-21.80%`，但 min rolling IR 轉為約 `-0.367`、min rolling excess 轉為約 `-12.11%`；更嚴格的 `max_symbols_per_group=3` 也讓 min rolling IR 約 `-0.691`。因此 selector 工具 keep，但目前 balanced-quality 子股票池 discard as strategy upgrade。
 - TWSE44 thin-group expansion 已測。新增 `1103,1210,1227,1229,2023,2027,2609,2615,4904` 後，audit 顯示 `shipping` 有 `2603,2609,2615` 三檔 eligible、`steel` 有 `2002,2027` 兩檔 eligible、`telecom` 有 `2412,3045` 兩檔 eligible；但 `cement` 與 `food` 仍各只有一檔通過 `500M` liquidity gate。`TWSE44 selected21` 讓 single-member dominant window 降到 `0`，這個資料與流程 keep；但 adjusted full IR 只約 `1.172`、MDD 約 `-53.82%`、active MDD 約 `-42.76%`、min rolling IR 約 `-0.438`、min rolling excess 約 `-23.81%`，promotion gate 仍是 `compare-only`。`groupcap2` 也只把 MDD 改到約 `-48.76%`，min rolling IR 仍約 `-0.270`。因此 TWSE44 / groupcap2 只能作 compare-only，discard as current strategy upgrade。
+- TWSE35 market regime risk-off 已測。`regime63` 可把 MDD 改到約 `-26.55%`，full IR 與 3x IR 仍強，但 min rolling IR 只有約 `0.383`，且 group concentration 仍未解；長 SMA 版本會讓 rolling excess 轉負。結論是：短 SMA market regime keep as compare-only overlay，discard as current strategy upgrade，不要繼續只掃更長 SMA。
 - 因為分段貢獻仍偏集中、調整價版本明顯降級、股票池與資料邊界仍有限，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
@@ -148,6 +150,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `reentry_cooldown_rebalances` 已測第一輪。`6` 可改善 MDD、active MDD 與 rolling excess，但沒有讓 promotion gate 通過；後續不要繼續掃 cooldown 長度，應先改善股票池替代性與 group breadth。
 - `portfolio_rotation_universe_select.py` 已測第一輪。只從既有 TWSE35 中篩出 balanced-quality 子股票池會讓 rolling edge 轉負；後續若要用 selector，應先補足 singleton / thin groups 的替代標的，再重新 audit 與 selection。
 - TWSE44 thin-group expansion 已把 `shipping` 與 `steel` 的替代性補起來，但 adjusted rolling edge 與 drawdown 變差。下一步不要只補低流動性 food / cement，也不要只加 group cap；要轉向可驗證的 drawdown / risk-off、market / industry regime filter，或搜尋新的策略 family。
+- TWSE35 `market_regime_filter` 已測第一輪。`SMA63` 是目前最好的 risk-off 對照，但 promotion gate 仍是 `compare-only`；後續不要只掃更長 market SMA，應改測 shipping regime 風險、industry breadth / market breadth，或搜尋新的策略 family。
 - 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
