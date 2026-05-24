@@ -183,6 +183,15 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - `tests\test_multi_stock_sweep_tool.py` 新增 parser、allowlist ranking 與 wrapper flatten regression，確保這個股票池濾網是 deterministic、test-covered。
 - 研究結果屬 compare-only / discard：2024-2026 OOS 掃描 `lookback=63/126/252` 與 `topN=1/2/3/4/5/7` 後，最佳 active return 仍是 `lookback=126, topN=7`，等同幾乎不做相對排名篩選；較嚴格 top-N 只降低曝險，沒有改善 `Beat B&H`。
 
+### 16. Portfolio-level relative momentum rotation
+
+- 新增 `tools\portfolio_rotation_sweep.py`，將多檔股票視為同一資金池，而不是逐檔各自回測。
+- 工具會把 CSV 對齊到共同 timestamp，依 `rebalance_frequency`、`lookback_bars`、`top_n`、`min_return` 產生 long-only 等權配置；未入選資金留現金。
+- Benchmark 改為同一股票池的 equal-weight buy-and-hold portfolio，避免用逐檔 B&H 誤判輪動策略。
+- CLI 支援 `--rebalance-frequency daily|weekly|monthly`、`--lookback-bars`、`--top-n`、`--min-return`、`--cost-multipliers-list`、`--walk-forward-windows` 與 JSON/Markdown 摘要輸出。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、共同日期對齊、top momentum 選股、benchmark 成本與 retention regression。
+- 本輪結果：`monthly + 21 bars + top3` 在 full-window、IS/OOS 與三段 rolling split 都有正 portfolio-level active return，暫列 promising candidate，但仍需更多 rolling split 與 active risk 指標，不能宣稱穩定營利。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |
@@ -200,7 +209,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；walk-forward / OOS 與 relative-momentum stock-pool filter 都已證明 benchmark-relative 問題仍存在，下一步應測 re-entry 條件、weekly rebalance 或市場 regime，而不是只調整動能 / 均線視窗、risk-off bars 或 top-N 股票池。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線，下一步應補 rolling split、Information Ratio、active drawdown 與更大股票池。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

@@ -1,0 +1,236 @@
+from __future__ import annotations
+
+from pathlib import Path
+import unittest
+
+from signal_forge import BacktestConfig, Bar
+from tools.portfolio_rotation_sweep import (
+    build_parser,
+    build_portfolio_retention,
+    align_close_table,
+    PortfolioRotationResult,
+    run_portfolio_rotation,
+    run_equal_weight_benchmark,
+    PortfolioWalkForwardResult,
+)
+from tools.multi_stock_target_state_sweep import WalkForwardWindow
+
+
+class PortfolioRotationSweepToolTests(unittest.TestCase):
+    def test_parser_accepts_rotation_options(self) -> None:
+        """
+        用途與流程：驗證 portfolio rotation CLI 可接收 rebalance、lookback、top-N 與成本壓力參數。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 parser 欄位或型別漂移，assertion 會失敗。
+        """
+        args = build_parser().parse_args(
+            [
+                "--csv",
+                "data.csv",
+                "--rebalance-frequency",
+                "monthly",
+                "--lookback-bars",
+                "3",
+                "--top-n",
+                "2",
+                "--min-return",
+                "0.02",
+                "--cost-multipliers-list",
+                "1,3",
+            ]
+        )
+
+        self.assertEqual(args.rebalance_frequency, "monthly")
+        self.assertEqual(args.lookback_bars, 3)
+        self.assertEqual(args.top_n, 2)
+        self.assertEqual(args.min_return, 0.02)
+        self.assertEqual(args.cost_multipliers_list, "1,3")
+
+    def test_align_close_table_uses_only_common_timestamps(self) -> None:
+        """
+        用途與流程：驗證多檔 close matrix 只保留共同 timestamp，避免不同交易日資料造成錯誤輪動。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；共同日期或 close 對齊錯誤時 assertion 會失敗。
+        """
+        timestamps, closes = align_close_table(
+            [
+                (
+                    "2330",
+                    Path("2330.csv"),
+                    [
+                        _bar("2026-01-01", 10.0),
+                        _bar("2026-01-02", 11.0),
+                        _bar("2026-01-03", 12.0),
+                    ],
+                ),
+                (
+                    "2317",
+                    Path("2317.csv"),
+                    [
+                        _bar("2026-01-02", 21.0),
+                        _bar("2026-01-03", 22.0),
+                        _bar("2026-01-04", 23.0),
+                    ],
+                ),
+            ]
+        )
+
+        self.assertEqual(timestamps, ["2026-01-02", "2026-01-03"])
+        self.assertEqual(closes["2330"], [11.0, 12.0])
+        self.assertEqual(closes["2317"], [21.0, 22.0])
+
+    def test_rotation_selects_top_positive_momentum_symbol(self) -> None:
+        """
+        用途與流程：驗證 daily portfolio rotation 會選擇 lookback return 最高且為正的股票，並相對 equal-weight benchmark 產生正 excess。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；選股、交易成本或 benchmark-relative 計算漂移時 assertion 失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 121.0),
+                    _bar("2026-01-04", 133.1),
+                ],
+            ),
+            (
+                "2317",
+                Path("2317.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 90.0),
+                    _bar("2026-01-03", 81.0),
+                    _bar("2026-01-04", 72.9),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(initial_equity=10_000.0, commission_bps=0.0, slippage_bps=0.0),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+        )
+
+        self.assertGreater(result.total_return, 0.20)
+        self.assertGreater(result.benchmark_excess_return, 0.20)
+        self.assertEqual(result.trade_count, 1)
+        self.assertGreater(result.average_exposure, 0.0)
+
+    def test_equal_weight_benchmark_applies_initial_entry_cost(self) -> None:
+        """
+        用途與流程：驗證 equal-weight benchmark 會套用初始入場成本，避免和有交易成本的輪動策略比較不一致。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；成本處理漂移時 assertion 會失敗。
+        """
+        benchmark = run_equal_weight_benchmark(
+            ["2026-01-01", "2026-01-02"],
+            {"2330": [100.0, 100.0], "2317": [100.0, 100.0]},
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=10.0,
+                slippage_bps=0.0,
+            ),
+            periods_per_year=252,
+        )
+
+        self.assertAlmostEqual(benchmark["total_return"] or 0.0, -0.001)
+
+    def test_portfolio_retention_compares_matching_cost_windows(self) -> None:
+        """
+        用途與流程：驗證 portfolio walk-forward retention 會以成本倍率對齊相鄰 window 的結果。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；retention 對齊或公式漂移時 assertion 會失敗。
+        """
+        train = _rotation_result(total_return=0.20, excess=0.10, sharpe=1.0, mdd=-0.20)
+        test = _rotation_result(total_return=0.10, excess=0.04, sharpe=0.5, mdd=-0.25)
+
+        retention = build_portfolio_retention(
+            [
+                PortfolioWalkForwardResult(
+                    window=WalkForwardWindow("is", "2020-01-01", "2023-12-31"),
+                    results=[train],
+                ),
+                PortfolioWalkForwardResult(
+                    window=WalkForwardWindow("oos", "2024-01-01", "2026-05-20"),
+                    results=[test],
+                ),
+            ]
+        )
+
+        self.assertEqual(len(retention), 1)
+        self.assertAlmostEqual(retention[0].total_return_retention or 0.0, 0.5)
+        self.assertAlmostEqual(retention[0].benchmark_excess_retention or 0.0, 0.4)
+        self.assertAlmostEqual(retention[0].sharpe_retention or 0.0, 0.5)
+        self.assertAlmostEqual(retention[0].drawdown_change, -0.05)
+
+
+def _bar(timestamp: str, close: float) -> Bar:
+    """
+    用途與流程：建立 portfolio rotation 測試用 Bar，讓測試聚焦 timestamp 與 close。
+    參數：timestamp 是日期字串；close 是收盤價，並同步填入 open/high/low。
+    回傳與錯誤：回傳 Bar；此 helper 不做 I/O，也不主動拋錯。
+    """
+    return Bar(
+        timestamp=timestamp,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        volume=1_000.0,
+    )
+
+
+def _rotation_result(
+    *,
+    total_return: float,
+    excess: float,
+    sharpe: float,
+    mdd: float,
+) -> PortfolioRotationResult:
+    """
+    用途與流程：建立測試用 PortfolioRotationResult，讓 retention 測試聚焦公式而非回測流程。
+    參數：total_return/excess/sharpe/mdd 是 retention 會讀取的核心欄位。
+    回傳與錯誤：回傳 PortfolioRotationResult；此 helper 不做 I/O，也不主動拋錯。
+    """
+    return PortfolioRotationResult(
+        strategy="portfolio-relative-momentum-rotation",
+        cost_multiplier=1.0,
+        cost_label="1x",
+        rebalance_frequency="weekly",
+        lookback_bars=1,
+        top_n=1,
+        min_return=0.0,
+        symbol_count=2,
+        start_timestamp="2026-01-01",
+        end_timestamp="2026-01-02",
+        total_return=total_return,
+        cagr=total_return,
+        sharpe_ratio=sharpe,
+        sortino_ratio=sharpe,
+        calmar_ratio=1.0,
+        max_drawdown=mdd,
+        benchmark_total_return=total_return - excess,
+        benchmark_cagr=total_return - excess,
+        benchmark_max_drawdown=-0.30,
+        benchmark_excess_return=excess,
+        benchmark_excess_cagr=excess,
+        trade_count=1,
+        rebalance_count=1,
+        total_cost=0.0,
+        average_turnover=1.0,
+        average_exposure=1.0,
+        average_selected_count=1.0,
+        end_equity=10_000.0 * (1.0 + total_return),
+    )
+
+
+if __name__ == "__main__":
+    unittest.main()

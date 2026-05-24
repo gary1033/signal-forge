@@ -6367,3 +6367,123 @@ python tools\multi_stock_target_state_sweep.py `
 - **Keep as tool**：相對動能白名單是 deterministic、test-covered、預設關閉的研究能力，可保留供後續 portfolio allocation 或其他策略使用。
 - **Discard as Absolute Momentum improvement**：top-N 股票池篩選沒有改善 OOS `Beat B&H` 或 avg excess，不能當成穩定營利方向。
 - **下一步**：不要再只靠股票池 top-N 降曝險；若繼續 Absolute Momentum，應改測 re-entry、weekly rebalance 或市場 regime，且仍用同一 OOS split 和 1x/3x cost stress 驗證。
+
+## 2026-05-24 Portfolio-level Relative Momentum Rotation
+
+### 假設
+
+上一輪把 relative momentum 當成逐檔 target-state filter，結果不佳。但這個評估方式有一個方法問題：相對動能本來是 portfolio allocation 問題，不應該把每檔股票各自拿去和自己的 buy-and-hold 比。這輪改成 portfolio-level rotation：
+
+- 同一批七檔 TWSE 股票視為一個股票池。
+- 每個 rebalance date 用 lookback return 排名。
+- 只持有近期報酬大於 `0` 的 top-N 股票，等權配置。
+- Benchmark 改成同一股票池的 equal-weight buy-and-hold portfolio。
+
+### 來源
+
+- Goyal and Jegadeesh, Cross-Sectional and Time-Series Tests of Return Predictability: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2610288
+- Antonacci, Absolute Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2244633
+- Jegadeesh and Titman, Returns to Buying Winners and Selling Losers: https://www.jstor.org/stable/2328882
+- Kim, Tse and Wald, Time Series Momentum and Volatility Scaling: https://www.sciencedirect.com/science/article/abs/pii/S1386418116301379
+
+### 本輪程式改動
+
+- 新增 `tools\portfolio_rotation_sweep.py`：
+  - 多 CSV 載入與共同 timestamp 對齊。
+  - `daily` / `weekly` / `monthly` rebalance。
+  - lookback return top-N 等權配置。
+  - equal-weight buy-and-hold portfolio benchmark。
+  - 1x / 3x cost stress。
+  - `--walk-forward-windows` 分段驗證。
+  - JSON / Markdown 摘要輸出。
+- 新增 `tests\test_portfolio_rotation_sweep_tool.py`：
+  - CLI parser regression。
+  - close table common timestamp 對齊 regression。
+  - top momentum 選股 regression。
+  - benchmark 初始入場成本 regression。
+  - portfolio retention regression。
+- 新增策略筆記：[[../策略筆記/Portfolio Relative Momentum Rotation|Portfolio Relative Momentum Rotation]]。
+
+### 正式候選命令
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --walk-forward-windows "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20" `
+  --summary-json reports\generated\twse-portfolio-rotation-monthly-lb21-top3-oos-20260524.json `
+  --summary-md reports\generated\twse-portfolio-rotation-monthly-lb21-top3-oos-20260524.md
+```
+
+三段 rolling split：
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --walk-forward-windows "early:2020-01-01:2021-12-31,mid:2022-01-01:2023-12-31,oos:2024-01-01:2026-05-20" `
+  --summary-json reports\generated\twse-portfolio-rotation-monthly-lb21-top3-rolling-20260524.json `
+  --summary-md reports\generated\twse-portfolio-rotation-monthly-lb21-top3-rolling-20260524.md
+```
+
+### 結果摘要
+
+| Window | Cost | Return | Equal-weight B&H | Excess | MDD | Benchmark MDD | Sharpe | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Full `2020-2026` | `1x` | `968.64%` | `404.03%` | `564.61%` | `-30.81%` | `-28.11%` | `1.711` | promising candidate |
+| Full `2020-2026` | `3x` | `936.91%` | `403.83%` | `533.09%` | `-31.25%` | `-28.11%` | `1.691` | 成本壓力後仍保留 |
+| IS `2020-2023` | `1x` | `93.14%` | `83.28%` | `9.86%` | `-30.81%` | `-28.11%` | `0.942` | IS edge 小但為正 |
+| OOS `2024-2026` | `1x` | `485.79%` | `177.11%` | `308.68%` | `-21.11%` | `-25.16%` | `2.783` | OOS 強，但需防過擬合 |
+| OOS `2024-2026` | `3x` | `479.73%` | `177.00%` | `302.73%` | `-21.15%` | `-25.16%` | `2.768` | 3x 成本後仍強 |
+
+三段 rolling split：
+
+| Window | Cost | Return | Equal-weight B&H | Excess | MDD | Benchmark MDD | Sharpe | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `2020-2021` | `1x` | `104.58%` | `90.91%` | `13.67%` | `-16.30%` | `-23.11%` | `1.623` | 正 active return |
+| `2022-2023` | `1x` | `0.45%` | `-1.77%` | `2.21%` | `-24.71%` | `-27.59%` | `0.107` | 弱市場中勉強勝出，但 edge 很薄 |
+| `2024-2026` | `1x` | `485.79%` | `177.11%` | `308.68%` | `-21.11%` | `-25.16%` | `2.783` | 強勢市場中顯著勝出 |
+
+### 解讀
+
+1. **這是第一個 portfolio-level active return 明顯為正的候選**：和 equal-weight B&H portfolio 比，full-window 與 OOS 都為正，3x 成本壓力後仍保留。
+2. **真正改善來自評估層級修正**：相對動能不適合逐檔和單檔 B&H 比；portfolio rotation 的 benchmark 必須是同股票池的 equal-weight portfolio。
+3. **中段 2022-2023 是弱點**：`1x` excess 只有 `+2.21%`，Sharpe 只有 `0.107`，代表策略在盤整或弱市場中沒有明顯 edge，只是略勝 benchmark。
+4. **OOS 很強但不能直接宣稱穩定營利**：本輪小範圍掃描後選出 `monthly + 21 bars + top3`，仍有參數選擇偏誤風險；需要更多 rolling split、更多股票池與 active risk 指標。
+
+### Keep / Discard 判斷
+
+- **Keep**：`tools\portfolio_rotation_sweep.py` 與 tests。它補上 portfolio-level 評估能力，避免相對動能被逐檔 B&H 指標錯判。
+- **Promising candidate**：`monthly + 21 bars + top3 + min_return 0.0`。它通過 full-window、OOS、3x 成本與三段 rolling split 的初步 gate。
+- **Not complete / not stable-profit proof**：股票池太小、參數是掃描後挑出、尚未有 Information Ratio / active drawdown / 更廣 rolling split，因此不能標為穩定營利完成。
+
+### 下一步
+
+1. 對 portfolio rotation 補 Information Ratio、tracking error 與 active drawdown。
+2. 增加 rolling windows，例如每兩年訓練、一年測試，避免只看三段粗切。
+3. 擴大 TWSE 股票池或加入 sector / market regime，確認結果不是少數大型半導體股驅動。
+4. 保留 live dry-run only，不做 broker / API key / 真實下單。

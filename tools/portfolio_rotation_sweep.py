@@ -1,0 +1,995 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from math import sqrt
+from pathlib import Path
+from typing import Iterable
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from signal_forge import BacktestConfig
+from signal_forge.core.market_data import Bar
+from tools.multi_stock_target_state_sweep import (
+    WalkForwardWindow,
+    infer_symbol_from_path,
+    load_filtered_bars,
+    parse_cost_multipliers_list,
+    parse_walk_forward_windows,
+)
+
+
+PORTFOLIO_ROTATION_STRATEGY = "portfolio-relative-momentum-rotation"
+
+
+@dataclass(frozen=True)
+class PortfolioPoint:
+    """Portfolio rotation 權益曲線的一個時間點，保留曝險與當下持倉股票。"""
+
+    timestamp: str
+    equity: float
+    exposure: float
+    selected_symbols: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PortfolioRotationResult:
+    """單一成本倍率與日期窗下的 portfolio rotation 回測摘要。"""
+
+    strategy: str
+    cost_multiplier: float
+    cost_label: str
+    rebalance_frequency: str
+    lookback_bars: int
+    top_n: int
+    min_return: float
+    symbol_count: int
+    start_timestamp: str
+    end_timestamp: str
+    total_return: float
+    cagr: float | None
+    sharpe_ratio: float | None
+    sortino_ratio: float | None
+    calmar_ratio: float | None
+    max_drawdown: float
+    benchmark_total_return: float
+    benchmark_cagr: float | None
+    benchmark_max_drawdown: float
+    benchmark_excess_return: float
+    benchmark_excess_cagr: float | None
+    trade_count: int
+    rebalance_count: int
+    total_cost: float
+    average_turnover: float
+    average_exposure: float
+    average_selected_count: float
+    end_equity: float
+
+
+@dataclass(frozen=True)
+class PortfolioWalkForwardResult:
+    """單一 walk-forward window 的 portfolio rotation 結果集合。"""
+
+    window: WalkForwardWindow
+    results: list[PortfolioRotationResult]
+
+
+@dataclass(frozen=True)
+class PortfolioRetentionRow:
+    """相鄰 portfolio rotation windows 的 OOS retention 摘要。"""
+
+    train_label: str
+    test_label: str
+    cost_multiplier: float
+    cost_label: str
+    train_total_return: float
+    test_total_return: float
+    total_return_retention: float | None
+    train_benchmark_excess_return: float
+    test_benchmark_excess_return: float
+    benchmark_excess_retention: float | None
+    train_sharpe_ratio: float | None
+    test_sharpe_ratio: float | None
+    sharpe_retention: float | None
+    train_max_drawdown: float
+    test_max_drawdown: float
+    drawdown_change: float
+
+
+def load_rotation_inputs(
+    csv_paths: list[Path],
+    *,
+    start: str | None,
+    end: str | None,
+) -> list[tuple[str, Path, list[Bar]]]:
+    """
+    用途與流程：載入 portfolio rotation 所需的多檔 OHLCV CSV，並套用同一日期窗。
+    參數：csv_paths 是多檔 CSV 路徑；start/end 是可選 `YYYY-MM-DD` 日期邊界。
+    回傳與錯誤：回傳 `(symbol, path, bars)` 清單；資料區間無 bar 時由 load_filtered_bars 拋出 ValueError。
+    """
+    return [
+        (infer_symbol_from_path(path), path, load_filtered_bars(path, start=start, end=end))
+        for path in csv_paths
+    ]
+
+
+def align_close_table(
+    loaded: list[tuple[str, Path, list[Bar]]],
+) -> tuple[list[str], dict[str, list[float]]]:
+    """
+    用途與流程：把多檔股票資料對齊到共同 timestamp，建立 portfolio-level 回測使用的 close matrix。
+    參數：loaded 是 load_rotation_inputs 的結果，每檔 bars 必須包含 timestamp 與正 close。
+    回傳與錯誤：回傳共同 timestamps 與 symbol 到 close list 的 dict；共同日期少於兩根或 close 非正時拋出 ValueError。
+    """
+    if not loaded:
+        raise ValueError("portfolio rotation requires at least one CSV")
+
+    timestamp_sets = [
+        {bar.timestamp for bar in bars}
+        for _, _, bars in loaded
+    ]
+    common_timestamps = sorted(set.intersection(*timestamp_sets))
+    if len(common_timestamps) < 2:
+        raise ValueError("portfolio rotation requires at least two common timestamps")
+
+    closes_by_symbol: dict[str, list[float]] = {}
+    for symbol, _, bars in loaded:
+        close_by_timestamp = {bar.timestamp: bar.close for bar in bars}
+        closes = [close_by_timestamp[timestamp] for timestamp in common_timestamps]
+        if any(close <= 0 for close in closes):
+            raise ValueError("portfolio rotation requires positive close prices")
+        closes_by_symbol[symbol] = closes
+    return common_timestamps, closes_by_symbol
+
+
+def run_portfolio_rotation(
+    loaded: list[tuple[str, Path, list[Bar]]],
+    *,
+    config: BacktestConfig,
+    cost_multiplier: float,
+    rebalance_frequency: str,
+    lookback_bars: int,
+    top_n: int,
+    min_return: float,
+    periods_per_year: int,
+) -> PortfolioRotationResult:
+    """
+    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有。
+    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化。
+    回傳與錯誤：回傳 PortfolioRotationResult；頻率、lookback、top_n 或資料矩陣不合法時拋出 ValueError。
+    """
+    if lookback_bars <= 0:
+        raise ValueError("lookback bars must be positive")
+    if top_n <= 0:
+        raise ValueError("top-n must be positive")
+    if rebalance_frequency not in {"daily", "weekly", "monthly"}:
+        raise ValueError("rebalance frequency must be daily, weekly, or monthly")
+
+    timestamps, closes_by_symbol = align_close_table(loaded)
+    symbols = sorted(closes_by_symbol)
+    if lookback_bars >= len(timestamps):
+        raise ValueError("lookback bars must be smaller than the common timestamp count")
+
+    effective_config = BacktestConfig(
+        initial_equity=config.initial_equity,
+        commission_bps=config.commission_bps * cost_multiplier,
+        slippage_bps=config.slippage_bps * cost_multiplier,
+        transaction_tax_bps=config.transaction_tax_bps * cost_multiplier,
+    )
+    entry_cost_rate = (
+        effective_config.commission_bps + effective_config.slippage_bps
+    ) / 10_000.0
+    exit_cost_rate = (
+        effective_config.commission_bps
+        + effective_config.slippage_bps
+        + effective_config.transaction_tax_bps
+    ) / 10_000.0
+
+    equity = effective_config.initial_equity
+    weights = {symbol: 0.0 for symbol in symbols}
+    points = [PortfolioPoint(timestamps[0], equity, 0.0, ())]
+    trade_count = 0
+    rebalance_count = 0
+    total_cost = 0.0
+    turnover_values: list[float] = []
+    selected_counts: list[int] = [0]
+    exposure_values: list[float] = [0.0]
+
+    for index in range(1, len(timestamps)):
+        equity *= 1.0 + _portfolio_price_return(
+            symbols,
+            closes_by_symbol,
+            weights,
+            previous_index=index - 1,
+            current_index=index,
+        )
+
+        if index >= lookback_bars and _is_rebalance_index(
+            timestamps,
+            index=index,
+            frequency=rebalance_frequency,
+        ):
+            target_weights = _target_rotation_weights(
+                symbols,
+                closes_by_symbol,
+                index=index,
+                lookback_bars=lookback_bars,
+                top_n=top_n,
+                min_return=min_return,
+            )
+            turnover = sum(
+                abs(target_weights[symbol] - weights[symbol])
+                for symbol in symbols
+            )
+            turnover_values.append(turnover)
+            rebalance_count += 1
+            if turnover > 1e-12:
+                for symbol in symbols:
+                    delta = target_weights[symbol] - weights[symbol]
+                    if abs(delta) <= 1e-12:
+                        continue
+                    cost_rate = exit_cost_rate if delta < 0 else entry_cost_rate
+                    cost = abs(delta) * equity * cost_rate
+                    equity -= cost
+                    total_cost += cost
+                    trade_count += 1
+                weights = target_weights
+
+        selected_symbols = tuple(
+            symbol for symbol in symbols if weights[symbol] > 1e-12
+        )
+        exposure = sum(abs(value) for value in weights.values())
+        selected_counts.append(len(selected_symbols))
+        exposure_values.append(exposure)
+        points.append(
+            PortfolioPoint(
+                timestamp=timestamps[index],
+                equity=equity,
+                exposure=exposure,
+                selected_symbols=selected_symbols,
+            )
+        )
+
+    benchmark = run_equal_weight_benchmark(
+        timestamps,
+        closes_by_symbol,
+        config=effective_config,
+        periods_per_year=periods_per_year,
+    )
+    equity_values = [point.equity for point in points]
+    equity_returns = _equity_returns(equity_values)
+    years = _elapsed_years(timestamps)
+    cagr = _compound_annual_growth_rate(
+        effective_config.initial_equity,
+        equity,
+        years,
+    )
+    return PortfolioRotationResult(
+        strategy=PORTFOLIO_ROTATION_STRATEGY,
+        cost_multiplier=cost_multiplier,
+        cost_label=_format_cost_label(cost_multiplier),
+        rebalance_frequency=rebalance_frequency,
+        lookback_bars=lookback_bars,
+        top_n=top_n,
+        min_return=min_return,
+        symbol_count=len(symbols),
+        start_timestamp=timestamps[0],
+        end_timestamp=timestamps[-1],
+        total_return=(equity / effective_config.initial_equity) - 1.0,
+        cagr=cagr,
+        sharpe_ratio=_annualized_sharpe_ratio(equity_returns, periods_per_year),
+        sortino_ratio=_annualized_sortino_ratio(equity_returns, periods_per_year),
+        calmar_ratio=_calmar_ratio(cagr, _max_drawdown(equity_values)),
+        max_drawdown=_max_drawdown(equity_values),
+        benchmark_total_return=benchmark["total_return"],
+        benchmark_cagr=benchmark["cagr"],
+        benchmark_max_drawdown=benchmark["max_drawdown"],
+        benchmark_excess_return=((equity / effective_config.initial_equity) - 1.0)
+        - benchmark["total_return"],
+        benchmark_excess_cagr=_subtract_optional(cagr, benchmark["cagr"]),
+        trade_count=trade_count,
+        rebalance_count=rebalance_count,
+        total_cost=total_cost,
+        average_turnover=_average(turnover_values),
+        average_exposure=_average(exposure_values),
+        average_selected_count=_average_float(selected_counts),
+        end_equity=equity,
+    )
+
+
+def run_equal_weight_benchmark(
+    timestamps: list[str],
+    closes_by_symbol: dict[str, list[float]],
+    *,
+    config: BacktestConfig,
+    periods_per_year: int,
+) -> dict[str, float | None]:
+    """
+    用途與流程：建立 equal-weight buy-and-hold portfolio benchmark，作為輪動策略的 portfolio-level 比較基準。
+    參數：timestamps 是共同日期序列；closes_by_symbol 是對齊後 close matrix；config 提供初始資金與入場成本；periods_per_year 用於 CAGR 以外的外部一致性。
+    回傳與錯誤：回傳 total_return、cagr、max_drawdown；若資料不足或無 symbol，拋出 ValueError。
+    """
+    if len(timestamps) < 2 or not closes_by_symbol:
+        raise ValueError("equal-weight benchmark requires aligned close data")
+    symbols = sorted(closes_by_symbol)
+    entry_cost_rate = (config.commission_bps + config.slippage_bps) / 10_000.0
+    equity = config.initial_equity * (1.0 - entry_cost_rate)
+    equity_values = [equity]
+    weights = {symbol: 1.0 / len(symbols) for symbol in symbols}
+    for index in range(1, len(timestamps)):
+        equity *= 1.0 + _portfolio_price_return(
+            symbols,
+            closes_by_symbol,
+            weights,
+            previous_index=index - 1,
+            current_index=index,
+        )
+        equity_values.append(equity)
+    years = _elapsed_years(timestamps)
+    return {
+        "total_return": (equity / config.initial_equity) - 1.0,
+        "cagr": _compound_annual_growth_rate(config.initial_equity, equity, years),
+        "max_drawdown": _max_drawdown(equity_values),
+    }
+
+
+def run_portfolio_rotation_sweep(
+    *,
+    csv_paths: list[Path],
+    start: str | None,
+    end: str | None,
+    cost_multipliers: tuple[float, ...],
+    initial_equity: float,
+    commission_bps: float,
+    slippage_bps: float,
+    transaction_tax_bps: float,
+    rebalance_frequency: str,
+    lookback_bars: int,
+    top_n: int,
+    min_return: float,
+    periods_per_year: int,
+) -> list[PortfolioRotationResult]:
+    """
+    用途與流程：對同一批股票資料在多個成本倍率下執行 portfolio rotation 回測。
+    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；其餘參數傳給 run_portfolio_rotation。
+    回傳與錯誤：回傳每個成本倍率一筆 PortfolioRotationResult；資料或參數不合法時由底層拋出 ValueError。
+    """
+    loaded = load_rotation_inputs(csv_paths, start=start, end=end)
+    config = BacktestConfig(
+        initial_equity=initial_equity,
+        commission_bps=commission_bps,
+        slippage_bps=slippage_bps,
+        transaction_tax_bps=transaction_tax_bps,
+    )
+    return [
+        run_portfolio_rotation(
+            loaded,
+            config=config,
+            cost_multiplier=cost_multiplier,
+            rebalance_frequency=rebalance_frequency,
+            lookback_bars=lookback_bars,
+            top_n=top_n,
+            min_return=min_return,
+            periods_per_year=periods_per_year,
+        )
+        for cost_multiplier in cost_multipliers
+    ]
+
+
+def run_walk_forward_rotation(
+    *,
+    windows: tuple[WalkForwardWindow, ...],
+    csv_paths: list[Path],
+    cost_multipliers: tuple[float, ...],
+    initial_equity: float,
+    commission_bps: float,
+    slippage_bps: float,
+    transaction_tax_bps: float,
+    rebalance_frequency: str,
+    lookback_bars: int,
+    top_n: int,
+    min_return: float,
+    periods_per_year: int,
+) -> tuple[list[PortfolioWalkForwardResult], list[PortfolioRetentionRow]]:
+    """
+    用途與流程：依 walk-forward windows 重跑 portfolio rotation，並計算相鄰 window 的 OOS retention。
+    參數：windows 是分段日期；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
+    回傳與錯誤：回傳 window 結果與 retention rows；若某 window 資料不足，底層會拋出 ValueError。
+    """
+    window_results: list[PortfolioWalkForwardResult] = []
+    for window in windows:
+        window_results.append(
+            PortfolioWalkForwardResult(
+                window=window,
+                results=run_portfolio_rotation_sweep(
+                    csv_paths=csv_paths,
+                    start=window.start,
+                    end=window.end,
+                    cost_multipliers=cost_multipliers,
+                    initial_equity=initial_equity,
+                    commission_bps=commission_bps,
+                    slippage_bps=slippage_bps,
+                    transaction_tax_bps=transaction_tax_bps,
+                    rebalance_frequency=rebalance_frequency,
+                    lookback_bars=lookback_bars,
+                    top_n=top_n,
+                    min_return=min_return,
+                    periods_per_year=periods_per_year,
+                ),
+            )
+        )
+    return window_results, build_portfolio_retention(window_results)
+
+
+def build_portfolio_retention(
+    window_results: list[PortfolioWalkForwardResult],
+) -> list[PortfolioRetentionRow]:
+    """
+    用途與流程：比較相鄰 portfolio rotation windows 的同一成本倍率結果，計算 OOS 保留率與回撤變化。
+    參數：window_results 是 run_walk_forward_rotation 回傳的分段結果。
+    回傳與錯誤：回傳 PortfolioRetentionRow 清單；若相鄰 window 缺少同一成本倍率則略過。
+    """
+    rows: list[PortfolioRetentionRow] = []
+    for train_result, test_result in zip(window_results, window_results[1:]):
+        test_by_cost = {
+            result.cost_multiplier: result for result in test_result.results
+        }
+        for train in train_result.results:
+            test = test_by_cost.get(train.cost_multiplier)
+            if test is None:
+                continue
+            rows.append(
+                PortfolioRetentionRow(
+                    train_label=train_result.window.label,
+                    test_label=test_result.window.label,
+                    cost_multiplier=train.cost_multiplier,
+                    cost_label=train.cost_label,
+                    train_total_return=train.total_return,
+                    test_total_return=test.total_return,
+                    total_return_retention=_retention_ratio(
+                        test.total_return,
+                        train.total_return,
+                    ),
+                    train_benchmark_excess_return=train.benchmark_excess_return,
+                    test_benchmark_excess_return=test.benchmark_excess_return,
+                    benchmark_excess_retention=_retention_ratio(
+                        test.benchmark_excess_return,
+                        train.benchmark_excess_return,
+                    ),
+                    train_sharpe_ratio=train.sharpe_ratio,
+                    test_sharpe_ratio=test.sharpe_ratio,
+                    sharpe_retention=_retention_ratio(
+                        test.sharpe_ratio,
+                        train.sharpe_ratio,
+                    ),
+                    train_max_drawdown=train.max_drawdown,
+                    test_max_drawdown=test.max_drawdown,
+                    drawdown_change=test.max_drawdown - train.max_drawdown,
+                )
+            )
+    return rows
+
+
+def format_markdown(
+    results: list[PortfolioRotationResult],
+    *,
+    start: str | None,
+    end: str | None,
+    periods_per_year: int,
+) -> str:
+    """
+    用途與流程：將 portfolio rotation 回測結果格式化為 Markdown，方便貼入實驗紀錄與人工審查。
+    參數：results 是多成本倍率結果；start/end 是日期窗；periods_per_year 是風險年化期數。
+    回傳與錯誤：回傳 Markdown 字串；此函式不做 I/O，也不主動拋錯。
+    """
+    window = f"{start or 'earliest'} to {end or 'latest'}"
+    lines = [
+        "# Portfolio Rotation Sweep",
+        "",
+        f"- Window: `{window}`",
+        f"- Periods per year: `{periods_per_year}`",
+        "",
+        "## Portfolio Result",
+        "",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Return | CAGR | Benchmark return | Excess | MDD | Benchmark MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Avg turnover | Avg exposure | Avg selected |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for result in results:
+        lines.append(
+            "| "
+            f"{result.strategy} | {result.cost_label} | "
+            f"{result.rebalance_frequency} | {result.lookback_bars} | "
+            f"{result.top_n} | {result.total_return:.2%} | "
+            f"{_format_optional_percent(result.cagr)} | "
+            f"{result.benchmark_total_return:.2%} | "
+            f"{result.benchmark_excess_return:.2%} | "
+            f"{result.max_drawdown:.2%} | "
+            f"{result.benchmark_max_drawdown:.2%} | "
+            f"{_format_optional_ratio(result.sharpe_ratio)} | "
+            f"{_format_optional_ratio(result.sortino_ratio)} | "
+            f"{_format_optional_ratio(result.calmar_ratio)} | "
+            f"{result.trade_count} | {result.rebalance_count} | "
+            f"{result.average_turnover:.2f} | "
+            f"{result.average_exposure:.2%} | "
+            f"{result.average_selected_count:.2f} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def format_walk_forward_markdown(
+    window_results: list[PortfolioWalkForwardResult],
+    retention_rows: list[PortfolioRetentionRow],
+) -> str:
+    """
+    用途與流程：將 portfolio rotation walk-forward 結果格式化成 Markdown 附加章節。
+    參數：window_results 是每個日期窗結果；retention_rows 是相鄰窗的保留率比較。
+    回傳與錯誤：沒有 window 結果時回傳空字串；此函式不做 I/O。
+    """
+    if not window_results:
+        return ""
+    lines = [
+        "",
+        "## Walk-forward Windows",
+        "",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | MDD | Benchmark MDD | Sharpe | Trades | Avg exposure |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for window_result in window_results:
+        window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
+        for result in window_result.results:
+            lines.append(
+                "| "
+                f"{window_result.window.label} | {window_range} | "
+                f"{result.cost_label} | {result.total_return:.2%} | "
+                f"{result.benchmark_total_return:.2%} | "
+                f"{result.benchmark_excess_return:.2%} | "
+                f"{result.max_drawdown:.2%} | "
+                f"{result.benchmark_max_drawdown:.2%} | "
+                f"{_format_optional_ratio(result.sharpe_ratio)} | "
+                f"{result.trade_count} | {result.average_exposure:.2%} |"
+            )
+    lines.extend(
+        [
+            "",
+            "## Walk-forward Retention",
+            "",
+            "| Train | Test | Cost | Return retention | Excess retention | Sharpe retention | Train return | Test return | Train excess | Test excess | Train MDD | Test MDD | MDD change |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in retention_rows:
+        lines.append(
+            "| "
+            f"{row.train_label} | {row.test_label} | {row.cost_label} | "
+            f"{_format_optional_percent(row.total_return_retention)} | "
+            f"{_format_optional_percent(row.benchmark_excess_retention)} | "
+            f"{_format_optional_percent(row.sharpe_retention)} | "
+            f"{row.train_total_return:.2%} | {row.test_total_return:.2%} | "
+            f"{row.train_benchmark_excess_return:.2%} | "
+            f"{row.test_benchmark_excess_return:.2%} | "
+            f"{row.train_max_drawdown:.2%} | {row.test_max_drawdown:.2%} | "
+            f"{row.drawdown_change:.2%} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """
+    用途與流程：建立 portfolio rotation sweep 的 CLI parser，支援多 CSV、多成本倍率與 walk-forward/OOS。
+    參數：無。
+    回傳與錯誤：回傳 argparse.ArgumentParser；解析錯誤由 argparse 處理。
+    """
+    parser = argparse.ArgumentParser(
+        description="Run portfolio-level relative momentum rotation across stock CSV files."
+    )
+    parser.add_argument("--csv", action="append", required=True, help="OHLCV CSV path")
+    parser.add_argument("--start")
+    parser.add_argument("--end")
+    parser.add_argument("--initial-equity", type=float, default=10_000.0)
+    parser.add_argument("--commission-bps", type=float, default=1.0)
+    parser.add_argument("--slippage-bps", type=float, default=1.0)
+    parser.add_argument("--transaction-tax-bps", type=float, default=0.0)
+    parser.add_argument(
+        "--cost-multipliers-list",
+        default="1",
+        help="comma-separated cost stress multipliers, for example 1,2,3",
+    )
+    parser.add_argument(
+        "--rebalance-frequency",
+        choices=("daily", "weekly", "monthly"),
+        default="weekly",
+    )
+    parser.add_argument("--lookback-bars", type=int, default=126)
+    parser.add_argument("--top-n", type=int, default=3)
+    parser.add_argument("--min-return", type=float, default=0.0)
+    parser.add_argument("--periods-per-year", type=int, default=252)
+    parser.add_argument(
+        "--walk-forward-windows",
+        help=(
+            "comma-separated label:start:end windows, for example "
+            "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20"
+        ),
+    )
+    parser.add_argument("--summary-json")
+    parser.add_argument("--summary-md")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """
+    用途與流程：CLI 入口，解析 portfolio rotation 參數，執行 full-window 與可選 walk-forward 回測並輸出 Markdown/JSON。
+    參數：argv 是可選命令列參數清單；None 時使用 sys.argv。
+    回傳與錯誤：成功回傳 0；資料、日期窗或策略參數不合法時由底層拋出 ValueError。
+    """
+    args = build_parser().parse_args(argv)
+    csv_paths = [Path(path) for path in args.csv]
+    cost_multipliers = parse_cost_multipliers_list(args.cost_multipliers_list)
+    results = run_portfolio_rotation_sweep(
+        csv_paths=csv_paths,
+        start=args.start,
+        end=args.end,
+        cost_multipliers=cost_multipliers,
+        initial_equity=args.initial_equity,
+        commission_bps=args.commission_bps,
+        slippage_bps=args.slippage_bps,
+        transaction_tax_bps=args.transaction_tax_bps,
+        rebalance_frequency=args.rebalance_frequency,
+        lookback_bars=args.lookback_bars,
+        top_n=args.top_n,
+        min_return=args.min_return,
+        periods_per_year=args.periods_per_year,
+    )
+    markdown = format_markdown(
+        results,
+        start=args.start,
+        end=args.end,
+        periods_per_year=args.periods_per_year,
+    )
+    walk_forward_windows: tuple[WalkForwardWindow, ...] = ()
+    walk_forward_results: list[PortfolioWalkForwardResult] = []
+    retention_rows: list[PortfolioRetentionRow] = []
+    if args.walk_forward_windows:
+        walk_forward_windows = parse_walk_forward_windows(args.walk_forward_windows)
+        walk_forward_results, retention_rows = run_walk_forward_rotation(
+            windows=walk_forward_windows,
+            csv_paths=csv_paths,
+            cost_multipliers=cost_multipliers,
+            initial_equity=args.initial_equity,
+            commission_bps=args.commission_bps,
+            slippage_bps=args.slippage_bps,
+            transaction_tax_bps=args.transaction_tax_bps,
+            rebalance_frequency=args.rebalance_frequency,
+            lookback_bars=args.lookback_bars,
+            top_n=args.top_n,
+            min_return=args.min_return,
+            periods_per_year=args.periods_per_year,
+        )
+        markdown += format_walk_forward_markdown(walk_forward_results, retention_rows)
+
+    if args.summary_json:
+        Path(args.summary_json).parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "results": [asdict(result) for result in results],
+        }
+        if walk_forward_results:
+            payload.update(
+                {
+                    "walk_forward_windows": [
+                        asdict(window) for window in walk_forward_windows
+                    ],
+                    "walk_forward_results": [
+                        asdict(result) for result in walk_forward_results
+                    ],
+                    "walk_forward_retention": [
+                        asdict(row) for row in retention_rows
+                    ],
+                }
+            )
+        Path(args.summary_json).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
+    if args.summary_md:
+        Path(args.summary_md).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.summary_md).write_text(markdown, encoding="utf-8", newline="")
+    print(markdown, end="")
+    return 0
+
+
+def _portfolio_price_return(
+    symbols: list[str],
+    closes_by_symbol: dict[str, list[float]],
+    weights: dict[str, float],
+    *,
+    previous_index: int,
+    current_index: int,
+) -> float:
+    """
+    用途與流程：用目前投組權重計算上一根 close 到目前 close 的 portfolio return。
+    參數：symbols 是排序後股票代號；closes_by_symbol 是 close matrix；weights 是目前投組權重；previous_index/current_index 是相鄰日期索引。
+    回傳與錯誤：回傳小數形式報酬；若 close matrix 索引不合法會自然拋出 IndexError。
+    """
+    return sum(
+        weights[symbol]
+        * (
+            (closes_by_symbol[symbol][current_index] / closes_by_symbol[symbol][previous_index])
+            - 1.0
+        )
+        for symbol in symbols
+    )
+
+
+def _target_rotation_weights(
+    symbols: list[str],
+    closes_by_symbol: dict[str, list[float]],
+    *,
+    index: int,
+    lookback_bars: int,
+    top_n: int,
+    min_return: float,
+) -> dict[str, float]:
+    """
+    用途與流程：依指定日期的 lookback return 排名，產生 top-N 等權 portfolio target weights。
+    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index 是 rebalance 日期索引；lookback_bars 是回看期；top_n 是最多持有檔數；min_return 是最低動能門檻。
+    回傳與錯誤：回傳 symbol 到權重的 dict；若沒有入選股票則全部為 0。
+    """
+    ranked: list[tuple[str, float]] = []
+    for symbol in symbols:
+        previous_close = closes_by_symbol[symbol][index - lookback_bars]
+        current_close = closes_by_symbol[symbol][index]
+        momentum_return = (current_close / previous_close) - 1.0
+        if momentum_return > min_return:
+            ranked.append((symbol, momentum_return))
+    selected = [
+        symbol
+        for symbol, _ in sorted(ranked, key=lambda item: (-item[1], item[0]))[:top_n]
+    ]
+    target = {symbol: 0.0 for symbol in symbols}
+    if not selected:
+        return target
+    weight = 1.0 / len(selected)
+    for symbol in selected:
+        target[symbol] = weight
+    return target
+
+
+def _is_rebalance_index(
+    timestamps: list[str],
+    *,
+    index: int,
+    frequency: str,
+) -> bool:
+    """
+    用途與流程：判斷目前 timestamp 是否為指定 rebalance frequency 的第一根可交易 bar。
+    參數：timestamps 是共同日期序列；index 是目前日期索引；frequency 可為 daily、weekly 或 monthly。
+    回傳與錯誤：符合 rebalance 時回傳 True；frequency 不合法時拋出 ValueError。
+    """
+    if frequency == "daily":
+        return True
+    current = _parse_timestamp(timestamps[index])
+    previous = _parse_timestamp(timestamps[index - 1])
+    if frequency == "weekly":
+        return current.isocalendar()[:2] != previous.isocalendar()[:2]
+    if frequency == "monthly":
+        return (current.year, current.month) != (previous.year, previous.month)
+    raise ValueError("rebalance frequency must be daily, weekly, or monthly")
+
+
+def _parse_timestamp(timestamp: str) -> datetime:
+    """
+    用途與流程：將 SignalForge timestamp 轉成 datetime，供 weekly/monthly rebalance 與 CAGR 年數計算使用。
+    參數：timestamp 是 `YYYY-MM-DD` 或 ISO datetime 字串。
+    回傳與錯誤：回傳 datetime；格式不合法時由 datetime.fromisoformat 拋出 ValueError。
+    """
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+
+def _elapsed_years(timestamps: list[str]) -> float:
+    """
+    用途與流程：由共同 timestamp 起訖推估樣本年數，供 CAGR 使用。
+    參數：timestamps 是按時間排序的共同日期序列。
+    回傳與錯誤：回傳正浮點年數；時間格式錯誤或期間非正時退回 bars / 252。
+    """
+    if len(timestamps) < 2:
+        return 0.0
+    try:
+        start = _parse_timestamp(timestamps[0])
+        end = _parse_timestamp(timestamps[-1])
+    except ValueError:
+        return len(timestamps) / 252.0
+    elapsed_days = (end - start).total_seconds() / 86_400.0
+    if elapsed_days <= 0:
+        return len(timestamps) / 252.0
+    return elapsed_days / 365.25
+
+
+def _compound_annual_growth_rate(
+    start_equity: float,
+    end_equity: float,
+    years: float,
+) -> float | None:
+    """
+    用途與流程：用起訖權益與樣本年數計算 CAGR，避免不同日期窗只比較總報酬。
+    參數：start_equity 是期初資金；end_equity 是期末權益；years 是樣本年數。
+    回傳與錯誤：起訖資金或年數不合法時回傳 None；否則回傳 CAGR。
+    """
+    if start_equity <= 0 or end_equity <= 0 or years < (30.0 / 365.25):
+        return None
+    try:
+        return (end_equity / start_equity) ** (1.0 / years) - 1.0
+    except OverflowError:
+        return None
+
+
+def _equity_returns(equity_values: list[float]) -> list[float]:
+    """
+    用途與流程：把 equity curve 轉為相鄰期間報酬，供 Sharpe 與 Sortino 使用。
+    參數：equity_values 是按時間排序的權益序列。
+    回傳與錯誤：回傳報酬序列；前一期權益小於等於 0 時該段以 0 表示。
+    """
+    returns: list[float] = []
+    for previous, current in zip(equity_values, equity_values[1:]):
+        if previous <= 0:
+            returns.append(0.0)
+        else:
+            returns.append((current / previous) - 1.0)
+    return returns
+
+
+def _annualized_sharpe_ratio(
+    returns: list[float],
+    periods_per_year: int,
+) -> float | None:
+    """
+    用途與流程：用 equity returns 估算年化 Sharpe，作為 portfolio rotation 風險調整指標。
+    參數：returns 是相鄰 equity returns；periods_per_year 是年化期數。
+    回傳與錯誤：樣本不足、標準差為 0 或期數非正時回傳 None；否則回傳 Sharpe。
+    """
+    if len(returns) < 2 or periods_per_year <= 0:
+        return None
+    mean_return = sum(returns) / len(returns)
+    variance = sum((value - mean_return) ** 2 for value in returns) / (
+        len(returns) - 1
+    )
+    if variance <= 0:
+        return None
+    return (mean_return / sqrt(variance)) * sqrt(periods_per_year)
+
+
+def _annualized_sortino_ratio(
+    returns: list[float],
+    periods_per_year: int,
+) -> float | None:
+    """
+    用途與流程：用 downside deviation 估算年化 Sortino，避免把上行波動視為風險。
+    參數：returns 是相鄰 equity returns；periods_per_year 是年化期數。
+    回傳與錯誤：樣本不足、downside deviation 為 0 或期數非正時回傳 None；否則回傳 Sortino。
+    """
+    if len(returns) < 2 or periods_per_year <= 0:
+        return None
+    mean_return = sum(returns) / len(returns)
+    downside = [min(0.0, value) for value in returns]
+    downside_variance = sum(value * value for value in downside) / len(returns)
+    if downside_variance <= 0:
+        return None
+    return (mean_return / sqrt(downside_variance)) * sqrt(periods_per_year)
+
+
+def _max_drawdown(equity_values: list[float]) -> float:
+    """
+    用途與流程：從權益序列計算小於等於 0 的最大回撤。
+    參數：equity_values 是按時間排序的權益值。
+    回傳與錯誤：空清單回傳 0；否則回傳最大回撤。
+    """
+    if not equity_values:
+        return 0.0
+    peak = equity_values[0]
+    max_drawdown = 0.0
+    for equity in equity_values:
+        peak = max(peak, equity)
+        if peak > 0:
+            max_drawdown = min(max_drawdown, (equity / peak) - 1.0)
+    return max_drawdown
+
+
+def _calmar_ratio(cagr: float | None, max_drawdown: float) -> float | None:
+    """
+    用途與流程：計算 CAGR / abs(max_drawdown)，衡量報酬相對最大回撤的承受度。
+    參數：cagr 是可選年化報酬；max_drawdown 是小於等於 0 的回撤。
+    回傳與錯誤：缺 CAGR 或回撤為 0 時回傳 None；否則回傳 Calmar ratio。
+    """
+    if cagr is None or max_drawdown == 0:
+        return None
+    return cagr / abs(max_drawdown)
+
+
+def _subtract_optional(left: float | None, right: float | None) -> float | None:
+    """
+    用途與流程：安全計算兩個可選數值的差，用於 excess CAGR。
+    參數：left/right 是 float 或 None。
+    回傳與錯誤：任一側為 None 時回傳 None；否則回傳 left - right。
+    """
+    if left is None or right is None:
+        return None
+    return left - right
+
+
+def _retention_ratio(
+    test_value: float | None,
+    train_value: float | None,
+) -> float | None:
+    """
+    用途與流程：計算 OOS 指標相對 IS 指標的保留率，只在樣本內值為正時回傳比值。
+    參數：test_value 是樣本外值；train_value 是樣本內值，兩者可為 None。
+    回傳與錯誤：train_value 無效或小於等於 0 時回傳 None；否則回傳 test/train。
+    """
+    if test_value is None or train_value is None or train_value <= 0:
+        return None
+    return test_value / train_value
+
+
+def _average(values: Iterable[float]) -> float:
+    """
+    用途與流程：計算浮點 iterable 平均值，供 turnover 與 exposure 摘要使用。
+    參數：values 是 float iterable。
+    回傳與錯誤：沒有元素時回傳 0；否則回傳平均。
+    """
+    items = list(values)
+    if not items:
+        return 0.0
+    return sum(items) / len(items)
+
+
+def _average_float(values: Iterable[int]) -> float:
+    """
+    用途與流程：計算整數 iterable 的浮點平均，供平均持股檔數使用。
+    參數：values 是 int iterable。
+    回傳與錯誤：沒有元素時回傳 0；否則回傳平均浮點數。
+    """
+    items = list(values)
+    if not items:
+        return 0.0
+    return sum(items) / len(items)
+
+
+def _format_cost_label(multiplier: float) -> str:
+    """
+    用途與流程：把成本倍率轉成短標籤，供 Markdown 與 JSON 閱讀。
+    參數：multiplier 是正浮點倍率。
+    回傳與錯誤：整數輸出如 `2x`；非整數保留兩位後去除多餘 0。
+    """
+    if multiplier.is_integer():
+        return f"{int(multiplier)}x"
+    return f"{multiplier:.2f}".rstrip("0").rstrip(".") + "x"
+
+
+def _format_optional_percent(value: float | None) -> str:
+    """
+    用途與流程：把可選小數百分比格式化成 Markdown 表格文字。
+    參數：value 是 None 或小數形式百分比。
+    回傳與錯誤：None 回傳 `undefined`；否則回傳兩位百分比。
+    """
+    if value is None:
+        return "undefined"
+    return f"{value:.2%}"
+
+
+def _format_optional_ratio(value: float | None) -> str:
+    """
+    用途與流程：把可選比率格式化成 Markdown 表格文字。
+    參數：value 是 None 或浮點比率。
+    回傳與錯誤：None 回傳 `undefined`；否則回傳三位小數。
+    """
+    if value is None:
+        return "undefined"
+    return f"{value:.3f}"
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
