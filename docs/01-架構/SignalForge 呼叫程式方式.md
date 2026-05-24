@@ -168,6 +168,27 @@ python tools\multi_stock_entry_edge_sweep.py `
   --signal-cooldown-bars 10
 ```
 
+完整持倉 target-state 與 volatility target 風控 overlay：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --volatility-target `
+  --volatility-lookback-bars 20 `
+  --target-annual-volatility 0.40 `
+  --volatility-min-observations 20
+```
+
 ## 共用策略參數
 
 `entry-edge` 與 `phase` 共用 `src\signal_forge\cli\strategy_options.py` 的策略參數。未輸入的欄位會交給 `src\signal_forge\strategies\registry.py` 使用各策略自己的 default，不再用單一全域預設硬套所有策略。
@@ -179,6 +200,7 @@ python tools\multi_stock_entry_edge_sweep.py `
 | `confluence-score` | `fast_window=20`、`slow_window=50`、`rsi_window=14`、`vwap_window=20`、`threshold=3.0`、Phase 1 `allow_short=False`。 |
 | volume filter wrapper | 只有啟用 `--volume-filter` 時套用，預設 `volume_window=20`、`volume_multiplier=1.2`。 |
 | signal cooldown wrapper | 只有啟用 `--signal-cooldown-bars` 時套用，接受 long entry 後封鎖指定 bar 數內的新 long entry；不強制平倉既有持倉。 |
+| volatility target wrapper | 只有 target-state 研究啟用 `--volatility-target` 時套用，預設只降曝險、不加槓桿。 |
 
 | 參數 | 適用策略或用途 |
 |---|---|

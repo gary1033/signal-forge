@@ -40,6 +40,7 @@ updated: 2026-05-24
 - `multi_stock_target_state_sweep.py`：支援多檔股票、多策略與 1x / 2x / 3x 成本壓力的完整持倉 target-state sweep。
 - `vwap-reversion`：可選 `--vwap-regime-filter`，用 `close >= SMA` 阻擋強下跌中的新 long entry。
 - `absolute-momentum`：長期趨勢持有 compare-only 候選，要求回看報酬為正且收盤站上長期 SMA。
+- `volatility-target`：可選風控 wrapper，只在 realized volatility 過高時縮小 target exposure；目前 `absolute-momentum + vol-target` 是 drawdown control compare-only，不是主候選。
 - `live`：只產生 dry-run `OrderIntent`，安全邊界由 `LIVE_DRY_RUN_ONLY` 鎖住。
 - 最新整理基線：readiness score 目標仍為 `110`，固定 guard 是 `python -m unittest discover -s tests` 與 `git diff --check`。
 

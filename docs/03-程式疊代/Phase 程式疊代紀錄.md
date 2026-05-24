@@ -143,6 +143,14 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - `tests\test_multi_stock_sweep_tool.py` 新增成本倍率 parser 與 target-state aggregate regression。
 - 這個工具補上 Phase 1 entry-edge 不能回答的完整持倉問題，但不改 `PhaseRunner` 現有 artifact contract，也不碰 live dry-run 邊界。
 
+### 11. Volatility target 風控 overlay
+
+- 新增 `src\signal_forge\strategies\volatility_target.py`，用 realized close-to-close volatility 將底層策略的非零 `target_position` 縮小到目標年化波動附近。
+- `max_scale=1.0` 是預設安全語意：只降曝險、不加槓桿。
+- `build_phase1_strategy(...)` 可選擇性套用 volatility target wrapper；target-state sweep 新增 `--volatility-target`、`--volatility-lookback-bars`、`--target-annual-volatility`、`--volatility-min-observations` 與 `--volatility-max-scale`。
+- 新增 `tests\test_volatility_target.py`、factory regression 與 target-state parser regression，鎖住縮放公式、wrapper 名稱與 CLI 參數。
+- 目前 `absolute-momentum + vol-target` 結果屬 compare-only：可以降低 worst MDD，但 Sharpe / Calmar 與 benchmark-relative 問題尚未解決。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |

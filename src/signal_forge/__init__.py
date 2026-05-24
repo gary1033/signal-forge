@@ -31,6 +31,7 @@ from signal_forge.strategy import BarByBarStrategy, Signal, Strategy, StrategyDe
 from signal_forge.strategies import (
     SUPPORTED_STRATEGY_NAMES,
     SignalCooldownStrategy,
+    VolatilityTargetStrategy,
     VolumeFilteredStrategy,
     build_phase1_strategy,
     build_strategy,
@@ -61,6 +62,7 @@ __all__ = [
     "SignalCooldownStrategy",
     "Strategy",
     "StrategyDecision",
+    "VolatilityTargetStrategy",
     "VolumeFilteredStrategy",
     "build_phase1_strategy",
     "build_strategy",

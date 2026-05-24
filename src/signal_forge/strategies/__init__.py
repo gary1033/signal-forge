@@ -11,6 +11,7 @@ from signal_forge.strategies.registry import (
 )
 from signal_forge.strategies.signal_cooldown import SignalCooldownStrategy
 from signal_forge.strategies.sma_crossover import SmaCrossoverStrategy
+from signal_forge.strategies.volatility_target import VolatilityTargetStrategy
 from signal_forge.strategies.volume_filter import VolumeFilteredStrategy
 from signal_forge.strategies.vwap_reversion import VwapReversionStrategy
 
@@ -24,6 +25,7 @@ __all__ = [
     "SmaCrossoverStrategy",
     "SUPPORTED_STRATEGY_NAMES",
     "StrategyParameterDefaults",
+    "VolatilityTargetStrategy",
     "VolumeFilteredStrategy",
     "VwapReversionStrategy",
     "build_phase1_strategy",

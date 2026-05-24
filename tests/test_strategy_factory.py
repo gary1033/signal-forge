@@ -10,6 +10,7 @@ from signal_forge.strategies import (
     OrbVolumeVwapStrategy,
     SignalCooldownStrategy,
     SmaCrossoverStrategy,
+    VolatilityTargetStrategy,
     VolumeFilteredStrategy,
     VwapReversionStrategy,
     build_phase1_strategy,
@@ -347,6 +348,26 @@ class StrategyFactoryTests(unittest.TestCase):
         self.assertEqual(
             strategy.name,
             "signal_cooldown_b10__volume_filter_w1_m1.00__sma_1_2_long_only",
+        )
+
+    def test_phase1_factory_can_wrap_volatility_target(self) -> None:
+        """
+        用途與流程：驗證 Phase 1 factory 可選擇性套用 volatility target wrapper，讓 target-state 工具能用同一個 strategy factory 建立只降曝險的風控候選。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；wrapper 型別、名稱或底層策略順序漂移時 assertion 失敗。
+        """
+        strategy = build_phase1_strategy(
+            "absolute-momentum",
+            volatility_target=True,
+            volatility_lookback_bars=20,
+            target_annual_volatility=0.25,
+            volatility_max_scale=1.0,
+        )
+
+        self.assertIsInstance(strategy, VolatilityTargetStrategy)
+        self.assertEqual(
+            strategy.name,
+            "vol_target_l20_t0.25_max1__absolute_momentum_m126_sma200_long_only",
         )
 
     def test_rejects_unsupported_strategy_name(self) -> None:

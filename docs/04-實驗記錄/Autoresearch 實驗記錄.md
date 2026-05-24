@@ -5934,3 +5934,86 @@ python tools\multi_stock_target_state_sweep.py `
 1. 優先研究 volatility scaling 或 drawdown control，目標是把 Absolute Momentum 的 `Worst MDD` 從約 `-50%` 降到明顯低於 buy-and-hold，同時不要把 avg excess return 打回 Confluence cooldown 水準。
 2. 替 target-state 報表加入 drawdown attribution，定位 worst MDD 主要來自 `2454` 還是其他標的與期間。
 3. 做 walk-forward / OOS split，確認 Absolute Momentum 的 target-state edge 是否集中在 2020-2026 強趨勢樣本。
+
+## 2026-05-24 研究與執行：Absolute Momentum volatility target 風控 overlay
+
+這輪接續前一輪 target-state 結論：`absolute-momentum` 是目前較好的完整持倉 compare-only 錨點，但 1x 成本 worst MDD 約 `-50.74%`，接近 buy-and-hold，不符合穩定營利方向。這輪不改動進場邏輯，而是實作一個只降曝險、不加槓桿的 `VolatilityTargetStrategy` wrapper，測試高波動時縮小 target exposure 是否能降低回撤，同時避免 avg excess return 被打回 Confluence cooldown target-state 水準。
+
+### 外部研究參考
+
+- Moreira、Muir 的 Volatility Managed Portfolios 研究指出，許多因子的預期報酬不會隨波動同步上升，因此高波動時降低曝險可能提升 Sharpe。
+  https://www.nber.org/papers/w22208
+- Harvey、Hoyle、Korgaonkar、Rattray、Sargaison、Van Hemert 的 volatility targeting 報告指出，volatility targeting 對 equity 與 credit 類資產最有效，主要效果包含降低左尾風險與 drawdown。
+  https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3175538
+
+### 本輪程式改動
+
+- 新增 `src\signal_forge\strategies\volatility_target.py`。
+- `VolatilityTargetStrategy` 包裝既有策略，流程是：
+  1. 底層策略先輸出原始 `Signal`。
+  2. 若 `target_position == 0`，保留空手。
+  3. 若樣本不足以估 realized volatility，保持空手，reason 為 `vol_target_warmup`。
+  4. 若樣本足夠，使用最近 close-to-close returns 計算年化 realized volatility。
+  5. `scale = min(max_scale, target_annual_volatility / realized_annual_volatility)`。
+  6. 輸出 `target_position * scale`；預設 `max_scale=1.0`，所以不加槓桿。
+- `build_phase1_strategy(...)` 新增可選 volatility target 參數，讓 target-state 工具可用同一個 factory 建立 wrapper。
+- `tools\multi_stock_target_state_sweep.py` 新增：
+  - `--volatility-target`
+  - `--volatility-lookback-bars`
+  - `--target-annual-volatility`
+  - `--volatility-min-observations`
+  - `--volatility-max-scale`
+- 新增 `tests\test_volatility_target.py`，並補 strategy factory / target-state parser regression。
+
+### Target-state 報表命令
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --volatility-target `
+  --volatility-lookback-bars 20 `
+  --target-annual-volatility 0.40 `
+  --volatility-min-observations 20 `
+  --summary-json reports\generated\twse-target-state-absolute-momentum-voltarget040-coststress-20260524.json `
+  --summary-md reports\generated\twse-target-state-absolute-momentum-voltarget040-coststress-20260524.md
+```
+
+### Aggregate 結果
+
+| Candidate | Cost | Positive | Beat B&H | Lower MDD | Avg return | Avg excess | Worst MDD | Avg Sharpe | Avg Sortino | Avg Calmar | Trades | Avg time in market | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `absolute-momentum` 原始 target-state | `1x` | `6/7` | `1/7` | `6/7` | `225.78%` | `-226.95%` | `-50.74%` | `0.727` | `1.160` | `0.653` | `350` | `54.05%` | compare-only：報酬最好，但回撤太大 |
+| `vol-target 0.25` | `1x` | `6/7` | `1/7` | `6/7` | `132.44%` | `-320.29%` | `-35.14%` | `0.704` | `1.113` | `0.555` | `3445` | `45.00%` | compare-only：回撤改善最大，但 upside 犧牲太多 |
+| `vol-target 0.30` | `1x` | `6/7` | `1/7` | `6/7` | `153.69%` | `-299.04%` | `-39.69%` | `0.704` | `1.112` | `0.576` | `2707` | `48.27%` | compare-only：仍偏保守 |
+| `vol-target 0.35` | `1x` | `6/7` | `1/7` | `6/7` | `169.42%` | `-283.31%` | `-43.95%` | `0.705` | `1.115` | `0.591` | `2049` | `50.47%` | compare-only：風險/報酬較平衡 |
+| `vol-target 0.40` | `1x` | `6/7` | `1/7` | `6/7` | `180.83%` | `-271.90%` | `-47.45%` | `0.706` | `1.116` | `0.598` | `1558` | `51.86%` | compare-only：保留最多 upside，回撤仍有改善 |
+| `vol-target 0.40` | `3x` | `6/7` | `1/7` | `6/7` | `175.16%` | `-277.13%` | `-48.05%` | `0.686` | `1.086` | `0.572` | `1558` | `51.86%` | compare-only：成本壓力後仍未失效，但未勝原始風險調整 |
+
+### 解讀
+
+1. **Volatility target 有降低 drawdown 的效果**：`0.25` 把 worst MDD 壓到 `-35.14%`，`0.40` 仍可降到 `-47.45%`，都低於原始 target-state 的 `-50.74%`。
+2. **但它不是主候選**：Sharpe / Sortino / Calmar 沒有明顯勝過原始 Absolute Momentum，且 `Beat B&H` 仍只有 `1/7`。
+3. **比較合理的追蹤區間是 `0.35` 到 `0.40`**：它們比 Confluence cooldown target-state 的 avg excess 約 `-344.57%` 好，也比原始 Absolute Momentum 回撤低，但還需要 drawdown attribution 與 OOS。
+4. **交易數大幅增加**：vol target 會因 fractional exposure 每日調整而增加 trade count。成本壓力後仍保持正報酬，但下一輪若要深化，應研究 rebalance threshold 或再平衡頻率，而不是只調 target vol。
+
+### Keep / Discard 判斷
+
+- **Keep**：`VolatilityTargetStrategy` wrapper 與 target-state CLI 參數。它把 drawdown control 變成可重現、可成本壓力檢查的研究假設。
+- **Compare-only**：`absolute-momentum + vol-target`。目前有降低 worst MDD 的效果，但沒有足夠證據升級成主候選。
+- **Discard as main candidate**：把 `target_annual_volatility=0.25` 當主策略。它回撤改善最大，但平均報酬與 avg excess 犧牲太多。
+
+### 下一步
+
+1. 補 target-state drawdown attribution，定位 vol target 的 worst MDD 仍來自哪檔股票與期間。
+2. 補 walk-forward / OOS split，確認 `0.35` 到 `0.40` 不是 2020-2026 樣本內折衷。
+3. 若繼續優化 vol target，先測 rebalance threshold / weekly rebalance，降低 fractional exposure 每日微調造成的交易數。

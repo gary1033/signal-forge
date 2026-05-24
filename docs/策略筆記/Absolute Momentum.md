@@ -20,6 +20,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\absolute_momentu
 - **Trend filter / 趨勢濾網**：只在價格站上長期均線時允許做多，避免只因短期反彈就追進長期下跌中的標的。
 - **Long-only / 只做多**：策略只輸出 `1.0` 或 `0.0`，不做放空。
 - **Warmup / 暖機期**：資料不足以計算動能或 SMA 時，策略保持空手。
+- **Volatility target / 波動目標**：用最近一段 close-to-close 報酬估算 realized volatility；若當下波動高於目標年化波動，就把 `target_position` 從 `1.0` 縮小到較低曝險。SignalForge 第一版只降曝險，不加槓桿。
 
 ## 策略假設
 
@@ -43,6 +44,13 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 | 回看報酬為正，但價格未站上長期 SMA | `0.0` | `trend_filter_blocked` |
 | 回看報酬為正，且價格站上長期 SMA | `1.0` | `absolute_momentum_long` |
 
+可選風控 overlay：
+
+- `VolatilityTargetStrategy` 不改變是否進場的判斷；只有在底層策略已經輸出非零 target 時，根據最近 realized volatility 調整曝險大小。
+- 若 realized volatility 樣本不足，overlay 保持空手，reason 是 `vol_target_warmup`。
+- 若 realized volatility 低於目標，曝險最多維持原本的 `1.0`；不把 `target_position` 放大到超過原策略。
+- 若 realized volatility 高於目標，`target_position = 原始 target_position * target_annual_volatility / realized_annual_volatility`，並受到 `max_scale` 上限限制。
+
 ## 小例子
 
 假設教學參數是 `momentum_window=2`、`trend_window=3`：
@@ -61,7 +69,8 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - `trend_window`：預設 `200`。在 CLI / factory 中用 `--slow-window` 覆寫。
 - `allow_short`：不支援。第一版明確拒絕 short mode。
 - entry-edge 評估：仍使用 SignalForge Phase 1 的 close signal、next open entry、固定 hold bars。
-- 完整持倉 sanity check：可用現有 `Backtester` 做 close-to-close target exposure 檢查，但目前尚未成為正式 Phase 2 報表 contract。
+- 完整持倉檢查：使用 `tools\multi_stock_target_state_sweep.py` 做 close-to-close target exposure、cost stress 與 benchmark-relative 檢查。
+- `volatility-target` overlay：目前研究設定使用 `lookback_bars=20`、`min_observations=20`，比較 `target_annual_volatility=0.25/0.30/0.35/0.40`，`max_scale=1.0`。
 
 ## 股價走勢解說圖
 
@@ -76,9 +85,24 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - 只用價格動能，沒有成交量、波動、估值、基本面或市場寬度確認。
 - 預設 `126/200` 在目前七檔 TWSE common window 中沒有同時改善 `Avg excess return` 與 `Worst MDD`，因此只能作為 compare-only 候選。
 - target-state 持有的 worst MDD 可接近 buy-and-hold，不能直接升級為穩定營利候選。
+- volatility target 能降低 worst MDD，但也會犧牲 upside，且目前 Sharpe / Calmar 沒有明顯勝過原始 target-state；因此仍是 compare-only。
+
+## 回測解讀
+
+七檔 TWSE common window、`2020-01-01` 到 `2026-05-20`、1x/3x 成本壓力下，`absolute-momentum` 預設 `126/200` 的完整持倉版本可作為 target-state 比較錨點，但不是主候選：
+
+| 版本 | Cost | Avg return | Avg excess | Worst MDD | Avg Sharpe | Avg Sortino | Avg Calmar | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 原始 target-state | `1x` | `225.78%` | `-226.95%` | `-50.74%` | `0.727` | `1.160` | `0.653` | compare-only：報酬較好，但回撤太接近 buy-and-hold |
+| Vol target `0.25` | `1x` | `132.44%` | `-320.29%` | `-35.14%` | `0.704` | `1.113` | `0.555` | compare-only：回撤改善最大，但 upside 犧牲太多 |
+| Vol target `0.35` | `1x` | `169.42%` | `-283.31%` | `-43.95%` | `0.705` | `1.115` | `0.591` | compare-only：風險/報酬較平衡 |
+| Vol target `0.40` | `1x` | `180.83%` | `-271.90%` | `-47.45%` | `0.706` | `1.116` | `0.598` | compare-only：保留最多 upside，但回撤改善有限 |
+
+目前較值得後續追蹤的是 `target_annual_volatility=0.35` 到 `0.40`，因為它們比 Confluence cooldown target-state 的 avg excess 好，且 worst MDD 低於原始 Absolute Momentum；但它們尚未解決只有 `1/7` beat buy-and-hold 的問題。
 
 ## 下一步
 
-- 不先擴大參數搜尋；先補正式 Phase 2 target-state 報表，讓完整持倉與 entry-edge 不混在一起解讀。
-- 若要繼續研究動能類策略，優先加入波動縮放或 drawdown control，而不是只調整 `momentum_window` / `trend_window`。
+- 不先擴大 `momentum_window` / `trend_window` 搜尋；避免把 2020-2026 強趨勢樣本擬合成漂亮回測。
+- 優先補 drawdown attribution，確認 worst MDD 主要由哪檔股票、哪段期間與哪種 volatility scale 狀態造成。
+- 做 walk-forward / OOS，確認 vol target 不是只在單一 regime 中降低回撤。
 - 與 `confluence-score + hold=10 + signal_cooldown_bars=10` 固定在同一批七檔股票與同一期間比較。

@@ -10,6 +10,7 @@ from tools.multi_stock_entry_edge_sweep import (
 from tools.multi_stock_target_state_sweep import (
     TargetStateRow,
     build_aggregates as build_target_state_aggregates,
+    build_parser as build_target_state_parser,
     parse_cost_multipliers_list,
 )
 
@@ -91,6 +92,34 @@ class MultiStockSweepToolTests(unittest.TestCase):
         self.assertEqual(aggregates[0].lower_drawdown_than_benchmark_count, 1)
         self.assertAlmostEqual(aggregates[0].average_total_return, 0.05)
         self.assertAlmostEqual(aggregates[0].average_benchmark_excess_return, -0.025)
+
+    def test_target_state_parser_accepts_volatility_target_options(self) -> None:
+        """
+        用途與流程：驗證 target-state CLI 可接收 volatility target 相關參數，讓研究報表能用命令列重現波動縮放設定。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；parser 參數名稱或預設型別漂移時 assertion 失敗。
+        """
+        args = build_target_state_parser().parse_args(
+            [
+                "--csv",
+                "data.csv",
+                "--volatility-target",
+                "--volatility-lookback-bars",
+                "30",
+                "--target-annual-volatility",
+                "0.25",
+                "--volatility-min-observations",
+                "20",
+                "--volatility-max-scale",
+                "0.8",
+            ]
+        )
+
+        self.assertTrue(args.volatility_target)
+        self.assertEqual(args.volatility_lookback_bars, 30)
+        self.assertEqual(args.target_annual_volatility, 0.25)
+        self.assertEqual(args.volatility_min_observations, 20)
+        self.assertEqual(args.volatility_max_scale, 0.8)
 
 
 def _row(symbol: str, *, gross_profit: float, gross_loss: float) -> SweepRow:
