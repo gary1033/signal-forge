@@ -10,6 +10,7 @@ from tools.portfolio_rotation_sweep import (
     build_rolling_windows,
     align_close_table,
     PortfolioRotationResult,
+    PortfolioGroupAttribution,
     PortfolioSymbolAttribution,
     parse_symbol_group_assignments,
     run_portfolio_rotation,
@@ -242,6 +243,9 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.max_symbol_abs_contribution_symbol, "2330")
         self.assertGreater(result.max_symbol_abs_contribution_share, 0.99)
         self.assertGreater(result.top3_symbol_abs_contribution_share, 0.99)
+        self.assertEqual(result.max_group_abs_contribution_group, "2330")
+        self.assertGreater(result.max_group_abs_contribution_share, 0.99)
+        self.assertGreater(result.top3_group_abs_contribution_share, 0.99)
 
     def test_liquidity_filter_excludes_low_traded_value_momentum_leader(self) -> None:
         """
@@ -418,6 +422,74 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(selected_financial.rebalance_selected_count, 2)
         self.assertEqual(blocked_semiconductor.rebalance_selected_count, 0)
 
+    def test_group_attribution_aggregates_member_contributions(self) -> None:
+        """
+        用途與流程：驗證 portfolio rotation 會把同一群組內多檔股票的報酬貢獻、持倉期間與入選次數彙總成 group attribution。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若群組彙總、最大群組集中度或 member 列表漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 121.0),
+                ],
+            ),
+            (
+                "2454",
+                Path("2454.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 108.0),
+                    _bar("2026-01-03", 116.64),
+                ],
+            ),
+            (
+                "2881",
+                Path("2881.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 102.0),
+                    _bar("2026-01-03", 104.04),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=2,
+            min_return=0.0,
+            periods_per_year=252,
+            symbol_groups={
+                "2330": "semiconductor",
+                "2454": "semiconductor",
+                "2881": "financial",
+            },
+        )
+
+        semiconductor = result.group_attribution[0]
+        self.assertEqual(semiconductor.group, "semiconductor")
+        self.assertEqual(semiconductor.member_symbols, ("2330", "2454"))
+        self.assertEqual(semiconductor.selected_bar_count, 2)
+        self.assertEqual(semiconductor.rebalance_selected_count, 4)
+        self.assertAlmostEqual(semiconductor.average_weight, 0.50)
+        self.assertAlmostEqual(semiconductor.return_contribution, 0.09)
+        self.assertGreater(semiconductor.absolute_contribution_share, 0.99)
+        self.assertEqual(result.max_group_abs_contribution_group, "semiconductor")
+        self.assertGreater(result.max_group_abs_contribution_share, 0.99)
+        self.assertGreater(result.top3_group_abs_contribution_share, 0.99)
+
     def test_format_markdown_includes_symbol_attribution(self) -> None:
         """
         用途與流程：驗證 portfolio rotation Markdown 會輸出逐股 attribution 區段，讓策略候選能檢查報酬是否集中於少數股票。
@@ -434,13 +506,16 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         )
 
         self.assertIn("## Top Symbol Attribution", markdown)
+        self.assertIn("## Top Group Attribution", markdown)
         self.assertIn("Max contrib symbol", markdown)
+        self.assertIn("Max group", markdown)
         self.assertIn("Liquidity min", markdown)
         self.assertIn("Liquidity blocks", markdown)
         self.assertIn("Group cap", markdown)
         self.assertIn("Consec cap", markdown)
         self.assertIn("2330 | 75.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)
+        self.assertIn("| 1x | 1 | semiconductor | 2330, 2454 | 15.00% | 80.00%", markdown)
 
     def test_market_regime_filter_blocks_rotation_when_market_index_below_sma(self) -> None:
         """
@@ -773,6 +848,20 @@ def _rotation_result(
                 average_selected_weight=0.50,
                 return_contribution=0.12,
                 absolute_contribution_share=0.75,
+            )
+        ],
+        max_group_abs_contribution_group="semiconductor",
+        max_group_abs_contribution_share=0.80,
+        top3_group_abs_contribution_share=0.80,
+        group_attribution=[
+            PortfolioGroupAttribution(
+                group="semiconductor",
+                member_symbols=("2330", "2454"),
+                selected_bar_count=12,
+                rebalance_selected_count=3,
+                average_weight=0.30,
+                return_contribution=0.15,
+                absolute_contribution_share=0.80,
             )
         ],
     )

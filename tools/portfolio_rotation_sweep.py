@@ -106,6 +106,10 @@ class PortfolioRotationResult:
     max_symbol_abs_contribution_share: float
     top3_symbol_abs_contribution_share: float
     symbol_attribution: list["PortfolioSymbolAttribution"]
+    max_group_abs_contribution_group: str | None
+    max_group_abs_contribution_share: float
+    top3_group_abs_contribution_share: float
+    group_attribution: list["PortfolioGroupAttribution"]
 
 
 @dataclass(frozen=True)
@@ -119,6 +123,19 @@ class PortfolioSymbolAttribution:
     rebalance_selected_share: float
     average_weight: float
     average_selected_weight: float
+    return_contribution: float
+    absolute_contribution_share: float
+
+
+@dataclass(frozen=True)
+class PortfolioGroupAttribution:
+    """股票群組在 portfolio rotation 回測中的持倉與報酬貢獻摘要。"""
+
+    group: str
+    member_symbols: tuple[str, ...]
+    selected_bar_count: int
+    rebalance_selected_count: int
+    average_weight: float
     return_contribution: float
     absolute_contribution_share: float
 
@@ -572,6 +589,18 @@ def run_portfolio_rotation(
     max_symbol, max_share, top3_share = _symbol_concentration_metrics(
         symbol_attribution
     )
+    group_attribution = _build_group_attribution(
+        symbols,
+        symbol_groups=effective_symbol_groups,
+        selected_bar_counts=selected_bar_counts,
+        rebalance_selected_counts=rebalance_selected_counts,
+        total_weight_sums=total_weight_sums,
+        return_contributions=return_contributions,
+        period_count=len(timestamps) - 1,
+    )
+    max_group, max_group_share, top3_group_share = _group_concentration_metrics(
+        group_attribution
+    )
     return PortfolioRotationResult(
         strategy=PORTFOLIO_ROTATION_STRATEGY,
         cost_multiplier=cost_multiplier,
@@ -647,6 +676,10 @@ def run_portfolio_rotation(
         max_symbol_abs_contribution_share=max_share,
         top3_symbol_abs_contribution_share=top3_share,
         symbol_attribution=symbol_attribution,
+        max_group_abs_contribution_group=max_group,
+        max_group_abs_contribution_share=max_group_share,
+        top3_group_abs_contribution_share=top3_group_share,
+        group_attribution=group_attribution,
     )
 
 
@@ -727,6 +760,90 @@ def _symbol_concentration_metrics(
     )
     return (
         top_rows[0].symbol,
+        top_rows[0].absolute_contribution_share,
+        sum(row.absolute_contribution_share for row in top_rows[:3]),
+    )
+
+
+def _build_group_attribution(
+    symbols: list[str],
+    *,
+    symbol_groups: dict[str, str],
+    selected_bar_counts: dict[str, int],
+    rebalance_selected_counts: dict[str, int],
+    total_weight_sums: dict[str, float],
+    return_contributions: dict[str, float],
+    period_count: int,
+) -> list[PortfolioGroupAttribution]:
+    """
+    用途與流程：把逐股持倉與報酬貢獻彙總到自訂 group / sector，判斷 portfolio rotation 是否從單檔集中轉成群組集中。
+    參數：symbols 是本次回測股票代號；symbol_groups 是 symbol 到群組名稱的完整映射；selected_bar_counts、rebalance_selected_counts、total_weight_sums 與 return_contributions 是回測過程累積的逐股統計；period_count 是平均權重分母。
+    回傳與錯誤：回傳依群組絕對貢獻占比排序的 PortfolioGroupAttribution 清單；缺少分組時用 symbol 本身作 fallback，不主動拋錯。
+    """
+    symbols_by_group: dict[str, list[str]] = {}
+    for symbol in symbols:
+        group = symbol_groups.get(symbol, symbol)
+        symbols_by_group.setdefault(group, []).append(symbol)
+
+    group_return_contributions = {
+        group: sum(return_contributions.get(symbol, 0.0) for symbol in members)
+        for group, members in symbols_by_group.items()
+    }
+    absolute_total_contribution = sum(
+        abs(return_contribution)
+        for return_contribution in group_return_contributions.values()
+    )
+
+    rows: list[PortfolioGroupAttribution] = []
+    for group in sorted(symbols_by_group):
+        members = tuple(sorted(symbols_by_group[group]))
+        return_contribution = group_return_contributions[group]
+        rows.append(
+            PortfolioGroupAttribution(
+                group=group,
+                member_symbols=members,
+                selected_bar_count=sum(
+                    selected_bar_counts.get(symbol, 0) for symbol in members
+                ),
+                rebalance_selected_count=sum(
+                    rebalance_selected_counts.get(symbol, 0) for symbol in members
+                ),
+                average_weight=(
+                    sum(total_weight_sums.get(symbol, 0.0) for symbol in members)
+                    / period_count
+                    if period_count > 0
+                    else 0.0
+                ),
+                return_contribution=return_contribution,
+                absolute_contribution_share=(
+                    abs(return_contribution) / absolute_total_contribution
+                    if absolute_total_contribution > 0
+                    else 0.0
+                ),
+            )
+        )
+    return sorted(
+        rows,
+        key=lambda row: (-row.absolute_contribution_share, row.group),
+    )
+
+
+def _group_concentration_metrics(
+    group_attribution: list[PortfolioGroupAttribution],
+) -> tuple[str | None, float, float]:
+    """
+    用途與流程：從群組 attribution 推導最大群組與 top-3 群組貢獻占比，作為 sector / group concentration guard。
+    參數：group_attribution 是 `_build_group_attribution(...)` 產生的清單，通常已依絕對貢獻占比排序。
+    回傳與錯誤：回傳 `(max_group, max_share, top3_share)`；清單為空時 group 為 None、比例為 0，不主動拋錯。
+    """
+    if not group_attribution:
+        return None, 0.0, 0.0
+    top_rows = sorted(
+        group_attribution,
+        key=lambda row: (-row.absolute_contribution_share, row.group),
+    )
+    return (
+        top_rows[0].group,
         top_rows[0].absolute_contribution_share,
         sum(row.absolute_contribution_share for row in top_rows[:3]),
     )
@@ -1094,8 +1211,8 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share |",
-        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share |",
+        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|",
     ]
     for result in results:
         lines.append(
@@ -1142,9 +1259,13 @@ def format_markdown(
             f"{result.average_selected_count:.2f} | "
             f"{result.max_symbol_abs_contribution_symbol or 'none'} | "
             f"{result.max_symbol_abs_contribution_share:.2%} | "
-            f"{result.top3_symbol_abs_contribution_share:.2%} |"
+            f"{result.top3_symbol_abs_contribution_share:.2%} | "
+            f"{result.max_group_abs_contribution_group or 'none'} | "
+            f"{result.max_group_abs_contribution_share:.2%} | "
+            f"{result.top3_group_abs_contribution_share:.2%} |"
         )
     lines.extend(_format_symbol_attribution_lines(results, heading="Top Symbol Attribution", limit=5))
+    lines.extend(_format_group_attribution_lines(results, heading="Top Group Attribution", limit=5))
     return "\n".join(lines) + "\n"
 
 
@@ -1163,8 +1284,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Liquidity blocks | Group cap | Group blocks | Consec cap | Consec blocks | Avg breadth | Avg liquid | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Liquidity blocks | Group cap | Group blocks | Consec cap | Consec blocks | Avg breadth | Avg liquid | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -1197,12 +1318,22 @@ def format_walk_forward_markdown(
                 f"{result.average_exposure:.2%} | "
                 f"{result.max_symbol_abs_contribution_symbol or 'none'} | "
                 f"{result.max_symbol_abs_contribution_share:.2%} | "
-                f"{result.top3_symbol_abs_contribution_share:.2%} |"
+                f"{result.top3_symbol_abs_contribution_share:.2%} | "
+                f"{result.max_group_abs_contribution_group or 'none'} | "
+                f"{result.max_group_abs_contribution_share:.2%} | "
+                f"{result.top3_group_abs_contribution_share:.2%} |"
             )
     lines.extend(
         _format_window_symbol_attribution_lines(
             window_results,
             heading="Walk-forward Top Symbol Attribution",
+            limit=3,
+        )
+    )
+    lines.extend(
+        _format_window_group_attribution_lines(
+            window_results,
+            heading="Walk-forward Top Group Attribution",
             limit=3,
         )
     )
@@ -1301,6 +1432,70 @@ def _format_window_symbol_attribution_lines(
     return lines
 
 
+def _format_group_attribution_lines(
+    results: list[PortfolioRotationResult],
+    *,
+    heading: str,
+    limit: int,
+) -> list[str]:
+    """
+    用途與流程：把 full-window 每個成本倍率的群組 attribution 轉成 Markdown 表格，讓策略報表能檢查 sector / group 集中度。
+    參數：results 是 portfolio rotation 結果；heading 是 Markdown 區段標題；limit 是每個成本倍率最多顯示幾個群組。
+    回傳與錯誤：回傳 Markdown 行清單；limit 小於等於 0 或沒有 group attribution 時只回傳空清單。
+    """
+    if limit <= 0 or not any(result.group_attribution for result in results):
+        return []
+    lines = [
+        "",
+        f"## {heading}",
+        "",
+        "| Cost | Rank | Group | Members | Return contribution | Abs contribution share | Selected bars | Rebalance selected | Avg weight |",
+        "|---:|---:|---|---|---:|---:|---:|---:|---:|",
+    ]
+    for result in results:
+        for rank, row in enumerate(result.group_attribution[:limit], start=1):
+            lines.append(_format_group_attribution_row(result.cost_label, rank, row))
+    return lines
+
+
+def _format_window_group_attribution_lines(
+    window_results: list[PortfolioWalkForwardResult],
+    *,
+    heading: str,
+    limit: int,
+) -> list[str]:
+    """
+    用途與流程：把 rolling / walk-forward window 的群組 attribution 轉成 Markdown 表格，定位不同時段是否由同一產業或自訂群組貢獻。
+    參數：window_results 是分段回測結果；heading 是 Markdown 區段標題；limit 是每個 window 與成本倍率最多顯示幾個群組。
+    回傳與錯誤：回傳 Markdown 行清單；limit 小於等於 0 或沒有 attribution 時回傳空清單。
+    """
+    if limit <= 0:
+        return []
+    has_attribution = any(
+        result.group_attribution
+        for window_result in window_results
+        for result in window_result.results
+    )
+    if not has_attribution:
+        return []
+    lines = [
+        "",
+        f"## {heading}",
+        "",
+        "| Window | Cost | Rank | Group | Members | Return contribution | Abs contribution share | Selected bars | Rebalance selected | Avg weight |",
+        "|---|---:|---:|---|---|---:|---:|---:|---:|---:|",
+    ]
+    for window_result in window_results:
+        for result in window_result.results:
+            for rank, row in enumerate(result.group_attribution[:limit], start=1):
+                lines.append(
+                    "| "
+                    f"{window_result.window.label} | "
+                    f"{_format_group_attribution_row(result.cost_label, rank, row).lstrip('| ')}"
+                )
+    return lines
+
+
 def _format_symbol_attribution_row(
     cost_label: str,
     rank: int,
@@ -1319,6 +1514,28 @@ def _format_symbol_attribution_row(
         f"{row.selected_bar_count} | {row.selected_bar_share:.2%} | "
         f"{row.rebalance_selected_count} | {row.rebalance_selected_share:.2%} | "
         f"{row.average_weight:.2%} | {row.average_selected_weight:.2%} |"
+    )
+
+
+def _format_group_attribution_row(
+    cost_label: str,
+    rank: int,
+    row: PortfolioGroupAttribution,
+) -> str:
+    """
+    用途與流程：把單一 PortfolioGroupAttribution row 格式化成 Markdown 表格列，供 full-window 與 window-level 群組表共用。
+    參數：cost_label 是成本倍率標籤；rank 是顯示排名；row 是群組 attribution 結果。
+    回傳與錯誤：回傳 Markdown 表格列字串；此函式不做 I/O，也不主動拋錯。
+    """
+    return (
+        "| "
+        f"{cost_label} | {rank} | {row.group} | "
+        f"{', '.join(row.member_symbols)} | "
+        f"{row.return_contribution:.2%} | "
+        f"{row.absolute_contribution_share:.2%} | "
+        f"{row.selected_bar_count} | "
+        f"{row.rebalance_selected_count} | "
+        f"{row.average_weight:.2%} |"
     )
 
 

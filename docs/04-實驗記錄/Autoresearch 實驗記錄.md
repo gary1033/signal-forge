@@ -7608,3 +7608,99 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Discard**：`TWSE14 liq2000m`。
 - **Diagnostic only**：所有 TWSE23 liquidity 結果。
 - **Next**：若繼續處理 concentration，下一步不應再硬拉 liquidity threshold；應改測 adjusted price、canary universe、或 group-level attribution，確認是否能降低 rolling top-3 share 而不犧牲 min rolling excess / IR。
+
+## 2026-05-24 Portfolio rotation group-level attribution 診斷
+
+### 目的
+
+前一輪 liquidity gate 讓 `TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 成為最新 execution-aware compare candidate，但 rolling top-3 symbol contribution 仍約 `82.62%`。本輪不再加新濾網，而是補 group-level attribution，檢查集中度到底是單檔問題，還是產業/群組 regime 問題。
+
+研究假設：
+
+> 若 full-window 或 rolling 的 group contribution share 明顯高於 symbol contribution share，代表策略雖然不是只靠單一股票，但仍高度依賴少數產業群組。下一步應先處理資料品質、股票池與 group regime，而不是單純再加單檔限制。
+
+### 程式改動
+
+- `tools/portfolio_rotation_sweep.py`
+  - 新增 `PortfolioGroupAttribution`，把逐股 `weight * close-to-close return` 彙總到自訂 group / sector。
+  - `PortfolioRotationResult` 新增 `max_group_abs_contribution_group`、`max_group_abs_contribution_share`、`top3_group_abs_contribution_share` 與 `group_attribution`。
+  - Markdown full-window table 新增 Max group / Max group share / Top3 group share。
+  - Markdown 新增 `Top Group Attribution` 與 `Walk-forward Top Group Attribution`。
+- `tests/test_portfolio_rotation_sweep_tool.py`
+  - 新增 group attribution aggregation regression。
+  - 擴充 Markdown regression，確認 group attribution 區段與 summary 欄位會輸出。
+
+### 固定條件
+
+```text
+universe = TWSE14
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_min_positive_count = 3
+max_consecutive_selections_per_symbol = 5
+liquidity_lookback_bars = 20
+min_average_traded_value = 500M
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+群組設定：
+
+```text
+petrochemical = 1301, 1303
+semiconductor = 2303, 2330, 2454, 3711
+electronics = 2308, 2317, 2382
+telecom = 2412
+shipping = 2603
+financial = 2881, 2882, 2891
+```
+
+報表檔案：
+
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-groups-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-groups-rolling24m-20260524.md`
+
+### Full-window 摘要
+
+以下皆看 `1x` 成本倍率。
+
+| Case | Return | Excess | IR | MDD | Active MDD | Max symbol | Max symbol share | Top3 symbol share | Max group | Max group share | Top3 group share | 判斷 |
+|---|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|
+| `TWSE14 liq500m + groups` | `1745.89%` | `1409.71%` | `1.521` | `-18.61%` | `-19.81%` | `2603` | `20.95%` | `46.43%` | `electronics` | `33.90%` | `89.27%` | group concentration 很高 |
+
+Top groups：
+
+| Rank | Group | Members | Return contribution | Abs contribution share | Avg weight |
+|---:|---|---|---:|---:|---:|
+| 1 | `electronics` | `2308,2317,2382` | `106.07%` | `33.90%` | `21.11%` |
+| 2 | `semiconductor` | `2303,2330,2454,3711` | `102.98%` | `32.91%` | `30.33%` |
+| 3 | `shipping` | `2603` | `70.26%` | `22.46%` | `10.05%` |
+
+### Rolling 摘要
+
+| Window | Excess | IR | Max symbol | Max symbol share | Top3 symbol share | Max group | Max group share | Top3 group share |
+|---|---:|---:|---|---:|---:|---|---:|---:|
+| `roll01` | `141.46%` | `1.524` | `2603` | `42.00%` | `68.46%` | `shipping` | `42.93%` | `90.31%` |
+| `roll02` | `37.22%` | `0.814` | `2603` | `65.37%` | `82.62%` | `shipping` | `75.64%` | `93.74%` |
+| `roll03` | `69.80%` | `1.832` | `2382` | `40.14%` | `74.12%` | `electronics` | `42.83%` | `96.81%` |
+| `roll04` | `44.13%` | `1.123` | `2382` | `34.14%` | `61.46%` | `electronics` | `43.16%` | `83.12%` |
+| `roll05` | `51.75%` | `1.187` | `2308` | `25.31%` | `60.89%` | `electronics` | `59.22%` | `89.59%` |
+| `roll06` | `80.16%` | `1.323` | `2308` | `35.37%` | `60.32%` | `electronics` | `53.05%` | `90.53%` |
+
+### 解讀
+
+1. **不是單純單檔集中問題**：full-window 最大單檔 share 只有 `20.95%`，但 top-3 group share 高達 `89.27%`，代表報酬主要集中在 electronics / semiconductor / shipping 三個群組。
+2. **rolling group concentration 更嚴重**：`roll02` 的 shipping group share 達 `75.64%`，`roll03` 的 top-3 group share 達 `96.81%`，即使該 window IR 為正，仍高度依賴少數產業 regime。
+3. **group cap 已測但不是解法**：前輪 `groupcap2` 降低不了 rolling top-3 symbol share，且 min rolling IR 變弱。本輪 attribution 顯示下一步應先理解群組 regime / 資料品質，而不是硬上 group cap。
+4. **execution-aware compare candidate 不變**：`liq500m` 仍保留為 execution-aware compare candidate，因為 1x/2x/3x 成本壓力與 active MDD 表現仍好；但它不是 concentration 修復，也不是穩定營利證明。
+
+### Keep / Discard 判斷
+
+- **Keep code**：group-level attribution 與 Markdown/JSON 欄位。它是 deterministic、test-covered，能讓後續每個 portfolio rotation 回測都檢查 group concentration。
+- **Keep diagnostic**：本輪 `TWSE14 liq500m + groups` 診斷結果保留為 compare-only / diagnostic evidence。
+- **Do not promote**：不因 group attribution 而升級策略；這輪只揭露風險來源，沒有降低風險。
+- **Next**：優先測 adjusted price、canary universe、較慢批次 TWSE30+、或 group regime / group exposure diagnostic。下一輪若新增策略限制，必須同時看 symbol 與 group concentration，不能只看 full-window IR。
