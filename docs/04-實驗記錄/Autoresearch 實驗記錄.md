@@ -8000,3 +8000,60 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Do not promote**：不得用未調整價 `IR 1.521` / `MDD -18.61%` 當主策略證據；目前候選仍是 compare-only。
 - **Current compare candidate downgraded**：`TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 仍可作工程比較錨點，但策略品質判斷要以 adjusted-ratio 的 `IR 1.156`、`MDD -27.97%`、min rolling IR `0.104` 為主要風險版本。
 - **Next**：正式化 adjusted price 資料來源與 manifest、較慢批次完成 TWSE30+、建立更高品質股票池，並在所有後續回測同時報 raw 與 adjusted-ratio 結果。
+
+## 2026-05-24 Adjusted price data tool 正式化
+
+### 目的
+
+上一輪 adjusted price 診斷證明未調整權息資料會讓 portfolio rotation 候選過度樂觀，但當時的 adjusted CSV 還只是暫存研究流程。本輪把資料處理正式化成 test-covered 工具，讓後續策略迭代可以穩定重建 raw / adjusted-ratio 對照資料，而不是每次用臨時腳本。
+
+研究假設：
+
+> 若策略品質判斷要優先看 adjusted-ratio 版本，資料來源、調整方法、成交量口徑與缺漏列數就必須寫入 manifest，否則後續 TWSE30+ 或更高品質股票池驗證無法被重現。
+
+### 程式改動
+
+- 新增 `tools/build_twse_adjusted_ohlcv.py`。
+- 新增 `tests/test_build_twse_adjusted_ohlcv_tool.py`。
+- 工具會讀取既有 SignalForge TWSE OHLCV CSV。
+- Yahoo chart 只提供 `adjclose / close` 調整比例，不使用 Yahoo OHLCV 與 volume。
+- 調整後 OHLC：`source open/high/low/close * adjustment_ratio`。
+- 成交量：保留 source CSV 的 TWSE `volume`。
+- 輸出 adjusted CSV 與 deterministic manifest JSON。
+- manifest 固定記錄：
+  - `adjusted = true`
+  - `adjustment_method = source_ohlcv_scaled_by_yahoo_adjclose_ratio`
+  - `adjustment_source = Yahoo chart adjclose/close ratio`
+  - `price_source_csv`
+  - `volume_source = source CSV volume preserved`
+  - `source_row_count`
+  - `row_count`
+  - `missing_adjustment_count`
+  - `skipped_row_count`
+  - `timezone = Asia/Taipei`
+
+### 命令範例
+
+```powershell
+python tools\build_twse_adjusted_ohlcv.py `
+  --symbol 2330 `
+  --source-csv data\processed\TWSE_2330_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --output-csv reports\generated\adjusted-data\TWSEADJ_2330_1D.csv `
+  --manifest-json reports\generated\adjusted-data\TWSEADJ_2330_1D_manifest.json
+```
+
+### 測試覆蓋
+
+- Parser regression：鎖住 symbol、source CSV、日期窗、output CSV 與 manifest 參數。
+- Yahoo ratio parsing：鎖住 UTC timestamp 轉 Asia/Taipei 日期，避免調整比例錯位。
+- Ratio application：鎖住 OHLC scaling、TWSE volume 保留、缺 ratio skip count。
+- Full tool flow：用固定 Yahoo chart fixture，不連網，驗證輸出 CSV 可載入且 manifest deterministic。
+- Manifest regression：確認不寫入 current timestamp，避免每次重建資料都產生不可比較 diff。
+
+### Keep / Discard 判斷
+
+- **Keep code**：這是回測可驗證性改動，讓 adjusted-ratio 資料來源從一次性診斷升級成可重跑工具。
+- **Do not promote strategy**：本輪沒有改善策略績效，也不代表 portfolio rotation 已穩定營利；它只是把資料品質 gate 補上。
+- **Next**：用這個工具批次重建 TWSE14 adjusted CSV 與 manifest，再把 portfolio rotation 報表改成同時引用 raw / adjusted-ratio 結果；之後再慢批次擴到 TWSE30+ 或更高品質股票池。
