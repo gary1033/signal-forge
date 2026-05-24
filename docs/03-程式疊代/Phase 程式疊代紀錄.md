@@ -189,6 +189,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 工具會把 CSV 對齊到共同 timestamp，依 `rebalance_frequency`、`lookback_bars`、`top_n`、`min_return` 產生 long-only 等權配置；未入選資金留現金。
 - Benchmark 改為同一股票池的 equal-weight buy-and-hold portfolio，避免用逐檔 B&H 誤判輪動策略。
 - 新增可選 market regime overlay：`--market-regime-filter` 與 `--market-regime-sma-bars` 會用等權市場指數跌破 SMA 時留現金，並在 Markdown / JSON 補上 `market_regime_filter`、`market_regime_sma_bars`、`regime_block_count`。SMA84 可把 2021-2022 excess 從 `-24.62%` 改到 `-13.59%`，但 full-window IR 從 `0.858` 降到 `0.544`，因此只保留為 compare-only，不升級主候選。
+- 新增可選 portfolio volatility target：`--volatility-target`、`--volatility-lookback-bars`、`--target-annual-volatility`、`--volatility-min-observations`、`--volatility-max-scale` 會在 rebalance date 對已選出投組按 realized volatility 只降曝險、不加槓桿。`lookback=42 / target=20%` full-window IR 只剩約 `0.065`，`2021-2022` excess 仍約 `-22.85%`，因此只保留為 compare-only，不升級主候選。
 - CLI 支援 `--rebalance-frequency daily|weekly|monthly`、`--lookback-bars`、`--top-n`、`--min-return`、`--cost-multipliers-list`、`--walk-forward-windows` 與 JSON/Markdown 摘要輸出。
 - 報表已新增 `annualized_active_return`、`tracking_error`、`information_ratio` 與 `active_max_drawdown`，用 relative equity 檢查主動風險報酬與相對 benchmark 回撤。
 - CLI 已新增自動 rolling windows：`--rolling-window-months`、`--rolling-step-months`、`--rolling-min-months`；它會產生 `roll01`、`roll02` 這類日期窗，避免每次手寫少數分段。
@@ -212,7 +213,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線，但 24 個月 rolling 已揭露 2021-2022 失敗 window；market regime SMA84 已測過且只能 compare-only，下一步應測更具體的 risk-off / re-entry overlay 或更大股票池，並用已新增的 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線，但 24 個月 rolling 已揭露 2021-2022 失敗 window；market regime SMA84 與 portfolio volatility target 都已測過且只能 compare-only，下一步應測更具體的 risk-off / re-entry overlay 或更大股票池，並用已新增的 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

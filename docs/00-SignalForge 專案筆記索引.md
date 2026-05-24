@@ -44,7 +44,7 @@ updated: 2026-05-24
 - `drawdown-risk-off`：可選風控 wrapper，用策略層 proxy equity 追蹤單檔回撤並暫時降到 flat；`20%/60` 已 discard，`25%/120` 與 `vol-target 0.40 + dd-risk-off 25%/120` 只保留 compare-only。
 - `walk-forward / OOS`：target-state sweep 已支援 `--walk-forward-windows`；2024-2026 樣本外檢查顯示 Absolute Momentum 系列仍缺 benchmark-relative edge，尚未能視為穩定營利主候選。
 - `relative-momentum filter`：target-state sweep 已支援 `--relative-momentum-filter`，用跨股票 lookback return top-N 當股票池白名單；2024-2026 OOS 掃描 `lookback=63/126/252` 與 `topN=1/2/3/4/5/7` 後沒有改善 `Beat B&H`，目前只作 compare-only / discard 結論。
-- `portfolio rotation`：新增投組層級相對動能輪動工具 `tools\portfolio_rotation_sweep.py`，用 equal-weight buy-and-hold portfolio 作 benchmark，並輸出 IR、tracking error、active MDD、自動 rolling windows 與可選 market regime filter；`monthly + 21 bars + top3` 是目前第一個 full-window 與 OOS 都有正 active return 的候選，但 24 個月 rolling 顯示 2021-2022 失敗。SMA84 regime filter 只降低該段傷害、同時拉低 full-window IR，因此保留 compare-only，仍不能視為穩定營利。
+- `portfolio rotation`：新增投組層級相對動能輪動工具 `tools\portfolio_rotation_sweep.py`，用 equal-weight buy-and-hold portfolio 作 benchmark，並輸出 IR、tracking error、active MDD、自動 rolling windows、可選 market regime filter 與可選 volatility target；`monthly + 21 bars + top3` 是目前第一個 full-window 與 OOS 都有正 active return 的候選，但 24 個月 rolling 顯示 2021-2022 失敗。SMA84 regime filter 與 volatility target 都只保留 compare-only，仍不能視為穩定營利。
 - `live`：只產生 dry-run `OrderIntent`，安全邊界由 `LIVE_DRY_RUN_ONLY` 鎖住。
 - 最新整理基線：readiness score 目標仍為 `110`，固定 guard 是 `python -m unittest discover -s tests` 與 `git diff --check`。
 

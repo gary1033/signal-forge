@@ -51,6 +51,11 @@ class PortfolioRotationResult:
     min_return: float
     market_regime_filter: bool
     market_regime_sma_bars: int
+    volatility_target: bool
+    volatility_lookback_bars: int
+    target_annual_volatility: float
+    volatility_min_observations: int
+    volatility_max_scale: float
     symbol_count: int
     start_timestamp: str
     end_timestamp: str
@@ -72,8 +77,11 @@ class PortfolioRotationResult:
     trade_count: int
     rebalance_count: int
     regime_block_count: int
+    volatility_scaled_rebalance_count: int
+    volatility_warmup_count: int
     total_cost: float
     average_turnover: float
+    average_volatility_scale: float | None
     average_exposure: float
     average_selected_count: float
     end_equity: float
@@ -173,10 +181,15 @@ def run_portfolio_rotation(
     periods_per_year: int,
     market_regime_filter: bool = False,
     market_regime_sma_bars: int = 126,
+    volatility_target: bool = False,
+    volatility_lookback_bars: int = 21,
+    target_annual_volatility: float = 0.20,
+    volatility_min_observations: int | None = None,
+    volatility_max_scale: float = 1.0,
 ) -> PortfolioRotationResult:
     """
-    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金。
-    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網。
+    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險。
+    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
     回傳與錯誤：回傳 PortfolioRotationResult；頻率、lookback、top_n 或資料矩陣不合法時拋出 ValueError。
     """
     if lookback_bars <= 0:
@@ -187,6 +200,21 @@ def run_portfolio_rotation(
         raise ValueError("rebalance frequency must be daily, weekly, or monthly")
     if market_regime_sma_bars <= 0:
         raise ValueError("market regime SMA bars must be positive")
+    volatility_required_observations = (
+        volatility_min_observations
+        if volatility_min_observations is not None
+        else volatility_lookback_bars
+    )
+    if volatility_lookback_bars <= 1:
+        raise ValueError("volatility lookback bars must be greater than 1")
+    if target_annual_volatility <= 0:
+        raise ValueError("target annual volatility must be positive")
+    if volatility_required_observations <= 1:
+        raise ValueError("volatility min observations must be greater than 1")
+    if volatility_required_observations > volatility_lookback_bars:
+        raise ValueError("volatility min observations cannot exceed lookback bars")
+    if volatility_max_scale <= 0 or volatility_max_scale > 1:
+        raise ValueError("volatility max scale must be greater than 0 and no more than 1")
 
     timestamps, closes_by_symbol = align_close_table(loaded)
     symbols = sorted(closes_by_symbol)
@@ -215,9 +243,12 @@ def run_portfolio_rotation(
     rebalance_count = 0
     total_cost = 0.0
     turnover_values: list[float] = []
+    volatility_scale_values: list[float] = []
     selected_counts: list[int] = [0]
     exposure_values: list[float] = [0.0]
     regime_block_count = 0
+    volatility_scaled_rebalance_count = 0
+    volatility_warmup_count = 0
     market_index_values = _equal_weight_price_index(symbols, closes_by_symbol)
 
     for index in range(1, len(timestamps)):
@@ -250,6 +281,29 @@ def run_portfolio_rotation(
                     top_n=top_n,
                     min_return=min_return,
                 )
+                if volatility_target and _has_exposure(target_weights):
+                    volatility_scale = _volatility_target_scale(
+                        symbols,
+                        closes_by_symbol,
+                        target_weights,
+                        index=index,
+                        lookback_bars=volatility_lookback_bars,
+                        min_observations=volatility_required_observations,
+                        target_annual_volatility=target_annual_volatility,
+                        periods_per_year=periods_per_year,
+                        max_scale=volatility_max_scale,
+                    )
+                    if volatility_scale is None:
+                        target_weights = {symbol: 0.0 for symbol in symbols}
+                        volatility_warmup_count += 1
+                    else:
+                        target_weights = {
+                            symbol: weight * volatility_scale
+                            for symbol, weight in target_weights.items()
+                        }
+                        volatility_scale_values.append(volatility_scale)
+                        if volatility_scale < volatility_max_scale - 1e-9:
+                            volatility_scaled_rebalance_count += 1
             turnover = sum(
                 abs(target_weights[symbol] - weights[symbol])
                 for symbol in symbols
@@ -318,6 +372,11 @@ def run_portfolio_rotation(
         min_return=min_return,
         market_regime_filter=market_regime_filter,
         market_regime_sma_bars=market_regime_sma_bars,
+        volatility_target=volatility_target,
+        volatility_lookback_bars=volatility_lookback_bars,
+        target_annual_volatility=target_annual_volatility,
+        volatility_min_observations=volatility_required_observations,
+        volatility_max_scale=volatility_max_scale,
         symbol_count=len(symbols),
         start_timestamp=timestamps[0],
         end_timestamp=timestamps[-1],
@@ -347,8 +406,11 @@ def run_portfolio_rotation(
         trade_count=trade_count,
         rebalance_count=rebalance_count,
         regime_block_count=regime_block_count,
+        volatility_scaled_rebalance_count=volatility_scaled_rebalance_count,
+        volatility_warmup_count=volatility_warmup_count,
         total_cost=total_cost,
         average_turnover=_average(turnover_values),
+        average_volatility_scale=_average_optional(volatility_scale_values),
         average_exposure=_average(exposure_values),
         average_selected_count=_average_float(selected_counts),
         end_equity=equity,
@@ -448,10 +510,15 @@ def run_portfolio_rotation_sweep(
     periods_per_year: int,
     market_regime_filter: bool = False,
     market_regime_sma_bars: int = 126,
+    volatility_target: bool = False,
+    volatility_lookback_bars: int = 21,
+    target_annual_volatility: float = 0.20,
+    volatility_min_observations: int | None = None,
+    volatility_max_scale: float = 1.0,
 ) -> list[PortfolioRotationResult]:
     """
     用途與流程：對同一批股票資料在多個成本倍率下執行 portfolio rotation 回測。
-    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；其餘參數傳給 run_portfolio_rotation。
+    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；volatility_target 相關參數是可選波動降曝險 overlay；其餘參數傳給 run_portfolio_rotation。
     回傳與錯誤：回傳每個成本倍率一筆 PortfolioRotationResult；資料或參數不合法時由底層拋出 ValueError。
     """
     loaded = load_rotation_inputs(csv_paths, start=start, end=end)
@@ -473,6 +540,11 @@ def run_portfolio_rotation_sweep(
             periods_per_year=periods_per_year,
             market_regime_filter=market_regime_filter,
             market_regime_sma_bars=market_regime_sma_bars,
+            volatility_target=volatility_target,
+            volatility_lookback_bars=volatility_lookback_bars,
+            target_annual_volatility=target_annual_volatility,
+            volatility_min_observations=volatility_min_observations,
+            volatility_max_scale=volatility_max_scale,
         )
         for cost_multiplier in cost_multipliers
     ]
@@ -494,10 +566,15 @@ def run_walk_forward_rotation(
     periods_per_year: int,
     market_regime_filter: bool = False,
     market_regime_sma_bars: int = 126,
+    volatility_target: bool = False,
+    volatility_lookback_bars: int = 21,
+    target_annual_volatility: float = 0.20,
+    volatility_min_observations: int | None = None,
+    volatility_max_scale: float = 1.0,
 ) -> tuple[list[PortfolioWalkForwardResult], list[PortfolioRetentionRow]]:
     """
     用途與流程：依 walk-forward windows 重跑 portfolio rotation，並計算相鄰 window 的 OOS retention。
-    參數：windows 是分段日期；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
+    參數：windows 是分段日期；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；volatility_target 相關參數是可選波動降曝險 overlay；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
     回傳與錯誤：回傳 window 結果與 retention rows；若某 window 資料不足，底層會拋出 ValueError。
     """
     window_results: list[PortfolioWalkForwardResult] = []
@@ -521,6 +598,11 @@ def run_walk_forward_rotation(
                     periods_per_year=periods_per_year,
                     market_regime_filter=market_regime_filter,
                     market_regime_sma_bars=market_regime_sma_bars,
+                    volatility_target=volatility_target,
+                    volatility_lookback_bars=volatility_lookback_bars,
+                    target_annual_volatility=target_annual_volatility,
+                    volatility_min_observations=volatility_min_observations,
+                    volatility_max_scale=volatility_max_scale,
                 ),
             )
         )
@@ -661,8 +743,8 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Avg turnover | Avg exposure | Avg selected |",
-        "|---|---:|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected |",
+        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for result in results:
         lines.append(
@@ -670,7 +752,10 @@ def format_markdown(
             f"{result.strategy} | {result.cost_label} | "
             f"{result.rebalance_frequency} | {result.lookback_bars} | "
             f"{result.top_n} | {_format_bool(result.market_regime_filter)} | "
-            f"{result.market_regime_sma_bars} | {result.total_return:.2%} | "
+            f"{result.market_regime_sma_bars} | {_format_bool(result.volatility_target)} | "
+            f"{result.target_annual_volatility:.2%} | "
+            f"{_format_optional_ratio(result.average_volatility_scale)} | "
+            f"{result.total_return:.2%} | "
             f"{_format_optional_percent(result.cagr)} | "
             f"{result.benchmark_total_return:.2%} | "
             f"{result.benchmark_excess_return:.2%} | "
@@ -685,7 +770,8 @@ def format_markdown(
             f"{_format_optional_ratio(result.sortino_ratio)} | "
             f"{_format_optional_ratio(result.calmar_ratio)} | "
             f"{result.trade_count} | {result.rebalance_count} | "
-            f"{result.regime_block_count} | "
+            f"{result.regime_block_count} | {result.volatility_scaled_rebalance_count} | "
+            f"{result.volatility_warmup_count} | "
             f"{result.average_turnover:.2f} | "
             f"{result.average_exposure:.2%} | "
             f"{result.average_selected_count:.2f} |"
@@ -708,8 +794,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Avg exposure |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Vol scaled | Avg vol scale | Avg exposure |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -729,6 +815,8 @@ def format_walk_forward_markdown(
                 f"{result.active_max_drawdown:.2%} | "
                 f"{_format_optional_ratio(result.sharpe_ratio)} | "
                 f"{result.trade_count} | {result.regime_block_count} | "
+                f"{result.volatility_scaled_rebalance_count} | "
+                f"{_format_optional_ratio(result.average_volatility_scale)} | "
                 f"{result.average_exposure:.2%} |"
             )
     lines.extend(
@@ -804,6 +892,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="SMA bars for the equal-weight market regime filter",
     )
     parser.add_argument(
+        "--volatility-target",
+        action="store_true",
+        help="scale selected portfolio weights down when realized basket volatility is above target",
+    )
+    parser.add_argument(
+        "--volatility-lookback-bars",
+        type=int,
+        default=21,
+        help="lookback bars for realized volatility scaling",
+    )
+    parser.add_argument(
+        "--target-annual-volatility",
+        type=float,
+        default=0.20,
+        help="annualized volatility target for portfolio weight scaling",
+    )
+    parser.add_argument(
+        "--volatility-min-observations",
+        type=int,
+        help="minimum return observations before volatility scaling is allowed",
+    )
+    parser.add_argument(
+        "--volatility-max-scale",
+        type=float,
+        default=1.0,
+        help="maximum volatility target scale; defaults to 1.0 so the overlay never adds leverage",
+    )
+    parser.add_argument(
         "--walk-forward-windows",
         help=(
             "comma-separated label:start:end windows, for example "
@@ -857,6 +973,11 @@ def main(argv: list[str] | None = None) -> int:
         periods_per_year=args.periods_per_year,
         market_regime_filter=args.market_regime_filter,
         market_regime_sma_bars=args.market_regime_sma_bars,
+        volatility_target=args.volatility_target,
+        volatility_lookback_bars=args.volatility_lookback_bars,
+        target_annual_volatility=args.target_annual_volatility,
+        volatility_min_observations=args.volatility_min_observations,
+        volatility_max_scale=args.volatility_max_scale,
     )
     markdown = format_markdown(
         results,
@@ -896,6 +1017,11 @@ def main(argv: list[str] | None = None) -> int:
             periods_per_year=args.periods_per_year,
             market_regime_filter=args.market_regime_filter,
             market_regime_sma_bars=args.market_regime_sma_bars,
+            volatility_target=args.volatility_target,
+            volatility_lookback_bars=args.volatility_lookback_bars,
+            target_annual_volatility=args.target_annual_volatility,
+            volatility_min_observations=args.volatility_min_observations,
+            volatility_max_scale=args.volatility_max_scale,
         )
         markdown += format_walk_forward_markdown(walk_forward_results, retention_rows)
 
@@ -1027,6 +1153,99 @@ def _market_regime_is_risk_on(
     window = market_index_values[index + 1 - sma_bars:index + 1]
     sma = sum(window) / len(window)
     return market_index_values[index] >= sma
+
+
+def _has_exposure(weights: dict[str, float]) -> bool:
+    """
+    用途與流程：判斷目標權重是否含有非零曝險，供 volatility target 避免對全現金狀態做無意義縮放。
+    參數：weights 是 symbol 到 target weight 的 dict。
+    回傳與錯誤：任一權重絕對值大於極小值時回傳 True；此函式不主動拋錯。
+    """
+    return any(abs(weight) > 1e-12 for weight in weights.values())
+
+
+def _volatility_target_scale(
+    symbols: list[str],
+    closes_by_symbol: dict[str, list[float]],
+    weights: dict[str, float],
+    *,
+    index: int,
+    lookback_bars: int,
+    min_observations: int,
+    target_annual_volatility: float,
+    periods_per_year: int,
+    max_scale: float,
+) -> float | None:
+    """
+    用途與流程：用目前目標投組的歷史 close-to-close 報酬估算 realized volatility，計算只降曝險、不加槓桿的縮放倍率。
+    參數：symbols 與 closes_by_symbol 是共同日期矩陣；weights 是未縮放的目標權重；index 是目前 rebalance 索引；lookback/min_observations 控制使用的歷史報酬；target_annual_volatility、periods_per_year 與 max_scale 定義縮放上限。
+    回傳與錯誤：樣本不足時回傳 None；波動為 0 時回傳 max_scale；否則回傳不超過 max_scale 的正縮放倍率。
+    """
+    returns = _portfolio_weighted_returns(
+        symbols,
+        closes_by_symbol,
+        weights,
+        index=index,
+        lookback_bars=lookback_bars,
+    )
+    if len(returns) < min_observations:
+        return None
+    daily_volatility = _sample_standard_deviation(returns)
+    if daily_volatility <= 0:
+        return max_scale
+    annualized_volatility = daily_volatility * sqrt(periods_per_year)
+    if annualized_volatility <= 0:
+        return max_scale
+    return min(max_scale, target_annual_volatility / annualized_volatility)
+
+
+def _portfolio_weighted_returns(
+    symbols: list[str],
+    closes_by_symbol: dict[str, list[float]],
+    weights: dict[str, float],
+    *,
+    index: int,
+    lookback_bars: int,
+) -> list[float]:
+    """
+    用途與流程：依固定目標權重回看近期投組報酬，作為 portfolio-level volatility target 的 realized volatility 輸入。
+    參數：symbols 是排序後股票代號；closes_by_symbol 是 close matrix；weights 是目標權重；index 是目前 rebalance 索引；lookback_bars 是最多使用的報酬筆數。
+    回傳與錯誤：回傳逐期投組報酬；遇到非正前期 close 時略過該段以避免除零。
+    """
+    if index <= 0:
+        return []
+    start = max(1, index - lookback_bars + 1)
+    returns: list[float] = []
+    for current_index in range(start, index + 1):
+        period_return = 0.0
+        valid_period = True
+        for symbol in symbols:
+            previous_close = closes_by_symbol[symbol][current_index - 1]
+            if previous_close <= 0:
+                valid_period = False
+                break
+            current_close = closes_by_symbol[symbol][current_index]
+            period_return += weights[symbol] * ((current_close / previous_close) - 1.0)
+        if valid_period:
+            returns.append(period_return)
+    return returns
+
+
+def _sample_standard_deviation(values: list[float]) -> float:
+    """
+    用途與流程：計算樣本標準差，供 realized volatility 與風險縮放使用。
+    參數：values 是浮點數清單，至少兩筆才有樣本變異。
+    回傳與錯誤：樣本不足或變異數非正時回傳 0；否則回傳樣本標準差。
+    """
+    if len(values) < 2:
+        return 0.0
+    mean_value = sum(values) / len(values)
+    variance = sum((value - mean_value) ** 2 for value in values) / (
+        len(values) - 1
+    )
+    if variance <= 0:
+        return 0.0
+    return sqrt(variance)
 
 
 def _is_rebalance_index(
@@ -1334,6 +1553,18 @@ def _average_float(values: Iterable[int]) -> float:
     items = list(values)
     if not items:
         return 0.0
+    return sum(items) / len(items)
+
+
+def _average_optional(values: Iterable[float]) -> float | None:
+    """
+    用途與流程：計算可選平均值，供只在功能啟用時才有樣本的報表欄位使用。
+    參數：values 是 float iterable。
+    回傳與錯誤：沒有元素時回傳 None；否則回傳平均值。
+    """
+    items = list(values)
+    if not items:
+        return None
     return sum(items) / len(items)
 
 

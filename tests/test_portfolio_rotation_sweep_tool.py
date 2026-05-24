@@ -41,6 +41,15 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "--market-regime-filter",
                 "--market-regime-sma-bars",
                 "2",
+                "--volatility-target",
+                "--volatility-lookback-bars",
+                "3",
+                "--target-annual-volatility",
+                "0.15",
+                "--volatility-min-observations",
+                "2",
+                "--volatility-max-scale",
+                "0.8",
             ]
         )
 
@@ -51,6 +60,11 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.cost_multipliers_list, "1,3")
         self.assertTrue(args.market_regime_filter)
         self.assertEqual(args.market_regime_sma_bars, 2)
+        self.assertTrue(args.volatility_target)
+        self.assertEqual(args.volatility_lookback_bars, 3)
+        self.assertEqual(args.target_annual_volatility, 0.15)
+        self.assertEqual(args.volatility_min_observations, 2)
+        self.assertEqual(args.volatility_max_scale, 0.8)
 
     def test_parser_accepts_rolling_window_options(self) -> None:
         """
@@ -233,6 +247,64 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertAlmostEqual(result.total_return, 0.0)
         self.assertAlmostEqual(result.average_exposure, 0.0)
 
+    def test_volatility_target_scales_high_volatility_rotation_weights(self) -> None:
+        """
+        用途與流程：驗證 portfolio-level volatility target 會用目標投組近期波動下修權重，而不是改變相對動能選股。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 warmup、縮放或平均曝險語意漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 200.0),
+                    _bar("2026-01-03", 100.0),
+                    _bar("2026-01-04", 200.0),
+                ],
+            ),
+            (
+                "2317",
+                Path("2317.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 90.0),
+                    _bar("2026-01-03", 90.0),
+                    _bar("2026-01-04", 90.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            volatility_target=True,
+            volatility_lookback_bars=2,
+            target_annual_volatility=0.10,
+            volatility_min_observations=2,
+        )
+
+        self.assertTrue(result.volatility_target)
+        self.assertEqual(result.volatility_lookback_bars, 2)
+        self.assertEqual(result.target_annual_volatility, 0.10)
+        self.assertEqual(result.volatility_min_observations, 2)
+        self.assertEqual(result.volatility_warmup_count, 1)
+        self.assertEqual(result.volatility_scaled_rebalance_count, 1)
+        self.assertIsNotNone(result.average_volatility_scale)
+        self.assertLess(result.average_volatility_scale or 1.0, 0.01)
+        self.assertLess(result.average_exposure, 0.10)
+
     def test_equal_weight_benchmark_applies_initial_entry_cost(self) -> None:
         """
         用途與流程：驗證 equal-weight benchmark 會套用初始入場成本，避免和有交易成本的輪動策略比較不一致。
@@ -321,6 +393,11 @@ def _rotation_result(
         min_return=0.0,
         market_regime_filter=False,
         market_regime_sma_bars=126,
+        volatility_target=False,
+        volatility_lookback_bars=21,
+        target_annual_volatility=0.20,
+        volatility_min_observations=21,
+        volatility_max_scale=1.0,
         symbol_count=2,
         start_timestamp="2026-01-01",
         end_timestamp="2026-01-02",
@@ -342,8 +419,11 @@ def _rotation_result(
         trade_count=1,
         rebalance_count=1,
         regime_block_count=0,
+        volatility_scaled_rebalance_count=0,
+        volatility_warmup_count=0,
         total_cost=0.0,
         average_turnover=1.0,
+        average_volatility_scale=None,
         average_exposure=1.0,
         average_selected_count=1.0,
         end_equity=10_000.0 * (1.0 + total_return),

@@ -6717,3 +6717,112 @@ python tools\portfolio_rotation_sweep.py `
 - **Keep as compare tool**：market regime filter 是 deterministic、test-covered、預設關閉的可選工具，保留給後續比較。
 - **Discard as current improvement**：`market_regime_sma_bars=84` 不能升級主候選，因為它雖改善 `roll02`，但 full-window 與多數強勢 window 明顯變弱。
 - **下一步**：不要繼續只調 SMA 長度；若要修 `2021-2022`，應測更具體的 risk-off / re-entry 條件，或擴大股票池確認是否只是七檔大型股結構造成。
+
+## 2026-05-24 Portfolio rotation volatility target
+
+### 假設
+
+前一輪 market regime filter 用市場方向判斷 risk-on / risk-off，但它犧牲太多強勢 window。這輪改測另一種風控假設：**動能策略的 crash risk 可能和波動升高有關，因此在 portfolio rotation 的再平衡日，若新目標投組的近期 realized volatility 高於目標年化波動，就只降曝險、不加槓桿。**
+
+這輪不是新增 broker、不是真實下單，也不是把 volatility target 當成保證獲利的風控；它只是一個 deterministic、test-covered 的比較 overlay。
+
+### 來源
+
+- Pedro Barroso and Pedro Santa-Clara, Momentum has its moments: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2041429
+- Alan Moreira and Tyler Muir, Volatility-Managed Portfolios: https://conference.nber.org/confer/2016/LTAMs16/Moreira_Muir.pdf
+- Time-series momentum: A Monte Carlo approach: https://www.sciencedirect.com/science/article/abs/pii/S0957417421017172
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增 portfolio-level volatility target：
+  - `--volatility-target`
+  - `--volatility-lookback-bars`
+  - `--target-annual-volatility`
+  - `--volatility-min-observations`
+  - `--volatility-max-scale`
+- 縮放語意：
+  - 只在 rebalance date 對已選出的 target weights 生效。
+  - 用該目標投組的歷史 close-to-close returns 估算 realized volatility。
+  - `scale = min(max_scale, target_annual_volatility / realized_annual_volatility)`。
+  - 預設 `max_scale = 1.0`，所以只會降曝險，不加槓桿。
+- `PortfolioRotationResult` 新增：
+  - `volatility_target`
+  - `volatility_lookback_bars`
+  - `target_annual_volatility`
+  - `volatility_min_observations`
+  - `volatility_max_scale`
+  - `volatility_scaled_rebalance_count`
+  - `volatility_warmup_count`
+  - `average_volatility_scale`
+- Markdown 報表新增 volatility target 欄位；rolling windows 也會顯示 `Vol scaled` 與 `Avg vol scale`。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser 與高波動縮放 regression。
+
+### 參數掃描摘要
+
+固定主候選 `monthly + 21 bars + top3`，掃 `volatility_lookback_bars = 21 / 42 / 63` 與 `target_annual_volatility = 12% / 15% / 20% / 25% / 30%`。
+
+| Vol lookback | Target vol | Full return | Full excess | Full IR | Full MDD | Avg exposure | Avg scale | `2021-2022` excess | `2021-2022` IR | Positive excess windows | 解讀 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `21` | `12%` | `169.65%` | `-234.38%` | `-0.832` | `-21.62%` | `50.53%` | `0.545` | `-18.14%` | `-0.737` | `2/6` | 回撤下降，但 full-window active edge 失效 |
+| `21` | `20%` | `401.48%` | `-2.55%` | `-0.038` | `-30.51%` | `73.82%` | `0.797` | `-23.70%` | `-0.881` | `2/6` | 接近 benchmark，但沒有主動 edge |
+| `21` | `30%` | `642.99%` | `238.97%` | `0.462` | `-30.40%` | `86.43%` | `0.936` | `-23.42%` | `-0.826` | `5/6` | 保留報酬但仍輸原始候選 |
+| `42` | `12%` | `185.84%` | `-218.19%` | `-0.771` | `-16.79%` | `49.05%` | `0.540` | `-16.85%` | `-0.693` | `1/6` | 風險最低但 active edge 被消滅 |
+| `42` | `20%` | `447.03%` | `43.00%` | `0.065` | `-25.05%` | `72.48%` | `0.799` | `-22.85%` | `-0.890` | `4/6` | 本輪正式 compare-only；沒有修好失敗段 |
+| `42` | `30%` | `696.74%` | `292.71%` | `0.535` | `-30.40%` | `85.69%` | `0.946` | `-27.91%` | `-1.000` | `5/6` | full IR 接近 SMA84 regime，但 roll02 更糟 |
+| `63` | `20%` | `423.48%` | `19.45%` | `0.009` | `-24.69%` | `71.38%` | `0.787` | `-26.92%` | `-1.054` | `3/6` | 沒有改善主問題 |
+| `63` | `30%` | `679.52%` | `275.49%` | `0.515` | `-30.40%` | `85.19%` | `0.941` | `-32.22%` | `-1.182` | `5/6` | full-window 尚可但失敗 window 惡化 |
+
+### 正式 compare-only 報表命令
+
+本輪保留 `lookback=42`、`target_annual_volatility=20%` 作為正式報表，原因是它沒有過度極端降曝險，且能展示此 overlay 的真實 tradeoff。
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --volatility-target `
+  --volatility-lookback-bars 42 `
+  --target-annual-volatility 0.20 `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\twse-portfolio-rotation-monthly-lb21-top3-voltarget20-lb42-rolling24m-20260524.json `
+  --summary-md reports\generated\twse-portfolio-rotation-monthly-lb21-top3-voltarget20-lb42-rolling24m-20260524.md
+```
+
+### `target vol 20% / lookback 42` 結果摘要
+
+| Window | Cost | Return | Benchmark return | Excess | IR | MDD | Active MDD | Avg exposure | Avg scale | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Full `2020-2026` | `1x` | `447.03%` | `404.03%` | `43.00%` | `0.065` | `-25.05%` | `-30.80%` | `72.48%` | `0.799` | 主動 edge 幾乎消失 |
+| `2020-2021` | `1x` | `94.23%` | `90.91%` | `3.32%` | `0.028` | `-11.55%` | `-23.80%` | `63.05%` | `0.781` | 低回撤但幾乎無 active edge |
+| `2021-2022` | `1x` | `-16.97%` | `5.88%` | `-22.85%` | `-0.890` | `-25.05%` | `-21.59%` | `58.61%` | `0.828` | 沒修好失敗段 |
+| `2022-2023` | `1x` | `4.85%` | `-1.77%` | `6.62%` | `0.172` | `-17.22%` | `-16.27%` | `65.53%` | `0.863` | 小幅改善中段 |
+| `2023-2024` | `1x` | `77.49%` | `68.20%` | `9.29%` | `0.269` | `-16.39%` | `-14.77%` | `76.87%` | `0.872` | 明顯低於原始候選 |
+| `2024-2025` | `1x` | `98.37%` | `81.93%` | `16.44%` | `0.338` | `-16.39%` | `-21.42%` | `66.16%` | `0.761` | 強勢段被削弱 |
+| `2025-2026-05` | `1x` | `94.75%` | `102.48%` | `-7.73%` | `-0.242` | `-9.40%` | `-25.11%` | `57.80%` | `0.686` | partial window 反而輸 benchmark |
+
+### 解讀
+
+1. **volatility target 降低曝險，但沒有創造穩定 active edge**：低目標波動能降低 MDD，但 full-window excess 變成負值或接近 0。
+2. **`2021-2022` 沒有被修好**：正式版本 `lookback=42 / target=20%` 的 `roll02` excess 是 `-22.85%`，只比原始 `-24.62%` 小幅改善，IR 仍約 `-0.890`。
+3. **會錯過強勢 window**：2024-2025 與 2025-2026 的原始版本很強，但 volatility target 將曝險降到約 `66%` / `58%`，使 active edge 大幅下降甚至轉負。
+4. **和 market regime filter 組合也沒有升級**：`regime SMA84 + vol target 30% / lookback 42` full IR 約 `0.250`、`roll02` excess 約 `-13.49%`，比單獨 SMA84 的 full IR `0.544` 差，不能視為改善。
+
+### Keep / Discard 判斷
+
+- **Keep as compare tool**：portfolio-level volatility target 是 deterministic、test-covered、預設關閉的風控 overlay，可用來比較不同風險降曝險假設。
+- **Discard as current improvement**：本輪掃描沒有任何一組同時改善 full-window IR、`2021-2022` excess、rolling positive windows 與 MDD，因此不能升級主候選。
+- **下一步**：不要繼續只調 `target_annual_volatility` 或 lookback；若要修穩定性，下一步更合理的是擴大股票池，或加入更具體的 re-entry / breadth 條件，而不是單純波動縮放。
