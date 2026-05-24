@@ -3,81 +3,91 @@ title: VWAP Reversion
 tags:
   - project/SignalForge
   - trading/strategy
-  - trading/mean-reversion
+  - trading/vwap
 status: research
-updated: 2026-05-21
+updated: 2026-05-24
 repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\vwap_reversion.py
 ---
 
 # VWAP Reversion
 
+## 快速定位
+
+| 問題 | 答案 |
+|---|---|
+| CLI 名稱 | `vwap-reversion` |
+| 適用資料 | 日線 OHLCV |
+| 策略型態 | long-only 均值回歸 baseline |
+| 實作位置 | `src\signal_forge\strategies\vwap_reversion.py` |
+| 參數入口 | `src\signal_forge\cli\strategy_options.py` |
+
 ## 先懂這些詞
 
-- **VWAP（Volume Weighted Average Price，成交量加權平均價）**：不是單純平均價格，而是「成交量越大的價格，權重越高」。白話說，它近似市場在這段期間內主要成交的平均成本。
-- **Rolling VWAP / 滾動 VWAP**：每一天只看最近 N 天重新計算 VWAP。例如 `window=20` 時，今天的 rolling VWAP 只看最近 20 天資料；明天會往前滑一天，再用新的最近 20 天重算。它不是從某個固定起點一路累積的 anchored VWAP。
-- **Mean reversion / 均值回歸**：價格離某條平均線太遠後，可能往平均線靠回來。這裡的平均線就是 rolling VWAP。
-- **Rolling standard deviation / 滾動標準差**：用最近 N 天價格計算波動程度。波動越大，標準差越大；波動越小，標準差越小。
-- **z-score / 標準化偏離程度**：用「價格離 VWAP 多遠」除以「最近波動程度」。`z_score=-1.5` 代表價格低於 VWAP，而且偏離幅度大約是 1.5 個標準差。
-- **Band / 偏離帶**：用 VWAP 加減 z-score 門檻畫出的上下界。價格跌破下方 band，代表相對 VWAP 跌得太遠；價格漲破上方 band，代表漲得太遠。
-- **`entry_z` / 進場門檻**：跌深到什麼程度才進場。預設 `1.5` 表示 `z_score <= -1.5` 才做多。
-- **`exit_z` / 出場門檻**：價格回到 VWAP 附近到什麼程度就離場。預設 `0.25` 表示 `abs(z_score) <= 0.25` 時視為已經回到平均附近。
-- **`target_position` / 目標部位**：策略想要的持倉狀態。`1.0` 代表應該持有多單，`0.0` 代表空手，`-1.0` 代表做空；目前 CLI 固定 long-only，所以只看 `1.0` 和 `0.0`。
-- **Warmup / 暖機期**：資料還不夠算 rolling VWAP 或 rolling standard deviation 的期間。
-- **Regime filter / 市場狀態濾網**：先判斷目前是不是適合做均值回歸的市場環境。這份策略的可選濾網用 `close >= SMA(regime_window)` 判斷是否允許新的做多進場。
-- **Regime SMA / 市場狀態均線**：用收盤價計算的長一點 SMA。價格低於這條線時，代表可能處於下跌趨勢，跌深不一定會快速反彈。
-- **相對成交量 / Relative volume**：把今天成交量和近期平均量比較。可選成交量過濾器用 `volume >= sma(volume, 20) * 1.2` 進一步要求跌深訊號出現時也有足夠量能。
+- **VWAP**：成交量加權平均價格，用價格和量一起估算市場平均成交成本。
+- **Z-score**：目前價格偏離 rolling VWAP 的標準化程度。
+- **Regime filter**：只在價格仍高於較長均線時接受回歸訊號，避免在下跌趨勢中接刀。
 
 ## 策略假設
 
-VWAP Reversion 是均值回歸策略。它把 rolling VWAP 視為一段期間內的成交量加權平均成本，並用 rolling standard deviation 把價格偏離程度轉成 z-score。
+當價格短期跌到 rolling VWAP 下方太多，但整體趨勢尚未破壞時，價格可能回到平均成交成本附近。這個策略用來檢查「跌深回彈」是否有足夠 entry edge。
 
-策略假設是：當價格短期跌到 VWAP 下方太遠，市場可能出現回到平均成本附近的反彈。這種假設更適合震盪或短期過度反應環境；若市場處於強趨勢下跌，跌破 VWAP band 可能不是反彈機會，而是趨勢延續。
+## 進出場規則
 
-因此這個策略現在可以選擇加上一層簡單的 trend regime filter：只有在 `close >= SMA(regime_window)` 時，才允許新的 long entry。這個濾網不是成交量分析，也不是完整風控；它只是先排除價格低於長期均線時的均值回歸進場。
-
-## 進出場條件
-
-- warmup：rolling VWAP 或 rolling std 尚未形成、或 std 為 0 時，`target_position=0.0`，reason 為 `warmup`。
-- 做多：`z_score <= -entry_z` 時，`target_position=1.0`，reason 為 `price_below_vwap_band`。
-- 可選 regime filter：啟用 `--vwap-regime-filter` 後，只有新的 long entry 會被檢查；若 regime SMA 尚未形成，reason 為 `regime_warmup`；若 `close < regime_sma`，`target_position=0.0`，reason 為 `regime_downtrend_blocked`。
-- 做空：實作在 `allow_short=True` 時，`z_score >= entry_z` 會設為 `target_position=-1.0`，reason 為 `price_above_vwap_band`；目前 CLI 固定 long-only，所以不啟用。
-- 出場：`abs(z_score) <= exit_z` 時，`target_position=0.0`，reason 為 `price_reverted_to_vwap`。
-- 其他狀態：維持上一個 target，reason 為 `hold`。
-
-Regime filter 只阻擋從空手進入多單，不會因為價格跌破 regime SMA 就強制把既有多單歸零。已經持有時，仍由原本的 `exit_z` 或 `hold` 邏輯決定狀態。
-
-可選的成交量過濾器是外層 wrapper，不改 VWAP Reversion 的 z-score 判斷。啟用 `--volume-filter` 時，原策略若輸出 positive target，但當日成交量未達 `20` 日均量的 `1.2` 倍，wrapper 會把 target 改成 `0.0`。
+| 條件 | 目標曝險 |
+|---|---:|
+| VWAP 或標準差尚未暖機 | `0.0` |
+| `z_score <= -entry_z` | `1.0` |
+| 持有中且 `z_score >= -exit_z` | `0.0` |
+| 啟用 regime filter 且 close 低於 regime SMA | `0.0` |
 
 ## 主要參數
 
-- `window` / CLI `--vwap-window`：預設 `20`。
-- `entry_z` / CLI `--entry-z`：預設 `1.5`。
-- `exit_z` / CLI `--exit-z`：預設 `0.25`。
-- `allow_short`：實作預設支援，但 CLI 目前固定 `False`。
-- `regime_filter` / CLI `--vwap-regime-filter`：預設關閉。啟用時，新的 long entry 必須滿足 `close >= sma(close, regime_window)`。
-- `regime_window` / CLI `--vwap-regime-window`：預設 `50`。
-- 可選成交量過濾器：CLI 使用 `--volume-filter --volume-window 20 --volume-multiplier 1.2`，實作位置是 `C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py`。
-- entry-edge 評估：訊號於 bar close 後確認，下一根 open 進場，固定持有 `hold_bars_per_day=1` 後以 exit bar close 出場。
+| 參數 | 預設 | CLI | 用途 |
+|---|---:|---|---|
+| `vwap_window` | `20` | `--vwap-window` | rolling VWAP 視窗 |
+| `entry_z` | `1.5` | `--entry-z` | 跌深進場門檻 |
+| `exit_z` | `0.25` | `--exit-z` | 回到 VWAP 附近平倉 |
+| `vwap_regime_filter` | `False` | `--vwap-regime-filter` | 要求價格仍在長期趨勢上方 |
+| `vwap_regime_window` | `50` | `--vwap-regime-window` | regime SMA 視窗 |
+
+## 怎麼跑
+
+精簡版：
+
+```powershell
+$Csv = "data\processed\TWSE_2330_1D.csv"
+python -m signal_forge.cli entry-edge --csv $Csv --strategy vwap-reversion
+```
+
+完整版：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv $Csv `
+  --strategy vwap-reversion `
+  --vwap-window 20 `
+  --entry-z 1.5 `
+  --exit-z 0.25 `
+  --vwap-regime-filter `
+  --vwap-regime-window 50 `
+  --hold-bars-per-day 1 `
+  --output-dir reports\generated `
+  --run-name tsmc-vwap-regime
+```
 
 ## 股價走勢解說圖
 
 ![[assets/vwap-reversion-trend-explainer.png]]
 
-圖中用合成走勢說明：價格跌到下方 VWAP band 外側時產生 long 訊號；價格回到 VWAP 附近時轉成 exit。此圖為 image generation 產生的教學示意圖，不是真實市場資料，也不代表績效保證。
+圖中用示意走勢說明：價格低於 VWAP 太多時才進場，回到 VWAP 附近時離場。此圖不是績效保證。
 
 ## 風險與限制
 
-- 強趨勢下跌時可能反向接刀。
-- volume 品質會直接影響 VWAP 解讀。
-- 放量跌深不一定是反彈訊號，也可能代表賣壓正在放大；成交量過濾器可能讓均值回歸策略更常接到趨勢延續。
-- rolling VWAP 只是近似成本線，與 anchored VWAP 不同。
-- regime filter 只用 `close >= SMA`，能排除部分下跌趨勢，但不能辨識所有市場狀態，也不是停損。
-- 一日持有期可能太短，無法觀察完整回歸路徑。
-- 目前不含停損、停利或波動度自適應參數。
+- 強下跌趨勢中，價格可能一直低於 VWAP，均值回歸會變成接刀。
+- 日線 VWAP 是 rolling proxy，不等於 intraday session VWAP。
+- `entry_z` 越大，交易數越少；越小，訊號越多但假訊號也可能上升。
 
 ## 下一步
 
-- `2330` 的 `hold=3`、`hold=5`、`hold=10` 雖然已跨過 PF 門檻，但回撤與重疊訊號也同步增加；下一步應先比較未啟用與啟用 `--vwap-regime-filter` 的多持有期結果，確認改善是否來自更合理的市場狀態過濾，而不只是延長暴露時間。
-- 比較成交量過濾器與趨勢 regime filter 的交互效果，避免把放量下跌誤當成反彈確認。
-- 測試不同 `entry_z` / `exit_z` 與 `hold_bars_per_day`。
-- 比較 rolling VWAP 與 anchored VWAP 的研究價值。
+- 若回撤太集中，先加 `--vwap-regime-filter` 比直接調小 `entry_z` 更容易解釋。
+- 若要測量能確認，搭配 [[Volume Filter]]。

@@ -12,170 +12,85 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 
 # Portfolio Relative Momentum Rotation
 
+## 快速定位
+
+| 問題 | 答案 |
+|---|---|
+| CLI 工具 | `tools\portfolio_rotation_sweep.py` |
+| 適用資料 | 多檔日線 OHLCV |
+| 策略型態 | 股票池內 long-only 相對動能輪動 |
+| Benchmark | 同股票池 equal-weight buy-and-hold |
+| 進階 gate | [[Portfolio Rotation Group Gates]] |
+
 ## 先懂這些詞
 
-- **Portfolio rotation / 投組輪動**：不是逐檔股票各自判斷 long/flat，而是在同一個股票池內定期重新分配資金，讓資金集中到當下排名較好的標的。
-- **Relative momentum / 相對動能**：把多檔股票在同一日期的近期報酬互相比較，偏好近期漲幅較強的股票。
-- **Ranking skip / 排除最近報酬排名**：計算相對動能排名時，不使用最近 N 根 bar 的報酬，而是用更早一段 formation window。這用來測試短期反轉或過熱追價是否傷害輪動策略。
-- **Residual momentum / 殘差動能**：先扣除市場、產業或群組共同因子後，再比較個股自己的相對強弱。SignalForge 目前第一版只做 group residual：`個股 lookback return - 同組平均 lookback return`。
-- **Absolute momentum gate / 絕對動能門檻**：除了排名高，也要求該股票自己的近期報酬大於門檻；若沒有股票通過，資金可以留在現金。
-- **Rebalance / 再平衡**：固定頻率重新計算排名與目標權重，例如每週或每月一次。
-- **Equal-weight benchmark / 等權買進持有基準**：把資金平均分配到同一批股票並長期持有，用來檢查輪動是否真的有 portfolio-level active return。
-- **Market regime filter / 市場狀態濾網**：用同一股票池的等權 normalized price index 當市場 proxy；若 index 低於自己的 SMA，該次 rebalance 改持現金。這是風險 overlay，不是新的選股 alpha。
-- **Breadth filter / 市場寬度濾網**：在 rebalance date 計算股票池中有多少檔股票的近期報酬大於門檻；若正動能檔數不足，代表強勢不夠廣，該次 rebalance 改持現金。
-- **Group breadth filter / 群組內部廣度濾網**：在 rebalance date 檢查候選股票所屬產業或自訂群組中，有多少成員的 lookback return 為正；若同群組正動能比例不足，該群組候選不可入選。
-- **Group regime filter / 群組趨勢濾網**：在 rebalance date 計算候選股票所屬群組的等權 lookback return；若群組平均報酬低於門檻，該群組候選不可入選。這是事前的 group-level risk-off，不保證能降低 realized group contribution concentration。
-- **Volatility target / 波動目標降曝險**：用已選出投組的近期 realized volatility 估算目前風險，若高於目標年化波動，就按比例縮小目標權重。SignalForge 版本預設 `max_scale=1.0`，所以只降曝險、不加槓桿。
-- **Liquidity filter / 流動性濾網**：用近 N 根 `close * volume` 平均成交金額定義股票是否可被選入，避免策略把資金分配到成交金額太低、容量較差或滑價風險較高的標的。
-- **Turnover / 週轉率**：每次再平衡時權重變化的總量。週轉率越高，交易成本與滑價風險越大。
-- **Information Ratio / 資訊比率**：把策略相對 benchmark 的年化 active return 除以 tracking error，用來看每承擔一單位主動風險是否真的換到超額報酬。
-- **Active max drawdown / 相對最大回撤**：用策略權益相對 benchmark 權益的 normalized relative equity 計算回撤，觀察策略相對基準是否曾長時間失速。
-- **Symbol attribution / 選股歸因**：把實際持倉期間的 `weight * close-to-close return` 分配回各股票，檢查報酬是否集中在少數高波動股票。
-- **Group attribution / 群組歸因**：把同一產業或自訂群組內的逐股貢獻彙總，檢查策略是否從單檔集中轉成 sector / group 集中。
-- **Group exposure / 群組曝險**：把同一群組的平均權重加總，檢查報酬集中是否來自長期高曝險，還是來自特定群組在持有期間的 realized return 過強。
-- **Concentration guard / 集中度防線**：把最大單檔、前三檔、最大群組與前三群組貢獻占比拉成一級欄位，避免只看總報酬或 IR 時忽略少數大贏家或少數產業依賴。
-- **Re-entry cooldown / 重新入選冷卻期**：股票從投組退出後，強制等待 N 次 rebalance 才能再入選，用來檢查快速落榜又回補是否造成追價、換股噪音或集中度惡化。
-- **Universe selector / 股票池選取器**：先用 universe audit 確認歷史長度、流動性、adjusted CSV 與 group 成員數，再用 deterministic rule 選出可回測股票池，避免人工挑樣本。
+- **Portfolio rotation**：定期在股票池內重新分配資金，不是每檔股票各自和自己比較。
+- **Relative momentum**：同一日期比較多檔股票的近期報酬，選排名較高者。
+- **Rebalance**：固定週期重新排名與調整權重。
+- **Top-N**：每次最多持有幾檔股票。
+- **Cash allowed**：沒有股票通過條件時可留現金。
+- **Attribution**：把報酬拆回個股或群組，檢查是否依賴少數贏家。
 
 ## 策略假設
 
-這個策略把前一輪的「相對動能股票池篩選」提升到 portfolio 層級評估。核心假設是：如果目標是用相對動能在股票池內挑強勢股，就不應該再把每檔股票各自拿去和自己的 buy-and-hold 比；應該看整個輪動投組是否勝過同一股票池的 equal-weight buy-and-hold。
+若股票池內存在可持續的相對強弱，資金應該集中到近期表現較強的標的，而不是等權持有全部股票。這個策略的成敗必須用整個投組和 equal-weight benchmark 比，不應只看單一股票勝負。
 
-SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：定期排名、只持有 top-N、沒有 short、沒有槓桿、沒有 broker 連線。
-
-## 進出場條件
+## 進出場規則
 
 每個 rebalance timestamp 執行：
 
-1. 對每檔股票計算相對動能。若 `ranking_skip_bars=0`，公式是 `close[t] / close[t - lookback_bars] - 1`；若 `ranking_skip_bars > 0`，先令 `ranking_end = t - ranking_skip_bars`，再用 `close[ranking_end] / close[ranking_end - lookback_bars] - 1`，也就是排除最近 N 根 bar 後排名。
-2. 若 `ranking_mode=total-return`，用上述原始動能排序；若 `ranking_mode=group-residual`，先保留原始動能必須大於 `min_return` 的絕對動能 gate，再用 `原始動能 - 同組平均動能` 排序。
-3. 排除近期報酬小於或等於 `min_return` 的股票。
-4. 若啟用 breadth filter，另用 `breadth_lookback_bars` 計算股票池中正動能檔數；若低於 `breadth_min_positive_count`，本次 rebalance 全部留現金。
-5. 若啟用 group breadth filter，檢查候選股票所屬群組的正動能成員比例；未達 `group_breadth_min_positive_share` 或群組成員數低於 `group_breadth_min_members` 時排除該群組候選。
-6. 若啟用 group regime filter，檢查候選股票所屬群組的等權 lookback return；未達 `group_regime_min_return` 或群組成員數低於 `group_regime_min_members` 時排除該群組候選。
-7. 若啟用 liquidity filter，排除近 N 根平均成交金額低於門檻的股票。
-8. 若啟用 re-entry cooldown，排除剛退出且仍在 cooldown 內的股票。
-9. 在剩下股票中依 ranking score 由高到低排序。
-10. 選前 `top_n` 檔股票。
-11. 入選股票等權配置；未入選股票權重為 `0.0`。
-12. 若沒有股票通過門檻，投組維持現金。
-
-| 條件 | 目標權重 |
-|---|---:|
-| 股票進入 top-N 且近期報酬大於門檻 | `1 / 入選檔數` |
-| breadth filter 啟用且正動能檔數不足 | 全部 `0.0`，投組留現金 |
-| group breadth filter 啟用且群組內部正動能比例不足 | 該群組候選不可入選，由下一順位補上 |
-| group regime filter 啟用且群組等權近期報酬不足 | 該群組候選不可入選，由下一順位補上 |
-| liquidity filter 啟用且平均成交金額不足 | 該股票不可入選，由下一順位補上 |
-| re-entry cooldown 啟用且股票仍在冷卻期 | 該股票不可重新入選，由下一順位補上 |
-| 股票落榜 | `0.0` |
-| 全部股票近期報酬不大於門檻 | 全部 `0.0`，投組留現金 |
+1. 對每檔股票計算 lookback return。
+2. 若設定 `ranking_skip_bars`，先排除最近 N 根 bar 再計算排名。
+3. 排除報酬不高於 `min_return` 的股票。
+4. 套用 market breadth、group、liquidity、cooldown 等 gate。
+5. 依 ranking score 選前 `top_n`。
+6. 入選股票等權配置；未入選股票權重為 `0.0`。
+7. 沒有股票通過時，全投組留現金。
 
 ## 主要參數
 
-- `rebalance_frequency`：預設研究候選使用 `monthly`。
-- `lookback_bars`：預設研究候選使用 `21`，約一個月交易日。
-- `ranking_skip_bars`：預設 `0`，代表直接使用最近 lookback 報酬排名；2026-05-24 已測 `5 / 10 / 21`，其中 `10` 是目前最佳 compare-only 錨點，`21` 因訊號太舊而 discard。
-- `ranking_mode`：預設 `total-return`，代表用原始 lookback return 排名；`group-residual` 會用同組平均動能作簡化版 residual momentum。TWSE16 adjusted 實測沒有升級，僅保留為 compare-only / future TWSE30+ 工具。
-- `top_n`：最高報酬錨點是 `3`；目前風險調整折衷候選改看 `4`，因為 full IR 幾乎不變但 MDD、active MDD 與 full-window top-3 concentration 較低。
-- `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
-- `breadth_filter`：七檔股票池最佳折衷是 `breadth_lookback_bars=42`、`breadth_min_positive_count=2`；擴大到 14 檔 TWSE 股票池後，目前最佳折衷改為 `breadth_min_positive_count=3`。
-- `group_breadth_filter`：預設關閉；第一輪 TWSE35 adjusted 實測 `group_breadth_lookback_bars=21`、`group_breadth_min_positive_share=0.50`、`group_breadth_min_members=1` 是目前最佳 compare-only 設定。更嚴格的 `share=0.60/0.75`、`lookback=42` 或 `min_members=2` 會傷害 rolling edge。
-- `group_regime_filter`：預設關閉；第一輪 TWSE35 adjusted 實測 `group_regime_lookback_bars=21`、`group_regime_min_return=0.0`、`group_regime_min_members=1` 搭配 `gb21/share0.50/min1` 是目前最佳 compare-only 設定。更長 lookback 或提高 return threshold 會傷害 rolling edge。
-- `liquidity_filter`：目前最新 execution-aware compare candidate 使用 `liquidity_lookback_bars=20`、`min_average_traded_value=500,000,000`，代表近 20 根平均成交金額至少約 5 億。
-- `min_symbols_per_selected_group`：預設 `1`，不影響既有策略；可設為 `2` 以上作為單成員群組依賴 ablation，但目前 adjusted TWSE14 / TWSE35 實測都顯示 `2` 會讓 rolling edge 失效，不能作為主候選規則。
-- `reentry_cooldown_rebalances`：預設 `0`，不影響既有策略；可設為 `1` 以上測試股票退出後等待幾次 rebalance 才能重新入選。此參數只使用已完成的持倉狀態，不讀未來 window。
-- `portfolio_rotation_universe_select.py`：可從 universe audit 中選出 high-quality 子股票池；目前第一版用 eligible rows、group 候選成員數下限與每組最多入選數，group 內用平均成交金額排序。
-- `cost_multipliers`：固定用 `1x` 與 `3x` 成本壓力檢查。
-- benchmark：同一批股票的 equal-weight buy-and-hold portfolio。
+| 參數 | 預設 | 用途 |
+|---|---:|---|
+| `--rebalance-frequency` | `weekly` | daily / weekly / monthly 再平衡 |
+| `--lookback-bars` | `126` | 相對動能回看期 |
+| `--ranking-skip-bars` | `0` | 排除最近 N 根 bar 後排名 |
+| `--ranking-mode` | `total-return` | 可改 `group-residual` |
+| `--top-n` | `3` | 每次最多持有檔數 |
+| `--min-return` | `0.0` | 絕對動能下限 |
+| `--cost-multipliers-list` | `1` | 成本壓力倍率 |
+| `--volatility-target` | 關閉 | 投組層級降曝險 overlay |
+
+## 怎麼跑
+
+精簡版：
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --summary-json reports\generated\portfolio-rotation-default.json `
+  --summary-md reports\generated\portfolio-rotation-default.md
+```
+
+完整版請看 repo 根目錄 `README.md` 的「Portfolio rotation」段落；group gate 版本必須提供 `--symbol-group SYMBOL:GROUP`。
 
 ## 股價走勢解說圖
 
 ![[assets/portfolio-relative-momentum-rotation-explainer.png]]
 
-圖中用合成走勢說明：每個月重新排名，投組集中到相對動能較強的 top-3 股票，並和同一股票池的 equal-weight buy-and-hold 比較。此圖為本地生成的教學示意圖，不是真實市場資料，也不代表績效保證。
+圖中用示意走勢說明：每次 rebalance 都重新排名，資金移到相對動能較強的股票，並和同股票池等權持有比較。此圖不是績效保證。
 
 ## 風險與限制
 
-- 這是 portfolio-level 策略，不能用逐檔 `Beat B&H` 判斷成敗；必須用投組對投組的 benchmark。
-- 21 日 lookback 反應較快，但更可能吃到短期反轉、交易成本與換股噪音。
-- 月再平衡降低交易頻率，但也可能錯過月內趨勢反轉。
-- 股票池已從七檔擴到 14 檔，再暫時擴到 23 檔做 concentration diagnostic；樣本仍偏小，且 TWSE STOCK_DAY 資料未還原權息，還不能證明策略在更廣股票池穩定有效。
-- 24 個月 rolling 檢查已發現 2021-2022 失敗 window，代表策略可能需要 market regime 或 risk-off 條件，不能只看 2024-2026 強勢期。
-- 可選 `--market-regime-filter --market-regime-sma-bars 84` 已測：它把 2021-2022 excess 從約 `-24.62%` 改到約 `-13.59%`，但 full-window IR 從約 `0.858` 降到約 `0.544`，所以只能作 compare-only 風控工具，不能當作目前主候選改善。
-- TWSE35 adjusted 上也已重新測 market regime risk-off。`SMA63` 是唯一有研究價值的 window：full IR 約 `1.698`、3x IR 約 `1.685`，MDD 從 baseline `-37.80%` 改到 `-26.55%`，raw / adjusted comparison gate 通過；但 min rolling IR 降到約 `0.383`，max rolling top3 group share 仍是 `100%`，group regime / breadth gate 仍失敗。因此 `regime63` 只能作 compare-only 風控對照，不能升級為主候選；`SMA84/126/168/200` 會讓 rolling IR 或 rolling excess 轉負，屬 discard as improvement。
-- 可選 `--volatility-target --volatility-lookback-bars 42 --target-annual-volatility 0.20` 已測：full excess 只剩約 `43.00%`、IR 約 `0.065`，2021-2022 excess 仍約 `-22.85%`，所以也只能作 compare-only 風控工具，不能當作目前主候選改善。
-- 可選 `--breadth-filter --breadth-lookback-bars 42 --breadth-min-positive-count 2` 在七檔股票池是最佳折衷：full-window IR 約 `1.017`，但 2021-2022 仍輸 benchmark。
-- 擴大到 14 檔 TWSE 股票池後，`--breadth-min-positive-count 3` 是目前最佳 breadth gate。`top_n=3` 是最高報酬錨點：full-window return 約 `1974.85%`、excess 約 `1638.67%`、MDD 約 `-23.01%`、IR 約 `1.417`，1x/2x/3x 成本與 6 個 rolling windows 都維持正 excess。
-- 同條件下 `top_n=4` 是目前風險調整折衷候選：full-window return 約 `1546.66%`、excess 約 `1210.48%`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、IR 約 `1.401`；相對 `top_n=3` 犧牲總報酬，但明顯降低回撤且 IR 幾乎不變。
-- 選股歸因顯示 full-window 最大貢獻 `2603` 的絕對貢獻占比約 `23.77%`，不是單一股票完全壟斷；但 rolling window 仍有集中風險，`roll02` 的 `2603` 約 `68.75%`、`roll06` 的 `2308` 約 `48.75%`。
-- Concentration guard 進一步顯示 full-window top-3 絕對貢獻占比約 `55.04%`；rolling top-3 在 `roll01` 約 `73.33%`、`roll02` 約 `82.56%`、`roll03` 約 `72.39%`，代表部分分段仍過度集中。
-- 群組歸因與群組曝險診斷已補上。`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 的 full-window 最大貢獻群組是 `electronics`，絕對貢獻占比約 `33.90%`；前三群組 `electronics / semiconductor / shipping` 合計約 `89.27%`。但 full-window 最大平均曝險群組是 `semiconductor`，平均權重約 `30.33%`，前三群組平均曝險約 `65.99%`。rolling 診斷更集中：`roll02` 的 `shipping` 群組貢獻約 `75.64%`，但最大平均曝險反而是 `financial`、約 `15.64%`，代表部分 concentration 來自 regime return，不是單純長期高曝險。
-- Dominant group exclusion 已測。移除 `shipping` 後 full IR 仍約 `1.255`，但 min rolling excess 轉為 `-4.68%`、min rolling IR 轉為 `-0.185`，表示 `shipping/2603` 是 2021-2022 window 的關鍵保護來源。移除 `electronics` 後 full IR 只剩約 `0.650`，MDD 惡化到約 `-27.31%`，表示 electronics 是 full-window edge 核心。移除 `semiconductor` 後 min rolling excess 仍為正、約 `26.86%`，但 MDD / active MDD 惡化到約 `-25.31%` / `-26.64%`，且 max rolling top-3 group share 升到約 `98.68%`。因此固定刪群組不是目前升級方向。
-- Canary universe 已測。把同一組 `top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 套到新增 9 檔股票後，full-window return 只有約 `14.92%`、excess 約 `-0.91%`、IR 約 `-0.002`，MDD 約 `-44.29%`；rolling 最差 excess 約 `-33.45%`、IR 約 `-1.645`，max rolling top-3 symbol share 約 `89.54%`、group share 約 `98.45%`。這表示目前候選沒有通過 held-out 股票池驗證，不能視為已泛化策略。
-- Adjusted price 診斷已測。以 Yahoo `adjclose / close` 作調整係數、套回 TWSE 原始 OHLC 並保留 TWSE volume 後，同一組候選 full-window return 約 `1644.65%`、excess 約 `1160.72%`、IR 約 `1.156`，MDD 約 `-27.97%`；最弱 rolling excess 只剩約 `1.54%`、IR 約 `0.104`。這表示未調整價版本的 `IR 1.521` / `MDD -18.61%` 過度樂觀，後續策略品質判斷要優先看 adjusted-ratio 版本。
-- Adjusted price 資料來源已正式化為 `tools\build_twse_adjusted_ohlcv.py` 與 `tools\build_twse_adjusted_ohlcv_batch.py`。工具會用 Yahoo chart `adjclose / close` 調整比例套回 TWSE source OHLC，保留 TWSE source volume，並寫出 per-symbol manifest 與 TWSE14 batch manifest，讓後續 raw / adjusted-ratio 對照可以重跑與稽核。2026-05-24 TWSE14 batch 結果是 14 檔、21479 rows、missing adjustment 26、skipped rows 2482。
-- Raw / adjusted 比較 artifact 已正式化為 `tools\compare_portfolio_rotation_reports.py`。同一組候選的 deterministic 對照顯示 raw 1x `IR 1.521 / MDD -18.61%` 會降成 adjusted 1x `IR 1.156 / MDD -27.97%`，full-window excess delta 是 `-248.99%`，最弱 rolling window `roll02` 的 IR delta 是 `-0.711`。後續如果沒有這類比較 artifact 或同等 raw/adjusted gate，不應宣稱策略品質改善。
-- Adjusted 參數掃描已正式化為 `tools\portfolio_rotation_grid_search.py`。2026-05-24 掃描 `top_n=3/4/5`、`breadth_min=2/3/4/5`、`max_consecutive=4/5/6` 與 `liquidity=500M` 共 `36` 組後，沒有任何候選通過全部 gate。最佳 compare-only 錨點是 `top3 / breadth4 / maxconsec5 / liq500M`：full IR 約 `1.141`、MDD 約 `-22.67%`、3x IR 約 `1.114`、min rolling IR 約 `0.264`，比 current baseline 的 min rolling IR `0.104` 與 MDD `-27.97%` 好，但 max rolling top3 group share 仍約 `97.38%`，所以不能升級。
-- `top3 / breadth4 / maxconsec5 / liq500M` 的 raw / adjusted comparison artifact 已補上。這組設定在 raw 版 full 1x `IR 1.236 / MDD -21.93%`，adjusted 版 full 1x `IR 1.141 / MDD -22.67%`，adjusted excess 反而較高但 IR 小降；最弱 adjusted rolling IR 是 `roll02 = 0.264`，比 current baseline 的 `0.104` 好。不過 adjusted full-window top3 group share 仍約 `92.78%`，rolling 最高約 `97.38%`，因此它只能升為下一個 compare anchor，不能升級為 keep。
-- Group regime validation 已正式化為 `tools\portfolio_rotation_group_regime_validation.py`。針對 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的 artifact 顯示 gate 失敗：full + 6 個 rolling windows 全部 high concentration，`7 / 7` 都是 `return_regime_dominated`，不是單純長期高曝險。最弱 IR window 是 `roll02 = 0.264`，其中 `shipping` 平均權重只有約 `10.43%`，但貢獻占比約 `70.86%`；最嚴重 top3 group window 是 `roll03 = 97.38%`。這表示單純 group cap 或固定刪 group 很可能傷害 edge，下一步要改做更高品質股票池或 group-level regime / breadth validation。
-- Group breadth validation 已正式化為 `tools\portfolio_rotation_group_breadth_validation.py`。同一組 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的 artifact 顯示 gate 仍失敗：`7 / 7` high concentration，`4 / 7` 是 broad group momentum，`2 / 7` 是 `shipping` 單成員 dominant，`1 / 7` 是 `electronics` narrow breadth。最弱 breadth window 是 `roll03`，electronics 平均正動能成員比例約 `58.82%`；最弱 IR window 仍是 `roll02 = 0.264`，且 dominant group 是單成員 `shipping`。這代表目前問題不是只靠 group cap 能修，也不是單純要找更高總報酬，而是要改善股票池品質、降低 realized group contribution concentration，並處理單成員群組風險。
-- Promotion gate 已正式化為 `tools\portfolio_rotation_promotion_gate.py`。它把 adjusted summary、raw/adjusted comparison、group regime validation 與 group breadth validation 合併成單一 `keep` / `compare-only` gate。2026-05-24 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的結果仍是 `compare-only`：full 1x IR 約 `1.141`、3x IR 約 `1.114`，但 min rolling IR 只有約 `0.264`，max rolling top3 symbol share 約 `81.40%`，max rolling top3 group share 約 `97.38%`，且 group regime / breadth gate 都失敗。
-- 單成員群組事前 gate 已測。`--min-symbols-per-selected-group 2` 會把 `shipping/2603` 這類單成員群組排除；在 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 上，full IR 從前一個錨點約 `1.141` 降到約 `0.759`，3x IR 降到約 `0.729`，`roll02` excess 轉為約 `-34.76%`、IR 約 `-0.994`。因此此參數作為 ablation 工具 keep，但 `2` 這個策略設定 discard。
-- `--ranking-skip-bars` 已測。它把 skip-recent-period / intermediate momentum 概念轉成 deterministic 參數：TWSE16 adjusted 在同一 `top4 / breadth42-min3 / maxconsec5 / liq500M` 下，`skip0` full IR 約 `0.863`、min rolling IR 約 `-1.123`、min rolling excess 約 `-29.26%`；`skip5` full IR 約 `0.758`、min rolling IR 約 `-1.159`；`skip10` full IR 約 `1.186`、3x IR 約 `1.158`、MDD 約 `-27.80%`、min rolling IR 約 `-0.856`、min rolling excess 約 `-22.55%`；`skip21` full IR 只剩約 `0.242`、min rolling IR 約 `-1.413`。因此功能與 `skip10` compare-only 錨點 keep，`skip21` discard；但 `skip10` 仍因 rolling edge 與 group concentration 失敗，不能升級。
-- `--ranking-mode group-residual` 已測。這是 residual momentum 的簡化版本，用 `個股動能 - 同組平均動能` 排序，但仍要求原始動能大於 `min_return`。TWSE16 adjusted `skip0 + group-residual` 的 full IR 約 `0.760`、MDD 約 `-34.39%`、min rolling IR 約 `-1.552`，明顯比 baseline 差；`skip10 + group-residual` 的 full IR 約 `1.059`、3x IR 約 `1.031`、MDD 約 `-35.83%`、min rolling IR 約 `-0.852`、min rolling excess 約 `-22.91%`、max rolling top3 group share 仍是 `100%`。因此工具 keep as compare tool，但 TWSE16 小池的 group-residual 設定不升級，且相對 `skip10 total-return` 屬 current improvement discard。
-- `top_n=4` 可把 full-window top-3 絕對貢獻占比降到約 `48.32%`，但 max rolling top-3 share 仍約 `81.68%`，所以它改善 full-window 集中度，還沒有解決最關鍵的 rolling concentration。
-- `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 績效 compare candidate：full-window IR 約 `1.515`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、min rolling IR 約 `0.814`；但 max rolling top-3 share 仍約 `82.62%`。
-- 新增 liquidity gate 後，`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 暫時是 execution-aware compare candidate：full-window return 約 `1745.89%`、excess 約 `1409.71%`、IR 約 `1.521`、MDD 約 `-18.61%`、active MDD 約 `-19.81%`，3x 成本後 IR 仍約 `1.490`。但 max rolling top-3 share 仍約 `82.62%`，所以它不是 concentration 修復。
-- 擴到 TWSE23 後，concentration 明顯下降但 edge 變弱：`top4/min3/maxconsec5` 的 max rolling top-3 share 降到約 `65.32%`，但 full IR 降到約 `1.179`、MDD 惡化到約 `-36.64%`、min rolling excess 約 `-17.99%`。`top5/min5` 的 max rolling top-3 share 進一步降到約 `56.62%`，但 min rolling IR 約 `-0.265`，所以只能作 concentration diagnostic。
-- 擴到 TWSE35 後，`skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` adjusted baseline 變成目前最強 compare-only anchor：full IR 約 `1.685`、3x IR 約 `1.668`、min rolling IR 約 `0.429`、min rolling excess 約 `11.33%`。但 full MDD 約 `-37.80%`、active MDD 約 `-29.98%`、full top3 group share 約 `93.49%`、max rolling top3 group share 仍到 `100%`，promotion gate 仍失敗。
-- TWSE35 `min_symbols_per_selected_group=2` 已正式測過：full IR 降到約 `1.431`，min rolling IR 轉為約 `-1.482`、min rolling excess 約 `-37.95%`，雖移除 single-member dominant failure，但把 `roll02` 打回負值，因此 discard as improvement。
-- Realized group contribution gate 已正式接進工具並測過。`gcontrib21/share0.90` 用過去 21 根已完成 bar 的群組絕對貢獻占比排除超過 `90%` 的群組；它把 TWSE35 adjusted full IR 提到約 `1.742`、3x IR 約 `1.721`，MDD 改到約 `-32.91%`、active MDD 改到約 `-25.13%`，但 min rolling IR 轉為約 `-0.022`、min rolling excess 約 `-5.93%`，max rolling top3 group share 仍約 `98.08%`，promotion gate 仍是 `compare-only`。因此功能 keep as diagnostic / compare tool，當前設定 discard as strategy upgrade；後續不要只微調 contribution threshold 或 lookback。
-- Re-entry cooldown 已正式接進工具並測過。TWSE35 adjusted `reentry6` 把 MDD 改到約 `-28.76%`、active MDD 改到約 `-25.74%`，min rolling excess 提高到約 `18.63%`，但 full IR 降到約 `1.046`、min rolling IR 精確值約 `0.4996`，max rolling top3 group contribution 仍可到 `100%`，promotion gate 仍是 `compare-only`。因此功能 keep as diagnostic / compare tool，當前設定不能升級。
-- Balanced-quality universe selector 已正式接進工具並測過。TWSE35 audit eligible rows 經 `min_eligible_members_per_group=2`、`max_symbols_per_group=4` 選出 16 檔後，adjusted full IR 約 `1.460`、active MDD 約 `-21.80%`，但 min rolling IR 轉為約 `-0.367`、min rolling excess 轉為約 `-12.11%`；更嚴格的 `max_symbols_per_group=3` 也讓 min rolling IR 約 `-0.691`。因此 selector 工具 keep，但目前 balanced-quality 子股票池 discard as strategy upgrade。
-- TWSE44 thin-group expansion 已測。新增 `1103,1210,1227,1229,2023,2027,2609,2615,4904` 後，audit 顯示 `shipping` 有 `2603,2609,2615` 三檔 eligible、`steel` 有 `2002,2027` 兩檔 eligible、`telecom` 有 `2412,3045` 兩檔 eligible；但 `cement` 與 `food` 仍各只有一檔通過 `500M` liquidity gate。`TWSE44 selected21` 讓 single-member dominant window 降到 `0`，這個資料與流程 keep；但 adjusted full IR 只約 `1.172`、MDD 約 `-53.82%`、active MDD 約 `-42.76%`、min rolling IR 約 `-0.438`、min rolling excess 約 `-23.81%`，promotion gate 仍是 `compare-only`。`groupcap2` 也只把 MDD 改到約 `-48.76%`，min rolling IR 仍約 `-0.270`。因此 TWSE44 / groupcap2 只能作 compare-only，discard as current strategy upgrade。
-- TWSE35 market regime risk-off 已測。`regime63` 可把 MDD 改到約 `-26.55%`，full IR 與 3x IR 仍強，但 min rolling IR 只有約 `0.383`，且 group concentration 仍未解；長 SMA 版本會讓 rolling excess 轉負。結論是：短 SMA market regime keep as compare-only overlay，discard as current strategy upgrade，不要繼續只掃更長 SMA。
-- 因為分段貢獻仍偏集中、調整價版本明顯降級、股票池與資料邊界仍有限，所以仍不能宣稱穩定營利。
-- 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
-- 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
+- 股票池太小時，結果容易被少數個股或少數產業主導。
+- 未調整價資料可能高估策略品質，需做 raw / adjusted 對照。
+- 高 turnover 會放大手續費、滑價與稅費。
+- 只看 full-window 報酬不夠，必須檢查 rolling / OOS、MDD、IR、attribution 與成本壓力。
 
 ## 下一步
 
-- 已測 `top4 + breadth 42/min3` 的單檔連續入選上限。`max consecutive 5` 讓 full-window IR 約 `1.515`、min rolling IR 約 `0.814`，比無上限 `top4` 更強；但 max rolling top-3 share 仍約 `82.62%`，沒有真正壓低 rolling concentration。
-- 已測 sector/group cap。`groupcap2` full IR 約 `1.449`，但 min rolling IR 降到約 `0.610`，max rolling top-3 share 仍約 `81.68%`；`groupcap1` 傷害 edge。因此 group cap 只保留為可測工具，不作目前主候選。
-- 已測 TWSE23 擴大股票池。它把 rolling concentration 往下壓，但同時讓 min rolling excess / IR 轉弱，因此不升級；下一步不要只把股票池加大，應改善股票池品質、資料調整與流動性條件。
-- 已測 liquidity / capacity gate。`500M/20 bars` 幾乎不傷害原策略並小幅改善 active MDD，因此升為 execution-aware compare candidate；`1B` 雖提高報酬但回撤與 rolling IR tradeoff 較差，`2B` 明確 discard。
-- 已測 dominant group exclusion。固定移除單一群組不是解法：`no shipping` 讓 rolling edge 失效，`no electronics` 讓 full-window edge 大幅衰退，`no semiconductor` 雖保留 rolling edge 但回撤與 concentration 惡化。
-- 已測 canary universe。Canary9 的 full-window excess / IR 轉負，MDD 到約 `-44.29%`，rolling concentration 比 TWSE14 baseline 更糟，因此目前策略仍是 compare-only。
-- 已測 adjusted price，且已用 batch manifest 重建 TWSE14 adjusted CSV 後重跑同一候選。以 Yahoo 調整係數套回 TWSE OHLCV 後，full IR 仍只有約 `1.156`，MDD 惡化到約 `-27.97%`，min rolling IR 只剩約 `0.104`，top3 group share 約 `91.29%`，因此目前策略品質要按 adjusted-ratio 版本降級解讀。
-- Raw / adjusted comparison artifact 已補上。下一步優先用這個 artifact 作為策略品質 gate，再較慢批次完成 TWSE30+、更高品質股票池、group regime validation 或更嚴格的流動性/容量條件，目標是同時降低 rolling `max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`、`max_group_abs_contribution_share`、`top3_group_abs_contribution_share` 與 group exposure concentration，並保留正 min rolling excess 與可接受 active drawdown。
-- Adjusted grid search、`top3 / breadth4 / maxconsec5 / liq500M` raw/adjusted comparison artifact、group regime validation 與 group breadth validation 已補上。下一步不要繼續擴同一組 top-N / breadth / max-consecutive 小網格；優先做更高品質股票池、TWSE30+ raw/adjusted 共同 gate，或直接設計能限制 realized group contribution concentration / 單成員群組依賴的 gate。
-- Promotion gate 已補上。下一輪策略若要升級，不只要報 summary 指標，還要讓 promotion gate 同時通過 rolling IR、rolling excess、drawdown、symbol concentration、group concentration、raw/adjusted 降級、group regime 與 group breadth 檢查。
-- `min_symbols_per_selected_group=2` 已在 TWSE14 / TWSE35 都 discard；後續只有在擴大股票池、讓原本單成員群組有足夠同群組代表，且不犧牲 `roll02` edge 後，才值得重新打開這個 gate。
-- `ranking_skip_bars=10` 已保留為 compare-only 錨點，但不要把 skip 當成 concentration 修復；下一步若要繼續用它，應和 TWSE30+ / 更高品質股票池或 realized contribution gate 一起測，而不是繼續在 TWSE16 小池微調 skip 長度。
-- `ranking_mode=group-residual` 已在 TWSE16 小池失敗；後續只有在 TWSE30+ 或更完整產業成員數下才值得重測，不要把它和目前小股票池結果包裝成 residual momentum 有效。
-- `group_contribution_lookback_bars` / `max_group_contribution_share` 已測第一輪。21-bar / 90% 雖改善 full-window IR 與 drawdown，但 rolling excess 轉負；63-bar variants 更差。re-entry cooldown 也已測過但未通過 promotion gate；下一步若要處理 group concentration，應先改善股票池替代性與 group breadth，而不是繼續掃 contribution gate 門檻。
-- `reentry_cooldown_rebalances` 已測第一輪。`6` 可改善 MDD、active MDD 與 rolling excess，但沒有讓 promotion gate 通過；後續不要繼續掃 cooldown 長度，應先改善股票池替代性與 group breadth。
-- `portfolio_rotation_universe_select.py` 已測第一輪。只從既有 TWSE35 中篩出 balanced-quality 子股票池會讓 rolling edge 轉負；後續若要用 selector，應先補足 singleton / thin groups 的替代標的，再重新 audit 與 selection。
-- TWSE44 thin-group expansion 已把 `shipping` 與 `steel` 的替代性補起來，但 adjusted rolling edge 與 drawdown 變差。下一步不要只補低流動性 food / cement，也不要只加 group cap；要轉向可驗證的 drawdown / risk-off、market / industry regime filter，或搜尋新的策略 family。
-- TWSE35 `market_regime_filter` 已測第一輪。`SMA63` 是目前最好的 risk-off 對照，但 promotion gate 仍是 `compare-only`；後續不要只掃更長 market SMA，應改測 shipping regime 風險、industry breadth / market breadth，或搜尋新的策略 family。
-- TWSE35 `group_breadth_filter` 已測第一輪。`gb21/share0.50/min1` 把 full IR 提到約 `1.867`、3x IR 約 `1.848`、min rolling IR 約 `0.759`、min rolling excess 約 `34.86%`、active MDD 約 `-20.18%`，是目前最強 compare-only anchor；但 full MDD 仍約 `-32.85%`，max rolling top3 group share 仍到 `100%`，group regime / breadth gate 仍失敗，所以不能升級為主候選。
-- TWSE35 `group_regime_filter` 已測第一輪。`gb21/share0.50/min1 + greg21/r0.00` 把 full IR 提到約 `2.005`、3x IR 約 `1.987`、min rolling IR 約 `1.034`、min rolling excess 約 `48.53%`、active MDD 約 `-19.44%`，是目前最強 compare-only anchor；但 full MDD 仍約 `-32.85%`，max rolling top3 group share 仍約 `99.09%`，group regime / breadth validation 仍失敗，所以不能升級為穩定營利候選。
-- 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
-- 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
-- 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
-- 目前主比較錨點分成七個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是 execution-aware compare candidate；TWSE35 `skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` 是 expanded-universe compare-only anchor；TWSE35 `gb21/share0.50/min1` 是 group-breadth compare-only anchor；TWSE35 `gb21/share0.50/min1 + greg21/r0.00` 是目前最強 group-regime compare-only anchor。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、TWSE35 `mingrp2`、group attribution、group exposure、dominant group exclusion、canary universe 與 adjusted batch 診斷保留為 discard / compare-only / diagnostic 對照；其中 adjusted-ratio 版本應成為後續品質判斷的主要風險版本，不取代核心錨點，也不是穩定營利證明。
-
-## 參考來源
-
-- Goyal and Jegadeesh, Cross-Sectional and Time-Series Tests of Return Predictability: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2610288
-- Antonacci, Absolute Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2244633
-- Jegadeesh and Titman, Returns to Buying Winners and Selling Losers: https://www.jstor.org/stable/2328882
-- Jegadeesh and Titman PDF mirror, Returns to Buying Winners and Selling Losers: https://www.bauer.uh.edu/rsusmel/phd/jegadeesh-titman93.pdf
-- Blitz, Huij and Martens, Residual Momentum: https://pure.eur.nl/en/publications/residual-momentum/
-- Daniel and Moskowitz, Momentum Crashes: https://www.nber.org/papers/w20439
-- Moskowitz and Grinblatt, Do Industries Explain Momentum?: https://www.andreisimonov.com/Microstr_PhD/MSU_09/MoskowitzGrinblatt99.pdf
-- Keller and Keuning, Protective Asset Allocation (PAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2759734
-- Keller and Keuning, Breadth Momentum and Vigilant Asset Allocation (VAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3002624
-- Keller and Keuning, Defensive Asset Allocation (DAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3212862
-- Moskowitz and Grinblatt, Do Industries Explain Momentum?: https://doi.org/10.1111/0022-1082.00146
+- 對每個候選先跑 universe audit，再跑 sweep / grid search。
+- group breadth / group regime / group contribution 的使用方式集中在 [[Portfolio Rotation Group Gates]]。

@@ -104,7 +104,7 @@ python -m signal_forge.cli fetch-data `
 $Csv = "data\processed\TWSE_2330_1D.csv"
 ```
 
-用 default parameter 跑四個日線策略：
+用 default parameter 跑四個日線策略；intraday ORB 需要 5 分 K 或其他含時間戳的 intraday CSV，見下方單獨範例：
 
 ```powershell
 python -m signal_forge.cli entry-edge --csv $Csv --strategy sma-crossover
@@ -124,6 +124,17 @@ python -m signal_forge.cli entry-edge --csv $Csv --strategy absolute-momentum
 ## 策略呼叫方式
 
 SignalForge 的 CLI 策略參數都在 `src\signal_forge\cli\strategy_options.py` 註冊，策略 factory 在 `src\signal_forge\strategies\registry.py`。未填的參數會使用該策略自己的 default。
+
+### 先分清楚：策略、wrapper 與 portfolio gate
+
+| 類型 | 呼叫方式 | 目前項目 | 主要位置 |
+|---|---|---|---|
+| 單檔策略 | `--strategy <name>` | `sma-crossover`、`vwap-reversion`、`confluence-score`、`absolute-momentum`、`orb-volume-vwap` | `src\signal_forge\strategies\registry.py` |
+| Entry wrapper | 加在 `entry-edge` / `phase` 的策略外層 | `--volume-filter`、`--signal-cooldown-bars` | `src\signal_forge\cli\strategy_options.py` |
+| Target-state overlay | 加在 `tools\multi_stock_target_state_sweep.py` | `--volatility-target`、`--drawdown-risk-off`、`--relative-momentum-filter` | `tools\multi_stock_target_state_sweep.py` |
+| Portfolio rotation gate | 加在 `tools\portfolio_rotation_sweep.py` | market regime、breadth、group breadth、group regime、liquidity、group cap、re-entry cooldown、group contribution | `tools\portfolio_rotation_sweep.py` |
+
+因此，不是所有新增研究功能都會出現在 `--strategy` 清單。`--strategy` 只負責產生底層訊號；wrapper / overlay / gate 會在底層訊號或投組權重外面再加控制條件。
 
 ### SMA Crossover
 
@@ -334,20 +345,23 @@ python -m signal_forge.cli entry-edge `
 
 ## Wrapper 與共用參數
 
-這些不是獨立策略，而是包在底層策略外面的研究控制。
+這些不是獨立策略，而是包在底層策略外面的研究控制。使用時先選一個 `--strategy`，再依研究問題加 wrapper 或 sweep gate。
 
-| Wrapper / 參數 | 預設 | 用途 |
-|---|---:|---|
-| `--volume-filter` | 關閉 | 只有成交量高於相對門檻時才保留 long signal |
-| `--volume-window` | `20` | 成交量 SMA 視窗 |
-| `--volume-multiplier` | `1.2` | 成交量需達均量倍數 |
-| `--signal-cooldown-bars` | 關閉 | 接受 long entry 後，封鎖指定 bar 數內的新 long entry |
-| `--hold-bars-per-day` | `1` | entry-edge 固定持有幾根 bar |
-| `--hold-bars-list` | 關閉 | 產生多持有期比較報表，例如 `1,3,5,10` |
-| `--commission-bps` | `1` | 單邊手續費 bps |
-| `--slippage-bps` | `1` | 單邊滑價 bps |
-| `--transaction-tax-bps` | `0` | 賣出交易稅 bps |
-| `--pass-profit-factor` | `1.2` | Entry-edge 初篩 PF 門檻 |
+| Wrapper / 參數 | 預設 | 適用命令 | 用途 |
+|---|---:|---|---|
+| `--volume-filter` | 關閉 | `entry-edge`、`phase` | 只有成交量高於相對門檻時才保留 long signal |
+| `--volume-window` | `20` | `entry-edge`、`phase` | 成交量 SMA 視窗 |
+| `--volume-multiplier` | `1.2` | `entry-edge`、`phase` | 成交量需達均量倍數 |
+| `--signal-cooldown-bars` | 關閉 | `entry-edge`、`phase`、target-state sweep | 接受 long entry 後，封鎖指定 bar 數內的新 long entry |
+| `--volatility-target` | 關閉 | target-state sweep、portfolio rotation | realized volatility 高於目標時只降曝險、不加槓桿 |
+| `--drawdown-risk-off` | 關閉 | target-state sweep | 單檔 proxy equity 回撤破門檻後暫時 flat |
+| `--relative-momentum-filter` | 關閉 | target-state sweep | 只允許同日相對動能 top-N 股票保留非零曝險 |
+| `--hold-bars-per-day` | `1` | `entry-edge` | entry-edge 固定持有幾根 bar |
+| `--hold-bars-list` | 關閉 | `entry-edge` | 產生多持有期比較報表，例如 `1,3,5,10` |
+| `--commission-bps` | `1` | 多數回測工具 | 單邊手續費 bps |
+| `--slippage-bps` | `1` | 多數回測工具 | 單邊滑價 bps |
+| `--transaction-tax-bps` | `0` | 多數回測工具 | 賣出交易稅 bps |
+| `--pass-profit-factor` | `1.2` | `entry-edge` | Entry-edge 初篩 PF 門檻 |
 
 成交量濾網範例：
 
@@ -435,6 +449,20 @@ python tools\multi_stock_entry_edge_sweep.py `
 
 用完整 target exposure 回測，包含成本壓力、風控 overlay 與 walk-forward / OOS：
 
+精簡版：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --strategy absolute-momentum `
+  --summary-json reports\generated\target-state-default.json `
+  --summary-md reports\generated\target-state-default.md
+```
+
+完整版：
+
 ```powershell
 python tools\multi_stock_target_state_sweep.py `
   --csv data\processed\TWSE_2330_1D.csv `
@@ -451,6 +479,10 @@ python tools\multi_stock_target_state_sweep.py `
   --drawdown-risk-off `
   --drawdown-risk-off-threshold 0.25 `
   --drawdown-risk-off-bars 120 `
+  --relative-momentum-filter `
+  --relative-momentum-lookback-bars 126 `
+  --relative-momentum-top-n 3 `
+  --relative-momentum-min-return 0 `
   --walk-forward-windows is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20 `
   --summary-json reports\generated\target-state.json `
   --summary-md reports\generated\target-state.md
@@ -491,16 +523,39 @@ python tools\portfolio_rotation_sweep.py `
   --csv data\processed\TWSE_2882_1D.csv `
   --csv data\processed\TWSE_2891_1D.csv `
   --csv data\processed\TWSE_3711_1D.csv `
+  --symbol-group 1301:plastics `
+  --symbol-group 1303:plastics `
+  --symbol-group 2303:semiconductor `
+  --symbol-group 2308:electronics `
+  --symbol-group 2317:electronics `
+  --symbol-group 2330:semiconductor `
+  --symbol-group 2382:electronics `
+  --symbol-group 2412:telecom `
+  --symbol-group 2454:semiconductor `
+  --symbol-group 2603:shipping `
+  --symbol-group 2881:financial `
+  --symbol-group 2882:financial `
+  --symbol-group 2891:financial `
+  --symbol-group 3711:semiconductor `
   --start 2020-01-01 `
   --end 2026-05-20 `
   --cost-multipliers-list 1,2,3 `
   --rebalance-frequency monthly `
   --lookback-bars 21 `
+  --ranking-skip-bars 10 `
   --top-n 4 `
   --min-return 0 `
   --breadth-filter `
   --breadth-lookback-bars 42 `
   --breadth-min-positive-count 3 `
+  --group-breadth-filter `
+  --group-breadth-lookback-bars 21 `
+  --group-breadth-min-positive-share 0.50 `
+  --group-breadth-min-members 1 `
+  --group-regime-filter `
+  --group-regime-lookback-bars 21 `
+  --group-regime-min-return 0 `
+  --group-regime-min-members 1 `
   --max-consecutive-selections-per-symbol 5 `
   --liquidity-lookback-bars 20 `
   --min-average-traded-value 500000000 `
@@ -510,6 +565,19 @@ python tools\portfolio_rotation_sweep.py `
   --summary-json reports\generated\portfolio-rotation.json `
   --summary-md reports\generated\portfolio-rotation.md
 ```
+
+Portfolio rotation gate 速查：
+
+| Gate | 預設 | 需要 `--symbol-group` | 解讀 |
+|---|---:|---|---|
+| `--market-regime-filter` | 關閉 | 否 | 市場等權 index 跌破 SMA 時持現金 |
+| `--breadth-filter` | 關閉 | 否 | 正動能股票數不足時持現金 |
+| `--group-breadth-filter` | 關閉 | 是 | 候選股票所屬群組內部正動能比例不足時排除 |
+| `--group-regime-filter` | 關閉 | 是 | 候選股票所屬群組等權 lookback return 不足時排除 |
+| `--max-selections-per-group` | 關閉 | 是 | 限制同一群組每次最多入選幾檔 |
+| `--min-symbols-per-selected-group` | `1` | 是 | 阻擋單成員群組依賴 |
+| `--reentry-cooldown-rebalances` | `0` | 否 | 股票退出後等待 N 次 rebalance 才能再入選 |
+| `--group-contribution-lookback-bars` + `--max-group-contribution-share` | 關閉 | 是 | 用已實現群組貢獻集中度暫時排除過度主導的群組 |
 
 ### 調整價資料與 raw / adjusted 對照
 

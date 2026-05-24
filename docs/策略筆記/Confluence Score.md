@@ -3,85 +3,96 @@ title: Confluence Score
 tags:
   - project/SignalForge
   - trading/strategy
-  - trading/multi-factor
+  - trading/confluence
 status: research
-updated: 2026-05-23
+updated: 2026-05-24
 repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\confluence_score.py
 ---
 
 # Confluence Score
 
+## 快速定位
+
+| 問題 | 答案 |
+|---|---|
+| CLI 名稱 | `confluence-score` |
+| 適用資料 | 日線 OHLCV |
+| 策略型態 | long-only 多條件打分 |
+| 實作位置 | `src\signal_forge\strategies\confluence_score.py` |
+| 參數入口 | `src\signal_forge\cli\strategy_options.py` |
+
 ## 先懂這些詞
 
-- **Confluence / 共振**：多個條件同時指向同一個方向。例如趨勢偏多、價格在均線上方、動能也偏強，就叫偏多條件共振。
-- **Score / 分數**：把每個條件轉成加分或扣分。分數越高，代表越多條件偏多；分數越低，代表越多條件偏空。
-- **Threshold / 門檻**：分數要高到什麼程度才行動。這個策略預設 `threshold=3.0`，代表至少要累積到 3 分才做多。
-- **SMA（Simple Moving Average，簡單移動平均）**：最近 N 天收盤價平均。`fast_sma` 比較短、反應較快；`slow_sma` 比較長、反應較慢。
-- **VWAP（Volume Weighted Average Price，成交量加權平均價）**：成交量越大的價格權重越高，用來近似一段期間內市場主要成交成本。
-- **Rolling VWAP / 滾動 VWAP**：每一天只看最近 N 天重新計算 VWAP。這裡用來判斷價格是在近期成交成本上方還是下方。
-- **RSI（Relative Strength Index，相對強弱指標）**：衡量近期上漲與下跌力量的動能指標。這份策略用 `RSI >= 55` 當偏多動能，`RSI <= 45` 當偏空動能。
-- **Volume confirms / 量能確認**：如果今天成交量高於近期平均，且價格上漲，就視為上漲有量能支持；如果放量下跌，就視為偏空確認。
-- **相對成交量 / Relative volume**：把今天成交量和近期平均量比較。Confluence Score 本身已使用量能確認；可選成交量過濾器則是在策略外層再要求 `volume >= sma(volume, 20) * 1.2` 才允許 positive target。
-- **`target_position` / 目標部位**：策略想要的持倉狀態。`1.0` 代表應該持有多單，`0.0` 代表空手，`-1.0` 代表做空；目前 CLI 固定 long-only，所以只看 `1.0` 和 `0.0`。
-- **Warmup / 暖機期**：資料還不夠算 SMA、RSI、VWAP 或平均成交量的期間。
+- **Confluence**：多個條件同時支持同一方向。
+- **Score threshold**：分數達到門檻才進場。
+- **RSI**：衡量近期漲跌強弱的震盪指標。
+- **VWAP / SMA**：用平均成本與均線確認價格位置。
 
 ## 策略假設
 
-Confluence Score 是多條件打分策略。它不依賴單一指標，而是把趨勢、價格位置、VWAP、RSI 動能與量能確認加總成 score。只有當多個條件同時偏多，分數達到 threshold，才產生做多訊號。
+單一指標很容易被雜訊騙到；如果趨勢、價格位置、VWAP、RSI 與量能方向同時偏多，訊號品質可能比單一 SMA 或單一 VWAP 更穩。這個策略把多個條件加總成分數，達門檻才 long。
 
-策略假設是：單一指標很容易誤判，但多個互補條件同時成立時，進場品質應更高。風險是因子越多，越容易變成主觀調參或 overfit；score 高只代表條件共振，不代表一定有 edge。
+## 進出場規則
 
-## 進出場條件
+| 條件類型 | 加分語意 |
+|---|---|
+| 快均線高於慢均線 | 趨勢偏多 |
+| close 高於 slow SMA | 價格仍在中期趨勢上方 |
+| close 高於 rolling VWAP | 價格站上平均成交成本 |
+| RSI 未過熱且偏強 | 避免只追極端過熱 |
+| 成交量支持 | 訊號有參與度 |
 
-warmup 階段若任一指標尚未形成，輸出 `target_position=0.0`，reason 為 `warmup`。
-
-形成指標後，每根 bar 依下列條件加減分：
-
-- `fast_sma > slow_sma`：`+1`，reason 加 `trend_up`；否則 `-1`，reason 加 `trend_down`。
-- `close > slow_sma`：`+1`，reason 加 `above_slow_sma`；否則 `-1`，reason 加 `below_slow_sma`。
-- `close > vwap`：`+1`，reason 加 `above_vwap`；否則 `-1`，reason 加 `below_vwap`。
-- `rsi >= 55`：`+1`，reason 加 `momentum_positive`。
-- `rsi <= 45`：`-1`，reason 加 `momentum_negative`。
-- 若當日量大於 fast-window 平均量，且收盤高於前一日收盤：`+1`，reason 加 `volume_confirms_up`。
-- 若當日量大於 fast-window 平均量，且收盤低於前一日收盤：`-1`，reason 加 `volume_confirms_down`。
-
-當 `score >= threshold` 時，`target_position=1.0`。實作在 `allow_short=True` 且 `score <= -threshold` 時可做空；目前 CLI 固定 long-only，所以不啟用 short。
-
-可選的成交量過濾器是外層 wrapper。它不改 score 計算；若 score 已達做多門檻，但當日成交量未達 `20` 日均量的 `1.2` 倍，wrapper 會把 positive target 改成 `0.0`。
+分數達到 `threshold` 時 `target_position=1.0`，否則維持 `0.0`。
 
 ## 主要參數
 
-- `fast_window` / CLI `--fast-window`：預設 `20`。
-- `slow_window` / CLI `--slow-window`：預設 `50`。
-- `rsi_window` / CLI `--rsi-window`：預設 `14`。
-- `vwap_window` / CLI `--vwap-window`：預設 `20`。
-- `threshold` / CLI `--threshold`：預設 `3.0`。
-- `allow_short`：實作預設支援，但 CLI 目前固定 `False`。
-- 可選成交量過濾器：CLI 使用 `--volume-filter --volume-window 20 --volume-multiplier 1.2`，實作位置是 `C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py`。
-- 可選進場冷卻：CLI 使用 `--signal-cooldown-bars 10`，接受 long entry 後 10 根 bar 內封鎖新的 long entry；這只影響新的進場，不強制平掉既有持倉。
-- entry-edge 評估：訊號於 bar close 後確認，下一根 open 進場，固定持有 `hold_bars_per_day=1` 後以 exit bar close 出場。
+| 參數 | 預設 | CLI | 用途 |
+|---|---:|---|---|
+| `fast_window` | `20` | `--fast-window` | 短期趨勢 |
+| `slow_window` | `50` | `--slow-window` | 中期趨勢 |
+| `rsi_window` | `14` | `--rsi-window` | RSI 視窗 |
+| `vwap_window` | `20` | `--vwap-window` | rolling VWAP 視窗 |
+| `threshold` | `3.0` | `--threshold` | 進場分數門檻 |
+
+## 怎麼跑
+
+精簡版：
+
+```powershell
+$Csv = "data\processed\TWSE_2330_1D.csv"
+python -m signal_forge.cli entry-edge --csv $Csv --strategy confluence-score
+```
+
+完整版：
+
+```powershell
+python -m signal_forge.cli entry-edge `
+  --csv $Csv `
+  --strategy confluence-score `
+  --fast-window 20 `
+  --slow-window 50 `
+  --rsi-window 14 `
+  --vwap-window 20 `
+  --threshold 3.0 `
+  --signal-cooldown-bars 10 `
+  --hold-bars-list 1,3,5,10 `
+  --output-dir reports\generated `
+  --run-name tsmc-confluence-cooldown10
+```
 
 ## 股價走勢解說圖
 
 ![[assets/confluence-score-trend-explainer.png]]
 
-圖中用合成走勢說明：主圖呈現 price、SMA 與 VWAP；下方面板顯示 score bars。只有當多個條件共振，使 score 超過門檻時，才標示 entry。此圖為 image generation 產生的教學示意圖，不是真實市場資料，也不代表績效保證。
+圖中用示意走勢說明：多個條件同時偏多時才進場，避免只靠單一指標追價。此圖不是績效保證。
 
 ## 風險與限制
 
-- 因子越多，越容易 overfit。
-- 權重目前都是固定 `+1/-1`，沒有經過嚴格因子貢獻驗證。
-- threshold 若靠單一標的調整，容易變成資料配適。
-- 即使跨多檔台股固定持有期測出較高 PF，也仍需先解決 signal overlap；否則高分訊號在完整持倉系統中到底要忽略、合併、加碼或重設持有期，語意仍不明確。
-- `signal_cooldown_bars=10` 可以把七檔台股 common-window sweep 的 total overlap 降到 `0`，但 worst max drawdown 仍可能比 baseline 更深，因此它是持倉語意候選，不是完整風控。
-- 成交量已經是 score 的一部分；若再套外層成交量過濾器，可能提高確認強度，也可能重複計算量能條件。
-- 交易頻率較高，對成本與滑價更敏感。
-- 目前不含停損、停利、部位管理或 regime filter。
+- 條件越多不一定越好，可能只是把同一類趨勢訊號重複加權。
+- `threshold` 太低會變成泛用趨勢策略，太高會造成交易數不足。
+- 需要用 [[Signal Cooldown]] 檢查重複訊號是否只是同一段行情被反覆計算。
 
 ## 下一步
 
-- 多檔台股的 `hold=10` entry-edge 顯示這個策略更像中段趨勢跟隨，而不是隔日 bounce；目前主候選是 `hold=10 + signal_cooldown_bars=10`，下一步應優先檢查 drawdown 來源與風控，而不是只追更高 PF。
-- 檢查 score 組成，拆解哪些 reason 對勝率或 PF 有實際貢獻。
-- 比較「score 內部量能確認」與「外層 volume filter」各自的貢獻，避免重複濾網造成過度配適。
-- 測試不同 threshold 與交易頻率、最大回撤之間的關係。
-- 將 score 分布寫入 backtest artifact，讓多因子訊號更容易稽核。
+- 先用多持有期比較確認訊號是否只在特定 hold bars 有效。
+- 若要升級條件，先檢查每個 score component 是否真的補到新資訊。

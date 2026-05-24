@@ -197,24 +197,28 @@ python tools\portfolio_rotation_promotion_gate.py `
 
 ## 策略蒸餾規則
 
-每個策略先整理成獨立策略筆記，並保留：
+每個策略先整理成獨立策略筆記，但策略筆記只保留可掃讀的策略語意；實驗結果、artifact 與 keep / discard / compare-only 決策留在 `docs\04-實驗記錄\`。
 
 - 策略名稱與 repo 實作位置。
-- 原始想法來源，例如 TradingView 腳本或研究假設。
-- Pine Script 版本與是否使用 `request.security`、pivot、realtime bar、lookahead。
-- 純多進場條件。
-- short、濾網、停損、停利、加碼、出場與倉位規則。
-- SignalForge 採用的第一階段參數。
-- 回測期間、資料來源、輸出 artifact 與驗證命令。
-- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 判斷該策略目前是 keep、discard 還是 compare-only。
+- 可直接呼叫的 CLI 名稱，或 wrapper / overlay / gate 參數。
+- 策略假設、專業術語、進出場或控制規則。
+- 主要參數、預設值與修改位置。
+- 精簡版與完整版命令。
+- 股價走勢或曝險狀態圖解。
+- 風險限制與下一步。
 
-第一批策略：
+目前策略與研究控制：
 
 - [[../策略筆記/SMA Crossover|SMA Crossover]]：趨勢追蹤 baseline。
 - [[../策略筆記/VWAP Reversion|VWAP Reversion]]：rolling VWAP 均值回歸。
 - [[../策略筆記/Confluence Score|Confluence Score]]：趨勢、VWAP、RSI、量能共振打分。
-- [[../策略筆記/Absolute Momentum|Absolute Momentum]]：長期趨勢持有候選，要求回看報酬為正且收盤站上長期 SMA；可搭配 volatility target、drawdown risk-off 與 relative-momentum stock-pool filter，但目前都只作 compare-only，不是主候選。
+- [[../策略筆記/Absolute Momentum|Absolute Momentum]]：長期趨勢持有候選，要求回看報酬為正且收盤站上長期 SMA。
+- [[../策略筆記/ORB + Volume + VWAP|ORB + Volume + VWAP]]：intraday 開盤區間突破候選，需含時間戳的 intraday CSV。
+- [[../策略筆記/Volume Filter|Volume Filter]]、[[../策略筆記/Signal Cooldown|Signal Cooldown]]：entry wrapper，用於量能確認與訊號去重。
+- [[../策略筆記/Volatility Target|Volatility Target]]、[[../策略筆記/Drawdown Risk-Off|Drawdown Risk-Off]]：target-state / portfolio 風控 overlay。
+- [[../策略筆記/Relative Momentum Stock-Pool Filter|Relative Momentum Stock-Pool Filter]]：多股票 target-state allowlist filter。
 - [[../策略筆記/Portfolio Relative Momentum Rotation|Portfolio Relative Momentum Rotation]]：投組層級相對動能輪動候選，避免用逐檔 B&H 指標誤判股票池 rotation。
+- [[../策略筆記/Portfolio Rotation Group Gates|Portfolio Rotation Group Gates]]：portfolio rotation 的 group breadth、group regime、group cap 與 group contribution 控制。
 
 ## 已完成里程碑摘要
 

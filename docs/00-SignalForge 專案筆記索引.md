@@ -71,7 +71,7 @@ updated: 2026-05-24
 |---|---|
 | `01-架構/` | 說明 SignalForge 的模組、資料流、PhaseMode、呼叫入口與 live dry-run 安全邊界。 |
 | `02-規劃/` | 放大框架方向、Phase 分期、資料準備、策略蒸餾規則、回測評估準則與下一步 backlog。 |
-| `策略筆記/` | 一種策略一份筆記，包含策略假設、進出場條件、風險、圖片解說。 |
+| `策略筆記/` | 策略、wrapper、overlay 與 portfolio gate 的掃讀型筆記，包含假設、控制規則、參數、呼叫方式、風險與圖片解說。 |
 | `03-程式疊代/` | 保存程式與 artifact contract 的疊代紀錄。 |
 | `04-實驗記錄/` | 保存 automation / backtest / 資料實驗結果。 |
 
