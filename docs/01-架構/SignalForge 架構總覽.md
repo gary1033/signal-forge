@@ -36,6 +36,7 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 | Group regime validation | `tools\portfolio_rotation_group_regime_validation.py` | 讀取 portfolio rotation summary，將 rolling group contribution concentration 與 group exposure 對齊，判斷集中度是長期高曝險、特定 group realized return regime，或混合來源。 |
 | Group breadth validation | `tools\portfolio_rotation_group_breadth_validation.py` | 讀取 portfolio rotation summary 與同一批 OHLCV CSV，檢查 dominant contribution group 的成員數、正動能廣度與平均成員 lookback return，判斷集中度是 broad group momentum、narrow group momentum 或 single-member dependency。 |
 | Promotion gate | `tools\portfolio_rotation_promotion_gate.py` | 讀取 portfolio rotation summary、raw/adjusted comparison、group regime validation 與 group breadth validation，合併 full-window、stress cost、rolling stability、資料調整降級與群組集中度診斷，輸出單一 `keep` / `compare-only` gate。 |
+| Universe audit | `tools\portfolio_rotation_universe_audit.py` | 在擴大 portfolio rotation 股票池前，檢查每檔歷史長度、平均成交金額、群組成員數與 adjusted CSV availability，避免 TWSE30+ 或高品質股票池只靠人工猜測。 |
 | Phase | `src\signal_forge\phase\` | 定義 `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。 |
 | Reporting | `src\signal_forge\reporting\` | 依 entry-edge、phase、signal digest、validator、markdown、paths 拆出 reporting API；`_legacy.py` 暫保留原 artifact contract 實作。 |
 | Readiness | `tools\phase_readiness_score.py` | bounded autoresearch 使用的輕量 deterministic readiness metric。 |

@@ -8475,3 +8475,123 @@ python tools\portfolio_rotation_sweep.py `
 - **Do not promote strategy**：full-window group concentration 仍高，top3 group share 約 `98.26%`；而且 stress 3x IR 只剩 `0.729`，低於 promotion gate 的 `0.75` stress threshold。
 - **Current state**：這輪證明「硬擋單成員群組」不是解法；單成員群組風險要靠更高品質股票池、TWSE30+、或更細的 group contribution / re-entry gate 處理。
 - **Next**：保留此參數作為 future ablation；下一輪不要把 `min_symbols_per_selected_group=2` 納入主候選，除非新股票池補足 shipping / telecom 等單成員群組後重新驗證。
+
+## 2026-05-24 Portfolio rotation universe audit
+
+### 目的
+
+上一輪證明硬擋單成員群組會讓 adjusted `roll02` 直接失效，因此這輪不再新增選股規則，而是把「股票池品質」本身做成 deterministic audit。目標是在 TWSE30+ 或更高品質股票池實驗前，先確認每檔股票是否有足夠歷史資料、平均成交金額、群組成員數與 adjusted CSV coverage。
+
+研究假設：
+
+> 如果 portfolio rotation 的下一步是更高品質股票池，就必須先把股票池選擇變成可重跑 artifact；否則擴大股票池只是另一種人工挑樣本，仍可能造成 overfitting 或 group concentration 假象。
+
+### 程式改動
+
+- 新增 `tools/portfolio_rotation_universe_audit.py`。
+- 新增 `tests/test_portfolio_rotation_universe_audit_tool.py`。
+- 工具會讀取多檔 OHLCV CSV，依固定日期窗計算：
+  - row count。
+  - first / last timestamp。
+  - 平均成交金額 `close * volume`。
+  - group member count。
+  - adjusted CSV 是否存在。
+  - 逐股 `eligible` / `diagnostic-only` decision 與 failure reasons。
+- Markdown / JSON 會同時輸出 group summary，讓單成員群組與 adjusted coverage 缺口在策略 sweep 前就可見。
+
+### 產生 artifact
+
+一般 TWSE23 universe audit：
+
+```powershell
+python tools\portfolio_rotation_universe_audit.py `
+  --csv data\processed\TWSE_1101_1D.csv `
+  --csv data\processed\TWSE_1102_1D.csv `
+  --csv data\processed\TWSE_1216_1D.csv `
+  --csv data\processed\TWSE_1301_1D.csv `
+  --csv data\processed\TWSE_1303_1D.csv `
+  --csv data\processed\TWSE_1326_1D.csv `
+  --csv data\processed\TWSE_2002_1D.csv `
+  --csv data\processed\TWSE_2207_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2327_1D.csv `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2357_1D.csv `
+  --csv data\processed\TWSE_2379_1D.csv `
+  --csv data\processed\TWSE_2382_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2603_1D.csv `
+  --csv data\processed\TWSE_2881_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --csv data\processed\TWSE_2891_1D.csv `
+  --csv data\processed\TWSE_3711_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --min-row-count 1200 `
+  --min-average-traded-value 500000000 `
+  --min-group-members 2 `
+  --adjusted-csv-dir reports\generated\adjusted-data `
+  --summary-json reports\generated\twse23-universe-audit-20260524.json `
+  --summary-md reports\generated\twse23-universe-audit-20260524.md
+```
+
+Require adjusted 版本：
+
+```powershell
+python tools\portfolio_rotation_universe_audit.py `
+  @csvArgs `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --min-row-count 1200 `
+  --min-average-traded-value 500000000 `
+  --min-group-members 2 `
+  --adjusted-csv-dir reports\generated\adjusted-data `
+  --require-adjusted-csv `
+  @groupArgs `
+  --summary-json reports\generated\twse23-universe-audit-require-adjusted-20260524.json `
+  --summary-md reports\generated\twse23-universe-audit-require-adjusted-20260524.md
+```
+
+### 主要結果
+
+| Field | TWSE23 audit | Require adjusted |
+|---|---:|---:|
+| Symbols | `23` | `23` |
+| Eligible symbols | `16` | `12` |
+| Groups | `10` | `10` |
+| Singleton groups | `5` | `5` |
+| Adjusted available | `14` | `14` |
+| Min row count | `1200` | `1200` |
+| Min average traded value | `500M` | `500M` |
+| Min group members | `2` | `2` |
+
+Require adjusted 後仍 eligible 的股票：
+
+```text
+1301,1303,2303,2308,2317,2330,2382,2454,2881,2882,2891,3711
+```
+
+品質通過但目前缺 adjusted CSV 的股票：
+
+```text
+1101,2327,2357,2379
+```
+
+主要 diagnostic-only 類型：
+
+| 類型 | 股票 |
+|---|---|
+| liquidity below threshold | `1102,1326,2207` |
+| group members below threshold | `1216,2002,2207,2412,2603` |
+| adjusted missing but otherwise useful | `1101,2327,2357,2379` |
+
+### Keep / Discard 判斷
+
+- **Keep code**：universe audit 是 deterministic、test-covered 的研究前置 gate，能避免後續擴大股票池時靠人工猜測。
+- **Keep artifact**：TWSE23 audit 說明目前 raw 可用股票池雖有 23 檔，但只有 16 檔通過基本品質；若策略品質判斷要求 adjusted CSV，現階段只剩 12 檔可直接進入 adjusted rotation。
+- **Do not promote strategy**：這輪沒有改善策略績效，也沒有證明 portfolio rotation 穩定營利；它只讓下一輪股票池擴充的資料邊界更清楚。
+- **Current state**：`TWSE23 raw` 仍只適合作 concentration diagnostic；要做真正的 expanded adjusted candidate，至少要補齊 `1101,2327,2357,2379` 的 adjusted CSV 或直接做 TWSE30+ adjusted batch。
+- **Next**：優先補齊 eligible 但缺 adjusted 的股票，再重跑 adjusted universe audit、portfolio rotation sweep、raw/adjusted comparison、group regime / breadth validation 與 promotion gate。
