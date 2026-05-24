@@ -61,6 +61,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "2317:electronics",
                 "--max-selections-per-group",
                 "1",
+                "--min-symbols-per-selected-group",
+                "2",
                 "--max-consecutive-selections-per-symbol",
                 "2",
                 "--volatility-target",
@@ -90,6 +92,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.min_average_traded_value, 1_000_000.0)
         self.assertEqual(args.symbol_group, ["2330:semiconductor", "2317:electronics"])
         self.assertEqual(args.max_selections_per_group, 1)
+        self.assertEqual(args.min_symbols_per_selected_group, 2)
         self.assertEqual(args.max_consecutive_selections_per_symbol, 2)
         self.assertTrue(args.volatility_target)
         self.assertEqual(args.volatility_lookback_bars, 3)
@@ -422,6 +425,70 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(selected_financial.rebalance_selected_count, 2)
         self.assertEqual(blocked_semiconductor.rebalance_selected_count, 0)
 
+    def test_min_symbols_per_selected_group_blocks_single_member_group(self) -> None:
+        """
+        用途與流程：驗證群組成員數下限會阻擋單成員群組的強勢股，讓多成員群組中的次佳股票補上。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若單成員群組仍可入選或 block count 漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2603",
+                Path("2603.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 120.0),
+                    _bar("2026-01-03", 144.0),
+                ],
+            ),
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 121.0),
+                ],
+            ),
+            (
+                "2454",
+                Path("2454.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 105.0),
+                    _bar("2026-01-03", 110.25),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            symbol_groups={
+                "2603": "shipping",
+                "2330": "semiconductor",
+                "2454": "semiconductor",
+            },
+            min_symbols_per_selected_group=2,
+        )
+
+        shipping = next(row for row in result.symbol_attribution if row.symbol == "2603")
+        semiconductor = next(row for row in result.symbol_attribution if row.symbol == "2330")
+        self.assertEqual(result.min_symbols_per_selected_group, 2)
+        self.assertEqual(result.group_member_block_count, 2)
+        self.assertEqual(shipping.rebalance_selected_count, 0)
+        self.assertEqual(semiconductor.rebalance_selected_count, 2)
+
     def test_group_attribution_aggregates_member_contributions(self) -> None:
         """
         用途與流程：驗證 portfolio rotation 會把同一群組內多檔股票的報酬貢獻、曝險、持倉期間與入選次數彙總成 group attribution。
@@ -517,6 +584,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("Liquidity min", markdown)
         self.assertIn("Liquidity blocks", markdown)
         self.assertIn("Group cap", markdown)
+        self.assertIn("Min group members", markdown)
+        self.assertIn("Group member blocks", markdown)
         self.assertIn("Consec cap", markdown)
         self.assertIn("2330 | 75.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)

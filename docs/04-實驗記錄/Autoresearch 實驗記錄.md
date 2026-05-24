@@ -8370,3 +8370,108 @@ Failure reasons：
 - **Keep artifact**：本輪 promotion artifact 直接證明 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 不能升級；它雖然 full-window 與 3x stress IR 仍強，但 rolling IR、rolling concentration、group regime 與 group breadth 都未通過。
 - **Do not promote strategy**：目前沒有任何 portfolio rotation candidate 可稱為穩定營利。`top3 / breadth4 / maxconsec5 / liq500M` 仍只是 compare anchor，不是 keep。
 - **Next**：下一步若繼續找新策略或調參，必須讓 promotion gate 同時改善 min rolling IR、max rolling top3 symbol/group share、group regime 與 group breadth。優先方向仍是更高品質股票池、TWSE30+ raw/adjusted 共同 gate，或直接限制 realized group contribution concentration / 單成員群組依賴。
+
+## 2026-05-24 Portfolio rotation single-member group gate
+
+### 目的
+
+前一輪 group breadth validation 顯示 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的 `roll01/roll02` 是 `shipping` 單成員群組 dominant。這一輪把「單成員群組依賴」轉成 portfolio rotation 可選事前 gate，而不是只在事後診斷中標記。
+
+研究假設：
+
+> 如果單成員群組是 concentration 的主要風險，則要求入選股票所屬群組至少有 2 個成員，應該降低 single-member dependency；若 rolling edge 直接失效，就代表硬擋單成員群組不是可升級策略規則。
+
+### 程式改動
+
+- `tools/portfolio_rotation_sweep.py` 新增 `--min-symbols-per-selected-group`，預設 `1`，不改既有策略語意。
+- `PortfolioRotationResult` 新增 `min_symbols_per_selected_group` 與 `group_member_block_count`。
+- 選股流程會在 ranking 階段排除成員數低於門檻的群組；若設定大於 `1`，必須提供 `--symbol-group`，避免沒有分組時誤把所有股票視為單成員群組。
+- Markdown full-window 與 rolling table 新增 `Min group members`、`Group member blocks`。
+- `tools/portfolio_rotation_promotion_gate.py` 的 candidate parameters 會保留 `min_symbols_per_selected_group`。
+- `tests/test_portfolio_rotation_sweep_tool.py` 新增 parser、單成員群組阻擋與 Markdown 欄位 regression。
+
+### 產生 artifact
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv reports\generated\adjusted-data\TWSEADJ_1301_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_1303_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2303_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2308_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2317_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2330_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2382_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2412_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2454_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2603_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2881_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2882_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2891_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_3711_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --breadth-filter `
+  --breadth-lookback-bars 42 `
+  --breadth-min-positive-count 4 `
+  --liquidity-lookback-bars 20 `
+  --min-average-traded-value 500000000 `
+  --max-consecutive-selections-per-symbol 5 `
+  --min-symbols-per-selected-group 2 `
+  --symbol-group 1301:plastics `
+  --symbol-group 1303:plastics `
+  --symbol-group 2303:semiconductor `
+  --symbol-group 2308:electronics `
+  --symbol-group 2317:electronics `
+  --symbol-group 2330:semiconductor `
+  --symbol-group 2382:electronics `
+  --symbol-group 2412:telecom `
+  --symbol-group 2454:semiconductor `
+  --symbol-group 2603:shipping `
+  --symbol-group 2881:financial `
+  --symbol-group 2882:financial `
+  --symbol-group 2891:financial `
+  --symbol-group 3711:semiconductor `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-mingroup2-rolling24m-20260524.json `
+  --summary-md reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-mingroup2-rolling24m-20260524.md
+```
+
+### 主要結果
+
+| Field | Value |
+|---|---:|
+| Full 1x IR | `0.759` |
+| Full 1x excess | `609.71%` |
+| Full 1x MDD | `-21.34%` |
+| Full 1x active MDD | `-26.91%` |
+| Stress 3x IR | `0.729` |
+| Min rolling IR | `-0.994` |
+| Min rolling excess | `-34.76%` |
+| Worst rolling active MDD | `-26.91%` |
+| Full top3 symbol share | `53.20%` |
+| Full top3 group share | `98.26%` |
+| Group member blocks | `51` |
+
+與上一輪 adjusted `top3 / breadth4 / maxconsec5 / liq500M` compare anchor 相比：
+
+| Metric | Previous anchor | Min group members 2 |
+|---|---:|---:|
+| Full 1x IR | `1.141` | `0.759` |
+| Stress 3x IR | `1.114` | `0.729` |
+| Min rolling IR | `0.264` | `-0.994` |
+| Min rolling excess | `10.73%` | `-34.76%` |
+| Max rolling top3 group share | `97.38%` | `100.00%` |
+
+### Keep / Discard 判斷
+
+- **Keep code**：`--min-symbols-per-selected-group` 是 deterministic、test-covered 的事前風控 / ablation 參數，能重跑檢查單成員群組依賴。
+- **Discard setting**：`min_symbols_per_selected_group=2` 不能作為目前策略升級方向。它移除 `shipping/2603` 後，`roll02` excess 轉為 `-34.76%`、IR 轉為 `-0.994`，直接讓 rolling edge 失效。
+- **Do not promote strategy**：full-window group concentration 仍高，top3 group share 約 `98.26%`；而且 stress 3x IR 只剩 `0.729`，低於 promotion gate 的 `0.75` stress threshold。
+- **Current state**：這輪證明「硬擋單成員群組」不是解法；單成員群組風險要靠更高品質股票池、TWSE30+、或更細的 group contribution / re-entry gate 處理。
+- **Next**：保留此參數作為 future ablation；下一輪不要把 `min_symbols_per_selected_group=2` 納入主候選，除非新股票池補足 shipping / telecom 等單成員群組後重新驗證。

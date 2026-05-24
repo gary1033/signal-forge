@@ -66,6 +66,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
 - `breadth_filter`：七檔股票池最佳折衷是 `breadth_lookback_bars=42`、`breadth_min_positive_count=2`；擴大到 14 檔 TWSE 股票池後，目前最佳折衷改為 `breadth_min_positive_count=3`。
 - `liquidity_filter`：目前最新 execution-aware compare candidate 使用 `liquidity_lookback_bars=20`、`min_average_traded_value=500,000,000`，代表近 20 根平均成交金額至少約 5 億。
+- `min_symbols_per_selected_group`：預設 `1`，不影響既有策略；可設為 `2` 以上作為單成員群組依賴 ablation，但目前 adjusted TWSE14 實測顯示 `2` 會讓 rolling edge 失效，不能作為主候選規則。
 - `cost_multipliers`：固定用 `1x` 與 `3x` 成本壓力檢查。
 - benchmark：同一批股票的 equal-weight buy-and-hold portfolio。
 
@@ -100,6 +101,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Group regime validation 已正式化為 `tools\portfolio_rotation_group_regime_validation.py`。針對 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的 artifact 顯示 gate 失敗：full + 6 個 rolling windows 全部 high concentration，`7 / 7` 都是 `return_regime_dominated`，不是單純長期高曝險。最弱 IR window 是 `roll02 = 0.264`，其中 `shipping` 平均權重只有約 `10.43%`，但貢獻占比約 `70.86%`；最嚴重 top3 group window 是 `roll03 = 97.38%`。這表示單純 group cap 或固定刪 group 很可能傷害 edge，下一步要改做更高品質股票池或 group-level regime / breadth validation。
 - Group breadth validation 已正式化為 `tools\portfolio_rotation_group_breadth_validation.py`。同一組 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的 artifact 顯示 gate 仍失敗：`7 / 7` high concentration，`4 / 7` 是 broad group momentum，`2 / 7` 是 `shipping` 單成員 dominant，`1 / 7` 是 `electronics` narrow breadth。最弱 breadth window 是 `roll03`，electronics 平均正動能成員比例約 `58.82%`；最弱 IR window 仍是 `roll02 = 0.264`，且 dominant group 是單成員 `shipping`。這代表目前問題不是只靠 group cap 能修，也不是單純要找更高總報酬，而是要改善股票池品質、降低 realized group contribution concentration，並處理單成員群組風險。
 - Promotion gate 已正式化為 `tools\portfolio_rotation_promotion_gate.py`。它把 adjusted summary、raw/adjusted comparison、group regime validation 與 group breadth validation 合併成單一 `keep` / `compare-only` gate。2026-05-24 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的結果仍是 `compare-only`：full 1x IR 約 `1.141`、3x IR 約 `1.114`，但 min rolling IR 只有約 `0.264`，max rolling top3 symbol share 約 `81.40%`，max rolling top3 group share 約 `97.38%`，且 group regime / breadth gate 都失敗。
+- 單成員群組事前 gate 已測。`--min-symbols-per-selected-group 2` 會把 `shipping/2603` 這類單成員群組排除；在 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 上，full IR 從前一個錨點約 `1.141` 降到約 `0.759`，3x IR 降到約 `0.729`，`roll02` excess 轉為約 `-34.76%`、IR 約 `-0.994`。因此此參數作為 ablation 工具 keep，但 `2` 這個策略設定 discard。
 - `top_n=4` 可把 full-window top-3 絕對貢獻占比降到約 `48.32%`，但 max rolling top-3 share 仍約 `81.68%`，所以它改善 full-window 集中度，還沒有解決最關鍵的 rolling concentration。
 - `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 績效 compare candidate：full-window IR 約 `1.515`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、min rolling IR 約 `0.814`；但 max rolling top-3 share 仍約 `82.62%`。
 - 新增 liquidity gate 後，`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 暫時是 execution-aware compare candidate：full-window return 約 `1745.89%`、excess 約 `1409.71%`、IR 約 `1.521`、MDD 約 `-18.61%`、active MDD 約 `-19.81%`，3x 成本後 IR 仍約 `1.490`。但 max rolling top-3 share 仍約 `82.62%`，所以它不是 concentration 修復。
@@ -120,6 +122,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Raw / adjusted comparison artifact 已補上。下一步優先用這個 artifact 作為策略品質 gate，再較慢批次完成 TWSE30+、更高品質股票池、group regime validation 或更嚴格的流動性/容量條件，目標是同時降低 rolling `max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`、`max_group_abs_contribution_share`、`top3_group_abs_contribution_share` 與 group exposure concentration，並保留正 min rolling excess 與可接受 active drawdown。
 - Adjusted grid search、`top3 / breadth4 / maxconsec5 / liq500M` raw/adjusted comparison artifact、group regime validation 與 group breadth validation 已補上。下一步不要繼續擴同一組 top-N / breadth / max-consecutive 小網格；優先做更高品質股票池、TWSE30+ raw/adjusted 共同 gate，或直接設計能限制 realized group contribution concentration / 單成員群組依賴的 gate。
 - Promotion gate 已補上。下一輪策略若要升級，不只要報 summary 指標，還要讓 promotion gate 同時通過 rolling IR、rolling excess、drawdown、symbol concentration、group concentration、raw/adjusted 降級、group regime 與 group breadth 檢查。
+- `min_symbols_per_selected_group=2` 已 discard；後續只有在擴大股票池、讓原本單成員群組有足夠同群組代表後，才值得重新打開這個 gate。
 - 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。

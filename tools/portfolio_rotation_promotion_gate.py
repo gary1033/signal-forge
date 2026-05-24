@@ -572,6 +572,7 @@ def _candidate_parameters(result: dict[str, Any]) -> dict[str, Any]:
         "breadth_lookback_bars",
         "breadth_min_positive_count",
         "max_consecutive_selections_per_symbol",
+        "min_symbols_per_selected_group",
         "liquidity_lookback_bars",
         "min_average_traded_value",
         "symbol_count",
