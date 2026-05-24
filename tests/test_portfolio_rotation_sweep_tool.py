@@ -64,6 +64,13 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "0.02",
                 "--group-breadth-min-members",
                 "2",
+                "--group-regime-filter",
+                "--group-regime-lookback-bars",
+                "7",
+                "--group-regime-min-return",
+                "0.03",
+                "--group-regime-min-members",
+                "2",
                 "--liquidity-lookback-bars",
                 "5",
                 "--min-average-traded-value",
@@ -114,6 +121,10 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.group_breadth_min_positive_share, 0.75)
         self.assertEqual(args.group_breadth_positive_threshold, 0.02)
         self.assertEqual(args.group_breadth_min_members, 2)
+        self.assertTrue(args.group_regime_filter)
+        self.assertEqual(args.group_regime_lookback_bars, 7)
+        self.assertEqual(args.group_regime_min_return, 0.03)
+        self.assertEqual(args.group_regime_min_members, 2)
         self.assertEqual(args.liquidity_lookback_bars, 5)
         self.assertEqual(args.min_average_traded_value, 1_000_000.0)
         self.assertEqual(args.symbol_group, ["2330:semiconductor", "2317:electronics"])
@@ -856,6 +867,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("Group member blocks", markdown)
         self.assertIn("Group breadth", markdown)
         self.assertIn("Group breadth blocks", markdown)
+        self.assertIn("Group regime", markdown)
+        self.assertIn("Group regime blocks", markdown)
         self.assertIn("Group contrib lookback", markdown)
         self.assertIn("Group contrib blocks", markdown)
         self.assertIn("Consec cap", markdown)
@@ -1068,6 +1081,90 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertGreater(result.average_group_breadth_positive_share or 0.0, 0.50)
         self.assertEqual(selected_by_symbol["hot_leader"], 0)
         self.assertGreater(selected_by_symbol["broad_leader"], 0)
+
+    def test_group_regime_filter_blocks_negative_group_trend(self) -> None:
+        """
+        用途與流程：驗證 group regime filter 只使用 rebalance 當下已知的同群組等權 lookback return，排除自身群組趨勢為負的強勢個股。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若負群組個股仍可入選、block count 或平均群組趨勢欄位漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "weak_leader",
+                Path("weak_leader.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 130.0),
+                    _bar("2026-01-03", 130.0),
+                ],
+            ),
+            (
+                "weak_peer",
+                Path("weak_peer.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 50.0),
+                    _bar("2026-01-03", 50.0),
+                ],
+            ),
+            (
+                "strong_leader",
+                Path("strong_leader.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 120.0),
+                    _bar("2026-01-03", 130.0),
+                ],
+            ),
+            (
+                "strong_peer",
+                Path("strong_peer.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 120.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            symbol_groups={
+                "weak_leader": "weak",
+                "weak_peer": "weak",
+                "strong_leader": "strong",
+                "strong_peer": "strong",
+            },
+            group_regime_filter=True,
+            group_regime_lookback_bars=1,
+            group_regime_min_return=0.0,
+            group_regime_min_members=2,
+        )
+
+        selected_by_symbol = {
+            row.symbol: row.rebalance_selected_count
+            for row in result.symbol_attribution
+        }
+        self.assertTrue(result.group_regime_filter)
+        self.assertEqual(result.group_regime_lookback_bars, 1)
+        self.assertEqual(result.group_regime_min_return, 0.0)
+        self.assertEqual(result.group_regime_min_members, 2)
+        self.assertEqual(result.group_regime_block_count, 1)
+        self.assertEqual(result.group_regime_warmup_count, 0)
+        self.assertGreater(result.average_group_regime_return or 0.0, 0.0)
+        self.assertEqual(selected_by_symbol["weak_leader"], 0)
+        self.assertGreater(selected_by_symbol["strong_leader"], 0)
 
     def test_volatility_target_scales_high_volatility_rotation_weights(self) -> None:
         """
