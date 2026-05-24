@@ -8827,3 +8827,122 @@ Group breadth validation 失敗：`5` 個 high concentration window 中只有 `2
 - **Compare-only future dimension**：若後續擴到 TWSE30+ 或更完整產業成員，`group-residual` 可再作為 ranking mode 對照；目前不應用它宣稱策略變好。
 - **Do not promote strategy**：rolling IR / excess 仍為負，MDD 惡化，group regime / breadth gate 仍失敗；這不是穩定營利證明。
 - **Next**：停止在 TWSE16 小池微調 top-N / breadth / max consecutive / skip / residual ranking；改往 TWSE30+、更高品質股票池、re-entry 條件或 realized group contribution concentration gate。
+
+## 2026-05-24 TWSE35 expanded universe follow-up
+
+### 目的
+
+前幾輪 TWSE16 adjusted 實驗顯示，同一小股票池中繼續微調 top-N、breadth、max consecutive、skip 或 group-residual ranking 都不能通過 rolling / group concentration gate。這輪改走「更大且仍可稽核的股票池」方向：參考 0050 近期成分股快照補齊更多大型股日線資料，先建立 TWSE35 adjusted batch，再重跑 universe audit、portfolio rotation summary、raw/adjusted comparison、group regime validation、group breadth validation 與 promotion gate。
+
+研究假設：
+
+> 若 TWSE16 的 rolling 失敗主要來自股票池太小，擴到更接近大型股核心池後，`skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` 應能改善 min rolling IR / excess，並降低單檔或單群組貢獻集中；若 full-window 變強但 group gate 仍失敗，就只能保留為 compare-only，不得宣稱穩定營利。
+
+### 本輪資料與程式改動
+
+- `src\signal_forge\data\fetch.py` 的 request header 改用標準瀏覽器 User-Agent，搭配 JSON `Accept` 與 TWSE historical stock-day `Referer`，避免 TWSE 對批次研究下載回同路徑 308 redirect loop。
+- `tests\test_data_fetch.py` 更新 308 redirect regression，鎖住瀏覽器相容 User-Agent。
+- 新增 12 檔 raw / processed OHLCV：`2345,2360,2383,2884,2885,3008,3017,3037,3045,5871,5876,5880`。
+- 建立 TWSE35 adjusted batch：`reports\generated\adjusted-data\TWSE35_adjusted_batch_manifest_20260524.json`。
+
+本輪股票池：
+
+```text
+1101,1102,1216,1301,1303,1326,2002,2207,2303,2308,2317,2327,2330,2345,2357,2360,2379,2382,2383,2412,2454,2603,2881,2882,2884,2885,2891,3008,3017,3037,3045,3711,5871,5876,5880
+```
+
+### 產生 artifact
+
+- Universe audit：`reports\generated\twse35-universe-audit-20260524.json`
+- Require-adjusted universe audit：`reports\generated\twse35-universe-audit-require-adjusted-20260524.json`
+- Adjusted summary：`reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Raw summary：`reports\generated\twse35-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Raw / adjusted comparison：`reports\generated\twse35-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-compare-20260524.json`
+- Group regime validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-regime-validation-20260524.json`
+- Group breadth validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-breadth-validation-20260524.json`
+- Promotion gate：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-promotion-gate-20260524.json`
+- Min-group adjusted summary：`reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-mingrp2-liq500m-rolling24m-20260524.json`
+- Min-group promotion gate：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-mingrp2-liq500m-promotion-gate-20260524.json`
+
+### Universe audit
+
+| Field | Value |
+|---|---:|
+| Symbols | `35` |
+| Eligible symbols | `27` |
+| Groups | `10` |
+| Singleton groups | `4` |
+| Batch rows | `53403` |
+| Missing adjustment | `68` |
+| Skipped rows | `2524` |
+
+Eligible symbols：
+
+```text
+1101,1301,1303,2303,2308,2317,2327,2330,2345,2357,2360,2379,2382,2383,2412,2454,2881,2882,2884,2885,2891,3008,3017,3037,3045,3711,5871
+```
+
+### TWSE35 baseline promotion gate
+
+固定設定：adjusted `monthly + lookback 21 + ranking_skip_bars=10 + total-return + top4 + breadth42/min3 + maxconsec5 + liq500M/20 bars`。
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.685` |
+| Full 1x excess | `2747.50%` |
+| Full 1x MDD | `-37.80%` |
+| Full 1x active MDD | `-29.98%` |
+| Stress 3x IR | `1.668` |
+| Stress 3x excess | `2665.15%` |
+| Min rolling IR | `0.429` |
+| Min rolling excess | `11.33%` |
+| Max rolling top3 symbol share | `69.20%` |
+| Max rolling top3 group share | `100.00%` |
+
+TWSE35 baseline 比 TWSE16 `skip10` 大幅改善 rolling excess 與 rolling IR：TWSE16 `skip10` 的 min rolling IR 約 `-0.856`、min rolling excess 約 `-22.55%`；TWSE35 baseline 則改善到 min rolling IR `0.429`、min rolling excess `11.33%`。但它仍未通過 gate，主因是 MDD / active MDD 偏高、full-window top3 group share 約 `93.49%`、max rolling top3 group share 仍到 `100.00%`，且 group regime / breadth validation 都失敗。
+
+Failure reasons：
+
+```text
+rolling_ir_below_threshold
+drawdown_above_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+single_member_dominant_group
+narrow_group_momentum
+```
+
+### Min-group ablation
+
+同一設定加上 `min_symbols_per_selected_group=2`，目的是硬擋單成員群組，例如 `shipping / 2603`，檢查單成員依賴是否是主要失敗來源。
+
+| Candidate | Full 1x IR | Full 1x excess | MDD | Active MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Decision |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `TWSE35 skip10 baseline` | `1.685` | `2747.50%` | `-37.80%` | `-29.98%` | `0.429` | `11.33%` | `100.00%` | compare-only |
+| `TWSE35 skip10 mingrp2` | `1.431` | `1225.91%` | `-34.65%` | `-35.79%` | `-1.482` | `-37.95%` | `100.00%` | discard as improvement / compare-only artifact |
+
+`mingrp2` 確實移除 single-member dominant failure，但把 `roll02` 打回負 excess / 負 IR，且 active MDD 惡化到 `-35.79%`。Promotion gate failure reasons 變成：
+
+```text
+rolling_ir_below_threshold
+rolling_excess_below_threshold
+drawdown_above_threshold
+active_drawdown_above_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+narrow_group_momentum
+```
+
+這代表「硬擋單成員群組」不是目前解法；它犧牲了 regime edge，卻沒有解掉 group concentration。
+
+### Keep / Discard 判斷
+
+- **Keep data/process**：TWSE35 raw / processed data、adjusted batch manifest 與 universe audit 提供更大股票池的可重跑資料邊界；這比在 TWSE16 小池繼續微調參數更接近策略準則要求的多股票與抗過擬合檢查。
+- **Keep compare-only anchor**：TWSE35 baseline 是目前較強 portfolio-level compare-only anchor；full-window IR、3x IR、min rolling excess 都比 TWSE16 `skip10` 好。
+- **Do not promote strategy**：TWSE35 baseline 仍未通過 promotion gate；MDD、active MDD、group concentration、group regime 與 group breadth 都不足以支持穩定營利宣稱。
+- **Discard `mingrp2` as improvement**：硬擋單成員群組讓 min rolling IR 轉為 `-1.482`、min rolling excess 轉為 `-37.95%`，不能當主規則。
+- **Next**：不要直接把 TWSE35 baseline 升級；下一輪應測更具體的 realized group contribution concentration gate、re-entry 條件，或改用更嚴格的高品質股票池建構規則。若要繼續擴股票池，仍要完整重跑 universe audit、adjusted batch、raw/adjusted comparison、group validation 與 promotion gate。

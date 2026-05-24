@@ -50,9 +50,10 @@ class DataFetchTests(unittest.TestCase):
             "https://example.test/target",
         )
         self.assertIn(
-            "SignalForge",
+            "Mozilla/5.0",
             fake_urlopen.call_args_list[0].args[0].headers["User-agent"],
         )
+        self.assertIn("Chrome", fake_urlopen.call_args_list[0].args[0].headers["User-agent"])
         self.assertIn(
             "application/json",
             fake_urlopen.call_args_list[0].args[0].headers["Accept"],

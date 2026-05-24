@@ -71,7 +71,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
 - `breadth_filter`：七檔股票池最佳折衷是 `breadth_lookback_bars=42`、`breadth_min_positive_count=2`；擴大到 14 檔 TWSE 股票池後，目前最佳折衷改為 `breadth_min_positive_count=3`。
 - `liquidity_filter`：目前最新 execution-aware compare candidate 使用 `liquidity_lookback_bars=20`、`min_average_traded_value=500,000,000`，代表近 20 根平均成交金額至少約 5 億。
-- `min_symbols_per_selected_group`：預設 `1`，不影響既有策略；可設為 `2` 以上作為單成員群組依賴 ablation，但目前 adjusted TWSE14 實測顯示 `2` 會讓 rolling edge 失效，不能作為主候選規則。
+- `min_symbols_per_selected_group`：預設 `1`，不影響既有策略；可設為 `2` 以上作為單成員群組依賴 ablation，但目前 adjusted TWSE14 / TWSE35 實測都顯示 `2` 會讓 rolling edge 失效，不能作為主候選規則。
 - `cost_multipliers`：固定用 `1x` 與 `3x` 成本壓力檢查。
 - benchmark：同一批股票的 equal-weight buy-and-hold portfolio。
 
@@ -113,7 +113,9 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 績效 compare candidate：full-window IR 約 `1.515`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、min rolling IR 約 `0.814`；但 max rolling top-3 share 仍約 `82.62%`。
 - 新增 liquidity gate 後，`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 暫時是 execution-aware compare candidate：full-window return 約 `1745.89%`、excess 約 `1409.71%`、IR 約 `1.521`、MDD 約 `-18.61%`、active MDD 約 `-19.81%`，3x 成本後 IR 仍約 `1.490`。但 max rolling top-3 share 仍約 `82.62%`，所以它不是 concentration 修復。
 - 擴到 TWSE23 後，concentration 明顯下降但 edge 變弱：`top4/min3/maxconsec5` 的 max rolling top-3 share 降到約 `65.32%`，但 full IR 降到約 `1.179`、MDD 惡化到約 `-36.64%`、min rolling excess 約 `-17.99%`。`top5/min5` 的 max rolling top-3 share 進一步降到約 `56.62%`，但 min rolling IR 約 `-0.265`，所以只能作 concentration diagnostic。
-- 因為分段貢獻仍偏集中、調整價版本明顯降級、股票池仍小，所以仍不能宣稱穩定營利。
+- 擴到 TWSE35 後，`skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` adjusted baseline 變成目前最強 compare-only anchor：full IR 約 `1.685`、3x IR 約 `1.668`、min rolling IR 約 `0.429`、min rolling excess 約 `11.33%`。但 full MDD 約 `-37.80%`、active MDD 約 `-29.98%`、full top3 group share 約 `93.49%`、max rolling top3 group share 仍到 `100%`，promotion gate 仍失敗。
+- TWSE35 `min_symbols_per_selected_group=2` 已正式測過：full IR 降到約 `1.431`，min rolling IR 轉為約 `-1.482`、min rolling excess 約 `-37.95%`，雖移除 single-member dominant failure，但把 `roll02` 打回負值，因此 discard as improvement。
+- 因為分段貢獻仍偏集中、調整價版本明顯降級、股票池與資料邊界仍有限，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
@@ -129,13 +131,13 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Raw / adjusted comparison artifact 已補上。下一步優先用這個 artifact 作為策略品質 gate，再較慢批次完成 TWSE30+、更高品質股票池、group regime validation 或更嚴格的流動性/容量條件，目標是同時降低 rolling `max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`、`max_group_abs_contribution_share`、`top3_group_abs_contribution_share` 與 group exposure concentration，並保留正 min rolling excess 與可接受 active drawdown。
 - Adjusted grid search、`top3 / breadth4 / maxconsec5 / liq500M` raw/adjusted comparison artifact、group regime validation 與 group breadth validation 已補上。下一步不要繼續擴同一組 top-N / breadth / max-consecutive 小網格；優先做更高品質股票池、TWSE30+ raw/adjusted 共同 gate，或直接設計能限制 realized group contribution concentration / 單成員群組依賴的 gate。
 - Promotion gate 已補上。下一輪策略若要升級，不只要報 summary 指標，還要讓 promotion gate 同時通過 rolling IR、rolling excess、drawdown、symbol concentration、group concentration、raw/adjusted 降級、group regime 與 group breadth 檢查。
-- `min_symbols_per_selected_group=2` 已 discard；後續只有在擴大股票池、讓原本單成員群組有足夠同群組代表後，才值得重新打開這個 gate。
+- `min_symbols_per_selected_group=2` 已在 TWSE14 / TWSE35 都 discard；後續只有在擴大股票池、讓原本單成員群組有足夠同群組代表，且不犧牲 `roll02` edge 後，才值得重新打開這個 gate。
 - `ranking_skip_bars=10` 已保留為 compare-only 錨點，但不要把 skip 當成 concentration 修復；下一步若要繼續用它，應和 TWSE30+ / 更高品質股票池或 realized contribution gate 一起測，而不是繼續在 TWSE16 小池微調 skip 長度。
 - `ranking_mode=group-residual` 已在 TWSE16 小池失敗；後續只有在 TWSE30+ 或更完整產業成員數下才值得重測，不要把它和目前小股票池結果包裝成 residual momentum 有效。
 - 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
-- 目前主比較錨點分成四個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是 execution-aware compare candidate。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、group attribution、group exposure、dominant group exclusion、canary universe 與 adjusted batch 診斷保留為 discard / compare-only / diagnostic 對照；其中 adjusted-ratio 版本應成為後續品質判斷的主要風險版本，不取代核心錨點，也不是穩定營利證明。
+- 目前主比較錨點分成五個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是 execution-aware compare candidate；TWSE35 `skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` 是目前最強 expanded-universe compare-only anchor。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、TWSE35 `mingrp2`、group attribution、group exposure、dominant group exclusion、canary universe 與 adjusted batch 診斷保留為 discard / compare-only / diagnostic 對照；其中 adjusted-ratio 版本應成為後續品質判斷的主要風險版本，不取代核心錨點，也不是穩定營利證明。
 
 ## 參考來源
 
