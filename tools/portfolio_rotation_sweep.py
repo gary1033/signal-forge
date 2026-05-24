@@ -92,6 +92,22 @@ class PortfolioRotationResult:
     average_exposure: float
     average_selected_count: float
     end_equity: float
+    symbol_attribution: list["PortfolioSymbolAttribution"]
+
+
+@dataclass(frozen=True)
+class PortfolioSymbolAttribution:
+    """單檔股票在 portfolio rotation 回測中的持倉與報酬貢獻摘要。"""
+
+    symbol: str
+    selected_bar_count: int
+    selected_bar_share: float
+    rebalance_selected_count: int
+    rebalance_selected_share: float
+    average_weight: float
+    average_selected_weight: float
+    return_contribution: float
+    absolute_contribution_share: float
 
 
 @dataclass(frozen=True)
@@ -199,7 +215,7 @@ def run_portfolio_rotation(
     volatility_max_scale: float = 1.0,
 ) -> PortfolioRotationResult:
     """
-    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險。
+    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險；同時累積每檔股票的持倉天數、入選次數與實際權重報酬貢獻。
     參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；breadth_filter 相關參數定義市場寬度 crash-protection gate；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
     回傳與錯誤：回傳 PortfolioRotationResult；頻率、lookback、top_n 或資料矩陣不合法時拋出 ValueError。
     """
@@ -270,15 +286,28 @@ def run_portfolio_rotation(
     volatility_scaled_rebalance_count = 0
     volatility_warmup_count = 0
     market_index_values = _equal_weight_price_index(symbols, closes_by_symbol)
+    selected_bar_counts = {symbol: 0 for symbol in symbols}
+    rebalance_selected_counts = {symbol: 0 for symbol in symbols}
+    total_weight_sums = {symbol: 0.0 for symbol in symbols}
+    selected_weight_sums = {symbol: 0.0 for symbol in symbols}
+    return_contributions = {symbol: 0.0 for symbol in symbols}
 
     for index in range(1, len(timestamps)):
-        equity *= 1.0 + _portfolio_price_return(
-            symbols,
-            closes_by_symbol,
-            weights,
-            previous_index=index - 1,
-            current_index=index,
-        )
+        period_return = 0.0
+        for symbol in symbols:
+            weight = weights[symbol]
+            symbol_return = (
+                closes_by_symbol[symbol][index] / closes_by_symbol[symbol][index - 1]
+            ) - 1.0
+            contribution = weight * symbol_return
+            period_return += contribution
+            total_weight_sums[symbol] += abs(weight)
+            if abs(weight) > 1e-12:
+                selected_bar_counts[symbol] += 1
+                selected_weight_sums[symbol] += abs(weight)
+                return_contributions[symbol] += contribution
+
+        equity *= 1.0 + period_return
 
         if index >= lookback_bars and _is_rebalance_index(
             timestamps,
@@ -355,6 +384,9 @@ def run_portfolio_rotation(
             )
             turnover_values.append(turnover)
             rebalance_count += 1
+            for symbol in symbols:
+                if target_weights[symbol] > 1e-12:
+                    rebalance_selected_counts[symbol] += 1
             if turnover > 1e-12:
                 for symbol in symbols:
                     delta = target_weights[symbol] - weights[symbol]
@@ -466,6 +498,77 @@ def run_portfolio_rotation(
         average_exposure=_average(exposure_values),
         average_selected_count=_average_float(selected_counts),
         end_equity=equity,
+        symbol_attribution=_build_symbol_attribution(
+            symbols,
+            selected_bar_counts=selected_bar_counts,
+            rebalance_selected_counts=rebalance_selected_counts,
+            total_weight_sums=total_weight_sums,
+            selected_weight_sums=selected_weight_sums,
+            return_contributions=return_contributions,
+            period_count=len(timestamps) - 1,
+            rebalance_count=rebalance_count,
+        ),
+    )
+
+
+def _build_symbol_attribution(
+    symbols: list[str],
+    *,
+    selected_bar_counts: dict[str, int],
+    rebalance_selected_counts: dict[str, int],
+    total_weight_sums: dict[str, float],
+    selected_weight_sums: dict[str, float],
+    return_contributions: dict[str, float],
+    period_count: int,
+    rebalance_count: int,
+) -> list[PortfolioSymbolAttribution]:
+    """
+    用途與流程：把 portfolio rotation 回測過程累積的逐股持倉與權重報酬貢獻，整理成 deterministic attribution rows，讓研究者判斷報酬是否集中在少數股票。
+    參數：symbols 是排序後股票代號；selected_bar_counts 是每檔實際持倉期間數；rebalance_selected_counts 是每檔在再平衡日被目標權重選中的次數；total_weight_sums / selected_weight_sums 是整段期間與被選中期間的權重加總；return_contributions 是每檔 `weight * close-to-close return` 的加總；period_count 與 rebalance_count 是比例分母。
+    回傳與錯誤：回傳依 absolute contribution share 由大到小排序的 PortfolioSymbolAttribution 清單；分母為 0 時比例欄位回傳 0，不主動拋錯。
+    """
+    absolute_total_contribution = sum(
+        abs(return_contributions.get(symbol, 0.0)) for symbol in symbols
+    )
+    rows: list[PortfolioSymbolAttribution] = []
+    for symbol in symbols:
+        selected_bar_count = selected_bar_counts.get(symbol, 0)
+        rebalance_selected_count = rebalance_selected_counts.get(symbol, 0)
+        return_contribution = return_contributions.get(symbol, 0.0)
+        rows.append(
+            PortfolioSymbolAttribution(
+                symbol=symbol,
+                selected_bar_count=selected_bar_count,
+                selected_bar_share=(
+                    selected_bar_count / period_count if period_count > 0 else 0.0
+                ),
+                rebalance_selected_count=rebalance_selected_count,
+                rebalance_selected_share=(
+                    rebalance_selected_count / rebalance_count
+                    if rebalance_count > 0
+                    else 0.0
+                ),
+                average_weight=(
+                    total_weight_sums.get(symbol, 0.0) / period_count
+                    if period_count > 0
+                    else 0.0
+                ),
+                average_selected_weight=(
+                    selected_weight_sums.get(symbol, 0.0) / selected_bar_count
+                    if selected_bar_count > 0
+                    else 0.0
+                ),
+                return_contribution=return_contribution,
+                absolute_contribution_share=(
+                    abs(return_contribution) / absolute_total_contribution
+                    if absolute_total_contribution > 0
+                    else 0.0
+                ),
+            )
+        )
+    return sorted(
+        rows,
+        key=lambda row: (-row.absolute_contribution_share, row.symbol),
     )
 
 
@@ -798,7 +901,7 @@ def format_markdown(
     periods_per_year: int,
 ) -> str:
     """
-    用途與流程：將 portfolio rotation 回測結果格式化為 Markdown，方便貼入實驗紀錄與人工審查。
+    用途與流程：將 portfolio rotation 回測結果格式化為 Markdown，包含投組層級績效與逐股 attribution 摘要，方便貼入實驗紀錄與人工審查。
     參數：results 是多成本倍率結果；start/end 是日期窗；periods_per_year 是風險年化期數。
     回傳與錯誤：回傳 Markdown 字串；此函式不做 I/O，也不主動拋錯。
     """
@@ -849,6 +952,7 @@ def format_markdown(
             f"{result.average_exposure:.2%} | "
             f"{result.average_selected_count:.2f} |"
         )
+    lines.extend(_format_symbol_attribution_lines(results, heading="Top Symbol Attribution", limit=5))
     return "\n".join(lines) + "\n"
 
 
@@ -895,6 +999,13 @@ def format_walk_forward_markdown(
                 f"{result.average_exposure:.2%} |"
             )
     lines.extend(
+        _format_window_symbol_attribution_lines(
+            window_results,
+            heading="Walk-forward Top Symbol Attribution",
+            limit=3,
+        )
+    )
+    lines.extend(
         [
             "",
             "## Walk-forward Retention",
@@ -923,6 +1034,91 @@ def format_walk_forward_markdown(
             f"{row.active_drawdown_change:.2%} |"
         )
     return "\n".join(lines) + "\n"
+
+
+def _format_symbol_attribution_lines(
+    results: list[PortfolioRotationResult],
+    *,
+    heading: str,
+    limit: int,
+) -> list[str]:
+    """
+    用途與流程：把 full-window 每個成本倍率的逐股 attribution 轉成 Markdown 表格，優先顯示絕對貢獻占比最高的股票。
+    參數：results 是 portfolio rotation 結果；heading 是 Markdown 區段標題；limit 是每個成本倍率最多顯示幾檔股票。
+    回傳與錯誤：回傳 Markdown 行清單；limit 小於等於 0 或沒有 attribution 時只回傳空清單。
+    """
+    if limit <= 0 or not any(result.symbol_attribution for result in results):
+        return []
+    lines = [
+        "",
+        f"## {heading}",
+        "",
+        "| Cost | Rank | Symbol | Return contribution | Abs contribution share | Selected bars | Selected bar share | Rebalance selected | Rebalance share | Avg weight | Avg selected weight |",
+        "|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for result in results:
+        for rank, row in enumerate(result.symbol_attribution[:limit], start=1):
+            lines.append(_format_symbol_attribution_row(result.cost_label, rank, row))
+    return lines
+
+
+def _format_window_symbol_attribution_lines(
+    window_results: list[PortfolioWalkForwardResult],
+    *,
+    heading: str,
+    limit: int,
+) -> list[str]:
+    """
+    用途與流程：把每個 rolling / walk-forward window 的逐股 attribution 轉成 Markdown 表格，讓研究者檢查不同時段是否由同一批股票貢獻。
+    參數：window_results 是分段回測結果；heading 是 Markdown 區段標題；limit 是每個 window 與成本倍率最多顯示幾檔股票。
+    回傳與錯誤：回傳 Markdown 行清單；limit 小於等於 0 或沒有 attribution 時回傳空清單。
+    """
+    if limit <= 0:
+        return []
+    has_attribution = any(
+        result.symbol_attribution
+        for window_result in window_results
+        for result in window_result.results
+    )
+    if not has_attribution:
+        return []
+    lines = [
+        "",
+        f"## {heading}",
+        "",
+        "| Window | Cost | Rank | Symbol | Return contribution | Abs contribution share | Selected bars | Selected bar share | Rebalance selected | Rebalance share | Avg weight | Avg selected weight |",
+        "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for window_result in window_results:
+        for result in window_result.results:
+            for rank, row in enumerate(result.symbol_attribution[:limit], start=1):
+                lines.append(
+                    "| "
+                    f"{window_result.window.label} | "
+                    f"{_format_symbol_attribution_row(result.cost_label, rank, row).lstrip('| ')}"
+                )
+    return lines
+
+
+def _format_symbol_attribution_row(
+    cost_label: str,
+    rank: int,
+    row: PortfolioSymbolAttribution,
+) -> str:
+    """
+    用途與流程：把單一 PortfolioSymbolAttribution row 格式化成 Markdown 表格列，供 full-window 與 window-level 表格共用。
+    參數：cost_label 是成本倍率標籤；rank 是顯示排名；row 是單檔股票 attribution 結果。
+    回傳與錯誤：回傳 Markdown 表格列字串；此函式不做 I/O，也不主動拋錯。
+    """
+    return (
+        "| "
+        f"{cost_label} | {rank} | {row.symbol} | "
+        f"{row.return_contribution:.2%} | "
+        f"{row.absolute_contribution_share:.2%} | "
+        f"{row.selected_bar_count} | {row.selected_bar_share:.2%} | "
+        f"{row.rebalance_selected_count} | {row.rebalance_selected_share:.2%} | "
+        f"{row.average_weight:.2%} | {row.average_selected_weight:.2%} |"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:

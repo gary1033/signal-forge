@@ -10,6 +10,7 @@ from tools.portfolio_rotation_sweep import (
     build_rolling_windows,
     align_close_table,
     PortfolioRotationResult,
+    PortfolioSymbolAttribution,
     run_portfolio_rotation,
     run_equal_weight_benchmark,
     PortfolioWalkForwardResult,
@@ -204,6 +205,31 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertLessEqual(result.active_max_drawdown, 0.0)
         self.assertEqual(result.trade_count, 1)
         self.assertGreater(result.average_exposure, 0.0)
+        self.assertEqual(result.symbol_attribution[0].symbol, "2330")
+        self.assertEqual(result.symbol_attribution[0].selected_bar_count, 2)
+        self.assertAlmostEqual(result.symbol_attribution[0].return_contribution, 0.20)
+        self.assertGreater(
+            result.symbol_attribution[0].absolute_contribution_share,
+            0.99,
+        )
+
+    def test_format_markdown_includes_symbol_attribution(self) -> None:
+        """
+        用途與流程：驗證 portfolio rotation Markdown 會輸出逐股 attribution 區段，讓策略候選能檢查報酬是否集中於少數股票。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 attribution 表格標題或核心欄位遺失，assertion 會失敗。
+        """
+        from tools.portfolio_rotation_sweep import format_markdown
+
+        markdown = format_markdown(
+            [_rotation_result(total_return=0.20, excess=0.10, sharpe=1.0, mdd=-0.20)],
+            start="2026-01-01",
+            end="2026-01-02",
+            periods_per_year=252,
+        )
+
+        self.assertIn("## Top Symbol Attribution", markdown)
+        self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)
 
     def test_market_regime_filter_blocks_rotation_when_market_index_below_sma(self) -> None:
         """
@@ -512,6 +538,19 @@ def _rotation_result(
         average_exposure=1.0,
         average_selected_count=1.0,
         end_equity=10_000.0 * (1.0 + total_return),
+        symbol_attribution=[
+            PortfolioSymbolAttribution(
+                symbol="2330",
+                selected_bar_count=10,
+                selected_bar_share=0.50,
+                rebalance_selected_count=2,
+                rebalance_selected_share=0.40,
+                average_weight=0.25,
+                average_selected_weight=0.50,
+                return_contribution=0.12,
+                absolute_contribution_share=0.75,
+            )
+        ],
     )
 
 

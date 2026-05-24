@@ -7061,3 +7061,110 @@ python tools\portfolio_rotation_sweep.py `
 - **Keep**：新增 TWSE 資料與 fetcher User-Agent / HTTP 308 regression。這是讓更大股票池回測可重複的必要基礎。
 - **Promote current best compare candidate**：`TWSE14 monthly + 21 bars + top3 + breadth42/min3`。它比七檔版本更接近穩健候選，但仍不是穩定營利證明。
 - **Next**：下一輪優先補 `portfolio_rotation_sweep.py` 的 per-symbol / per-window selection attribution，確認報酬是否集中在 `2603` 或少數高波動股票；再考慮 adjusted price 或更大股票池。
+
+## 2026-05-24 Portfolio rotation 選股歸因
+
+### 目的
+
+上一輪 `TWSE14 breadth42/min3` 雖然在 full-window、1x/2x/3x 成本與 6 個 rolling windows 都維持正 excess，但仍有一個重大疑問：這個結果是否其實只靠 `2603`、`2308` 或少數高波動股票貢獻。
+
+本輪不改策略邏輯、不調參數，只補 deterministic attribution artifact，讓每個 full-window 與 rolling window 都能回答：
+
+- 哪些股票實際被持有最多。
+- 哪些股票的 `weight * close-to-close return` 貢獻最高。
+- 單檔股票對總絕對貢獻的占比是否過高。
+- 每個 rolling window 的主要貢獻股票是否一直是同一檔。
+
+### 程式改動
+
+- `tools\portfolio_rotation_sweep.py`
+  - 新增 `PortfolioSymbolAttribution`。
+  - `PortfolioRotationResult` 新增 `symbol_attribution` 欄位。
+  - 回測過程會累積：
+    - `selected_bar_count`
+    - `selected_bar_share`
+    - `rebalance_selected_count`
+    - `rebalance_selected_share`
+    - `average_weight`
+    - `average_selected_weight`
+    - `return_contribution`
+    - `absolute_contribution_share`
+  - Markdown 新增 `Top Symbol Attribution` 與 `Walk-forward Top Symbol Attribution`。
+- `tests\test_portfolio_rotation_sweep_tool.py`
+  - 鎖住 attribution 的持倉天數與報酬貢獻計算。
+  - 鎖住 Markdown attribution 區段。
+
+### 正式報表命令
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_1301_1D.csv `
+  --csv data\processed\TWSE_1303_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2382_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2603_1D.csv `
+  --csv data\processed\TWSE_2881_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --csv data\processed\TWSE_2891_1D.csv `
+  --csv data\processed\TWSE_3711_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --breadth-filter `
+  --breadth-lookback-bars 42 `
+  --breadth-min-positive-count 3 `
+  --breadth-positive-threshold 0.0 `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\twse14-portfolio-rotation-monthly-lb21-top3-breadth42-min3-rolling24m-attribution-20260524.json `
+  --summary-md reports\generated\twse14-portfolio-rotation-monthly-lb21-top3-breadth42-min3-rolling24m-attribution-20260524.md
+```
+
+### Full-window attribution
+
+`1x`、`2x`、`3x` 成本倍率的選股結果相同，成本只影響權益曲線，不改選股排序。Full-window top 5：
+
+| Rank | Symbol | Return contribution | Abs contribution share | Selected bars | Selected bar share | Rebalance selected | Rebalance share | 解讀 |
+|---:|---|---:|---:|---:|---:|---:|---:|---|
+| 1 | `2603` | `81.88%` | `23.77%` | `457` | `32.64%` | `22` | `32.35%` | 最大貢獻，但未超過 25% |
+| 2 | `2308` | `62.61%` | `18.17%` | `397` | `28.36%` | `20` | `29.41%` | 重要貢獻 |
+| 3 | `2454` | `45.14%` | `13.10%` | `416` | `29.71%` | `21` | `30.88%` | 重要貢獻 |
+| 4 | `2382` | `38.75%` | `11.25%` | `299` | `21.36%` | `15` | `22.06%` | 重要貢獻 |
+| 5 | `3711` | `26.33%` | `7.64%` | `330` | `23.57%` | `18` | `26.47%` | 次要貢獻 |
+
+Full-window 看起來不是單一股票壟斷，top 1 `2603` 絕對貢獻占比約 `23.77%`；但 top 5 合計約 `73.93%`，仍代表候選主要依賴少數高動能股票群。
+
+### Rolling window attribution
+
+| Window | Top symbol | Top abs contribution share | Top contribution | 解讀 |
+|---|---|---:|---:|---|
+| `roll01` `2020-2021` | `2603` | `44.86%` | `76.24%` | 高度依賴航運行情 |
+| `roll02` `2021-2022` | `2603` | `68.75%` | `60.26%` | 原本問題段雖轉正 excess，但幾乎靠 `2603` 撐住 |
+| `roll03` `2022-2023` | `2382` | `42.35%` | `33.41%` | 主要貢獻切到電子代工 |
+| `roll04` `2023-2024` | `2382` | `37.09%` | `31.07%` | 貢獻仍偏集中但不是單一極端 |
+| `roll05` `2024-2025` | `2308` | `36.63%` | `31.59%` | 主要貢獻切到電源/工控 |
+| `roll06` `2025-2026-05` | `2308` | `48.75%` | `52.26%` | partial window 有單檔集中風險 |
+
+### 解讀
+
+1. **Full-window 沒有單檔完全壟斷**：最大貢獻 `2603` 約 `23.77%`，這比「單一股票撐完整體績效」好。
+2. **但 rolling windows 仍高度集中**：`roll02` 的 `2603` 占 `68.75%`，`roll06` 的 `2308` 占 `48.75%`。這表示「6/6 positive excess」不能直接解讀為分散穩定，因為某些分段仍由單檔行情主導。
+3. **`roll02` 被修復但證據品質還不夠**：`2021-2022` excess 已轉正，但 attribution 顯示主要來自 `2603`，這是參數候選的弱點。
+4. **下一步不應再微調 breadth threshold**：應先加入 concentration guard / max single-symbol attribution gate，或用更大股票池與 adjusted price 檢查這種集中度是否自然下降。
+
+### Keep / Discard 判斷
+
+- **Keep**：per-symbol / per-window attribution artifact 與 tests。這直接補上策略評估準則要求的「不要只靠少數大贏家」檢查。
+- **Keep as current best compare candidate**：`TWSE14 monthly + 21 bars + top3 + breadth42/min3` 仍是目前最強候選。
+- **Not stable-profit proof**：rolling attribution 顯示部分 window 對單檔依賴過高；資料仍未還原權息，股票池仍小，尚未驗證流動性與容量。
+- **Next**：優先做 concentration guard，例如報表先標示 `max_symbol_abs_contribution_share`、`top3_abs_contribution_share`，再測是否能用更大股票池、sector cap 或 top-N / rebalance 約束降低分段集中度，而不是只追求更高 return / IR。
