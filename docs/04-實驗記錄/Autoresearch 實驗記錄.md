@@ -7435,3 +7435,88 @@ financial = 2881, 2882, 2891
 
 - Moskowitz and Grinblatt, *Do Industries Explain Momentum?*, Journal of Finance, 1999, DOI: https://doi.org/10.1111/0022-1082.00146
 - *Momentum: what do we know 30 years after Jegadeesh and Titman’s seminal paper?*, Financial Markets and Portfolio Management, 2022: https://link.springer.com/article/10.1007/s11408-022-00417-8
+
+## 2026-05-24 Portfolio rotation TWSE23 擴大股票池比較
+
+### 目的
+
+前幾輪已確認 `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 中 IR / min rolling IR 較好的 compare candidate，但 rolling contribution 仍高度集中。本輪不再微調 breadth 或 group cap，而是擴大股票池，測試 concentration 是否會因可選標的變多而自然下降。
+
+核心假設：
+
+> 若 concentration 主要來自股票池太小，擴大到更多 TWSE 大型股後，rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share` 應下降；但若同時讓 min rolling excess、Information Ratio 或 drawdown 顯著惡化，則只能保留為資料/集中度診斷，不可升級。
+
+### 程式與資料改動
+
+- `src/signal_forge/data/fetch.py`
+  - TWSE request header 改為集中產生，除 `User-Agent` 外補上 `Accept: application/json,text/plain,*/*` 與 TWSE historical stock-day `Referer`。
+  - 原因是 TWSE 對部分 `STOCK_DAY` request 會回同路徑 HTTP 308；補上瀏覽器式 JSON request header 後，第一批被卡住的股票可正常回傳 JSON。
+- `tests/test_data_fetch.py`
+  - 擴充 HTTP 308 redirect regression，確認 fetcher 會帶 JSON `Accept` 與 stock-day `Referer`。
+- 新增 9 檔資料：`1101`、`1102`、`1216`、`1326`、`2002`、`2207`、`2327`、`2357`、`2379`。
+- 本輪股票池從 TWSE14 擴大到 TWSE23：
+
+```text
+1101,1102,1216,1301,1303,1326,2002,2207,2303,2308,2317,2327,2330,2357,2379,2382,2412,2454,2603,2881,2882,2891,3711
+```
+
+資料限制：
+
+- 原計畫另抓 `2395,2408,2474,3008,3034,3045,3231,4904,4938,5871,5880,6505,6669`，但 TWSE 在多次 request 後再次出現重複 HTTP 308 / 短窗節流現象。
+- 這不是策略結果失敗，而是資料擷取邊界；下一次若要擴到 TWSE30+，應放慢批次、加 retry spacing，或改用已調整權息且較穩定的資料源。
+
+### 固定條件
+
+```text
+universe = TWSE23
+rebalance = monthly
+lookback_bars = 21
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_positive_threshold = 0.0
+max_consecutive_selections_per_symbol = 5
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+報表檔案：
+
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top4-breadth42-min5-maxconsec5-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top4-breadth42-min8-maxconsec5-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top5-breadth42-min5-maxconsec5-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top5-breadth42-min8-maxconsec5-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top3-breadth42-min5-maxconsec5-rolling24m-20260524.json`
+- `reports/generated/twse23-portfolio-rotation-monthly-lb21-top3-breadth42-min8-maxconsec5-rolling24m-20260524.json`
+
+### TWSE14 vs TWSE23 摘要
+
+以下皆看 `1x` 成本倍率。
+
+| Case | Top N | Breadth min | Full return | Full excess | Full IR | Full MDD | Active MDD | Full top-3 share | Min rolling excess | Min rolling IR | Worst rolling active MDD | Max rolling max share | Max rolling top-3 share | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `TWSE14 current compare` | `4` | `3` | `1738.80%` | `1402.62%` | `1.515` | `-18.61%` | `-20.21%` | `46.31%` | `37.22%` | `0.814` | `-20.21%` | `65.37%` | `82.62%` | 目前最佳 compare candidate |
+| `TWSE23` | `4` | `3` | `649.25%` | `488.35%` | `1.179` | `-36.64%` | `-26.89%` | `46.09%` | `-17.99%` | `-0.291` | `-33.07%` | `39.51%` | `65.32%` | concentration 改善，但穩健性失敗 |
+| `TWSE23` | `4` | `5` | `676.97%` | `516.08%` | `1.208` | `-34.40%` | `-24.19%` | `46.51%` | `-14.41%` | `-0.201` | `-30.60%` | `41.11%` | `65.32%` | 略優於 min3，但仍有負 rolling |
+| `TWSE23` | `4` | `8` | `484.16%` | `323.27%` | `0.758` | `-23.66%` | `-24.97%` | `45.78%` | `0.60%` | `0.116` | `-24.97%` | `51.50%` | `71.20%` | 唯一正 min rolling excess，但 IR 太弱 |
+| `TWSE23` | `5` | `5` | `526.75%` | `365.85%` | `1.108` | `-33.44%` | `-21.14%` | `41.25%` | `-12.98%` | `-0.265` | `-23.36%` | `36.10%` | `56.62%` | concentration 最好，但 edge 不足 |
+| `TWSE23` | `5` | `8` | `376.88%` | `215.99%` | `0.610` | `-21.54%` | `-27.34%` | `41.87%` | `-4.04%` | `-0.067` | `-27.34%` | `47.53%` | `65.71%` | 過度防守 |
+| `TWSE23` | `3` | `5` | `588.13%` | `427.24%` | `0.931` | `-34.09%` | `-28.81%` | `49.24%` | `-2.32%` | `0.158` | `-31.55%` | `51.20%` | `75.78%` | 不如 top4/top5 |
+| `TWSE23` | `3` | `8` | `429.57%` | `268.68%` | `0.614` | `-25.72%` | `-33.10%` | `50.29%` | `-11.14%` | `-0.159` | `-33.10%` | `62.32%` | `78.47%` | 不升級 |
+
+### 解讀
+
+1. **擴大股票池確實降低 rolling concentration**：`TWSE14 top4/min3/maxconsec5` 的 max rolling top-3 share 約 `82.62%`；`TWSE23 top4/min3` 降到 `65.32%`，`TWSE23 top5/min5` 進一步降到 `56.62%`。
+2. **但 edge 與回撤明顯惡化**：`TWSE23 top4/min3` full IR 降到 `1.179`，MDD 惡化到 `-36.64%`，且 min rolling excess 為 `-17.99%`、min rolling IR 為 `-0.291`。
+3. **`top5/min5` 是 concentration 最乾淨的對照，不是主候選**：max rolling top-3 share 降到 `56.62%`，但 min rolling excess 為 `-12.98%`、min rolling IR 為 `-0.265`，代表分散後沒有保留足夠 active edge。
+4. **`top4/min8` 只適合作為風險門檻觀察**：它是唯一 min rolling excess 為正的 TWSE23 設定，但 full IR 只有 `0.758`、min rolling IR 只有 `0.116`，不足以取代目前候選。
+5. **結論不是穩定營利證明**：TWSE23 證明「更大股票池能降低 concentration」，但也揭露目前 ranking / breadth gate 在更多標的上不夠穩健。這表示下一輪應改善資料與股票池品質，而不是只把標的數量加大。
+
+### Keep / Discard 判斷
+
+- **Keep code/data**：TWSE header 修正與 9 檔新增日線資料。這讓後續可以繼續擴充可驗證股票池。
+- **Keep as diagnostic**：TWSE23 擴大股票池結果保留為 concentration diagnostic；它證明 concentration 可以被股票池規模壓低。
+- **Do not promote**：所有 TWSE23 本輪設定都不取代 `TWSE14 top4 + breadth42/min3 + max consecutive 5`。
+- **Current compare candidate unchanged**：目前仍以 `TWSE14 top4 + breadth42/min3 + max consecutive 5` 作績效 compare candidate，但它仍不是穩定營利證明。
+- **Next**：優先測 adjusted price、較慢批次完成 TWSE30+、流動性/容量條件與 canary universe。若只繼續調 breadth min 或 top-N，會重複已知 tradeoff。

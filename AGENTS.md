@@ -92,6 +92,8 @@ modify -> verify -> keep/discard -> log
 Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\策略回測與優化評估準則.md
 ```
 
+策略研究任務若尚未讀取這份準則與最近實驗紀錄，不得開始回測、調參或導入新策略；若結論沒有依準則標示 `keep`、`discard` 或 `compare-only`，不得視為已完成。
+
 策略相關任務的必讀順序是：
 
 1. 先讀 `docs\02-規劃\策略回測與優化評估準則.md`，確認本輪要改善的指標與 keep / discard / compare-only gate。

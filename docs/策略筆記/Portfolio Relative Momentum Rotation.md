@@ -74,7 +74,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 這是 portfolio-level 策略，不能用逐檔 `Beat B&H` 判斷成敗；必須用投組對投組的 benchmark。
 - 21 日 lookback 反應較快，但更可能吃到短期反轉、交易成本與換股噪音。
 - 月再平衡降低交易頻率，但也可能錯過月內趨勢反轉。
-- 股票池只有七檔 TWSE 大型股，樣本太小，還不能證明策略在更廣股票池穩定有效。
+- 股票池已從七檔擴到 14 檔，再暫時擴到 23 檔做 concentration diagnostic；樣本仍偏小，且 TWSE STOCK_DAY 資料未還原權息，還不能證明策略在更廣股票池穩定有效。
 - 24 個月 rolling 檢查已發現 2021-2022 失敗 window，代表策略可能需要 market regime 或 risk-off 條件，不能只看 2024-2026 強勢期。
 - 可選 `--market-regime-filter --market-regime-sma-bars 84` 已測：它把 2021-2022 excess 從約 `-24.62%` 改到約 `-13.59%`，但 full-window IR 從約 `0.858` 降到約 `0.544`，所以只能作 compare-only 風控工具，不能當作目前主候選改善。
 - 可選 `--volatility-target --volatility-lookback-bars 42 --target-annual-volatility 0.20` 已測：full excess 只剩約 `43.00%`、IR 約 `0.065`，2021-2022 excess 仍約 `-22.85%`，所以也只能作 compare-only 風控工具，不能當作目前主候選改善。
@@ -84,6 +84,8 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 選股歸因顯示 full-window 最大貢獻 `2603` 的絕對貢獻占比約 `23.77%`，不是單一股票完全壟斷；但 rolling window 仍有集中風險，`roll02` 的 `2603` 約 `68.75%`、`roll06` 的 `2308` 約 `48.75%`。
 - Concentration guard 進一步顯示 full-window top-3 絕對貢獻占比約 `55.04%`；rolling top-3 在 `roll01` 約 `73.33%`、`roll02` 約 `82.56%`、`roll03` 約 `72.39%`，代表部分分段仍過度集中。
 - `top_n=4` 可把 full-window top-3 絕對貢獻占比降到約 `48.32%`，但 max rolling top-3 share 仍約 `81.68%`，所以它改善 full-window 集中度，還沒有解決最關鍵的 rolling concentration。
+- `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 績效 compare candidate：full-window IR 約 `1.515`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、min rolling IR 約 `0.814`；但 max rolling top-3 share 仍約 `82.62%`。
+- 擴到 TWSE23 後，concentration 明顯下降但 edge 變弱：`top4/min3/maxconsec5` 的 max rolling top-3 share 降到約 `65.32%`，但 full IR 降到約 `1.179`、MDD 惡化到約 `-36.64%`、min rolling excess 約 `-17.99%`。`top5/min5` 的 max rolling top-3 share 進一步降到約 `56.62%`，但 min rolling IR 約 `-0.265`，所以只能作 concentration diagnostic。
 - 因為分段貢獻仍偏集中、資料未還原權息、股票池仍小，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
@@ -92,11 +94,12 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 
 - 已測 `top4 + breadth 42/min3` 的單檔連續入選上限。`max consecutive 5` 讓 full-window IR 約 `1.515`、min rolling IR 約 `0.814`，比無上限 `top4` 更強；但 max rolling top-3 share 仍約 `82.62%`，沒有真正壓低 rolling concentration。
 - 已測 sector/group cap。`groupcap2` full IR 約 `1.449`，但 min rolling IR 降到約 `0.610`，max rolling top-3 share 仍約 `81.68%`；`groupcap1` 傷害 edge。因此 group cap 只保留為可測工具，不作目前主候選。
-- 下一步優先測更大股票池、canary universe、adjusted price 或流動性/容量條件，目標是降低 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`。
+- 已測 TWSE23 擴大股票池。它把 rolling concentration 往下壓，但同時讓 min rolling excess / IR 轉弱，因此不升級；下一步不要只把股票池加大，應改善股票池品質、資料調整與流動性條件。
+- 下一步優先測 adjusted price、較慢批次完成 TWSE30+、canary universe 或流動性/容量條件，目標是降低 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`，同時保留正 min rolling excess 與可接受 active drawdown。
 - 再檢查 adjusted price、流動性與容量；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
-- 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
-- 目前主比較錨點分成三個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是最新績效 compare candidate。`groupcap1/2` 保留為 discard / compare-only 對照，不取代這三個錨點。
+- 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
+- 目前主比較錨點分成三個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是最新績效 compare candidate。`groupcap1/2` 與 TWSE23 擴大股票池保留為 discard / compare-only / diagnostic 對照，不取代這三個錨點。
 
 ## 參考來源
 

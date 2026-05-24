@@ -53,6 +53,14 @@ class DataFetchTests(unittest.TestCase):
             "SignalForge",
             fake_urlopen.call_args_list[0].args[0].headers["User-agent"],
         )
+        self.assertIn(
+            "application/json",
+            fake_urlopen.call_args_list[0].args[0].headers["Accept"],
+        )
+        self.assertIn(
+            "stock-day",
+            fake_urlopen.call_args_list[0].args[0].headers["Referer"],
+        )
 
     def test_parse_twse_row_converts_roc_date_and_numeric_fields(self) -> None:
         """
