@@ -32,19 +32,19 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\drawdown_risk_of
 
 ## 控制規則
 
-| 條件 | 輸出 |
-|---|---:|
-| proxy equity 回撤未破門檻 | 保持底層訊號 |
-| 回撤達 `drawdown_threshold` | 啟動 risk-off |
-| risk-off 期間底層訊號為 long | 改成 `0.0` |
-| risk-off 期滿 | 重設局部 high-water mark |
+| 判定點 | 輸出 | 維護語意 |
+|---|---:|---|
+| proxy equity 回撤未破門檻 | 保持底層訊號 | 策略自身尚未進入明確失效狀態，不干預底層進出場。 |
+| 回撤達 `drawdown_threshold` | 啟動 risk-off | 從 high-water mark 回撤超過門檻時，視為需要暫停曝險。 |
+| risk-off 期間底層訊號為 long | 改成 `0.0` | 底層策略即使重新偏多，也要等風控冷卻期結束才恢復。 |
+| risk-off 期滿 | 重設局部 high-water mark | 避免舊高點永久壓制策略，讓後續重新開始追蹤局部回撤。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `drawdown_threshold` | `0.20` | `--drawdown-risk-off-threshold` | 觸發 risk-off 的回撤門檻 |
-| `risk_off_bars` | `60` | `--drawdown-risk-off-bars` | risk-off 維持 bar 數 |
+| `drawdown_threshold` | `0.20` | `--drawdown-risk-off-threshold` | 觸發 risk-off 的回撤門檻；太低會頻繁停用策略，太高可能等到大回撤後才反應。 |
+| `risk_off_bars` | `60` | `--drawdown-risk-off-bars` | 觸發後維持 flat 的時間；越長越保守，但也越容易錯過反彈或新趨勢。 |
 
 ## 怎麼跑
 
@@ -74,7 +74,7 @@ python tools\multi_stock_target_state_sweep.py `
 
 ## 股價走勢解說圖
 
-![[assets/absolute-momentum-trend-explainer.png]]
+![[assets/drawdown-risk-off-explainer.png]]
 
 此圖借用趨勢持有示意：Drawdown Risk-Off 只在策略自身回撤後暫停曝險，不代表能避開所有下跌。
 

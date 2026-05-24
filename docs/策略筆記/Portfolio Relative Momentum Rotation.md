@@ -47,18 +47,28 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 6. 入選股票等權配置；未入選股票權重為 `0.0`。
 7. 沒有股票通過時，全投組留現金。
 
+這裡的每一步都只使用 rebalance 當下以前可見的資料。若後續新增 gate，必須確認它不是用未來 attribution 或完整 window 結果來回頭篩選候選股票；診斷工具可以看完整結果，線上 gate 只能看當下以前的資訊。
+
+| 控制點 | 對候選的影響 | 維護語意 |
+|---|---|---|
+| `lookback return` | 決定初始排名 | 這是 rotation 的核心 alpha 假設，改它等於改變策略家族。 |
+| `ranking_skip_bars` | 排除最近 N 根 bar 後排名 | 用來測試近期過熱或短期反轉是否傷害策略，不應和 lookback 混為同一參數。 |
+| `min_return` | 不達絕對動能者排除 | 防止在整個股票池都弱時仍被迫選相對沒那麼弱的股票。 |
+| breadth / group / liquidity gate | 候選可能被排除，由下一順位補上 | 這些是風險與可執行性控制，不應被解讀成新的報酬來源。 |
+| `top_n` 等權配置 | 決定集中度與單檔權重 | 越小越集中，必須搭配 attribution 檢查是否依賴少數股票。 |
+
 ## 主要參數
 
-| 參數 | 預設 | 用途 |
+| 參數 | 預設 | 用途與調整判斷 |
 |---|---:|---|
-| `--rebalance-frequency` | `weekly` | daily / weekly / monthly 再平衡 |
-| `--lookback-bars` | `126` | 相對動能回看期 |
-| `--ranking-skip-bars` | `0` | 排除最近 N 根 bar 後排名 |
-| `--ranking-mode` | `total-return` | 可改 `group-residual` |
-| `--top-n` | `3` | 每次最多持有檔數 |
-| `--min-return` | `0.0` | 絕對動能下限 |
-| `--cost-multipliers-list` | `1` | 成本壓力倍率 |
-| `--volatility-target` | 關閉 | 投組層級降曝險 overlay |
+| `--rebalance-frequency` | `weekly` | 決定多久重新排名與換股；頻率越高越快反應，但 turnover 與成本壓力也越高。 |
+| `--lookback-bars` | `126` | 計算相對動能的 formation window；短 lookback 反應快但更容易追短線過熱，長 lookback 更穩但可能落後。 |
+| `--ranking-skip-bars` | `0` | 排除最近 N 根 bar 後再排名；用來測試 skip-recent-period 是否能避開短期反轉。 |
+| `--ranking-mode` | `total-return` | 排名分數來源；`group-residual` 會扣掉同組平均報酬，用來測試是否降低 group regime 依賴。 |
+| `--top-n` | `3` | 每次最多持有檔數；越小越集中、越大越接近等權股票池。 |
+| `--min-return` | `0.0` | 絕對動能下限；即使排名高，若自身 lookback return 不達門檻也不入選。 |
+| `--cost-multipliers-list` | `1` | 成本壓力倍率；策略候選至少要看 1x / 2x / 3x，避免只在低成本假設下有效。 |
+| `--volatility-target` | 關閉 | 投組層級降曝險 overlay；只縮小已選 basket 權重，不改變排名與候選名單。 |
 
 ## 怎麼跑
 

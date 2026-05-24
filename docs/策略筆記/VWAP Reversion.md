@@ -33,22 +33,22 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\vwap_reversion.p
 
 ## 進出場規則
 
-| 條件 | 目標曝險 |
-|---|---:|
-| VWAP 或標準差尚未暖機 | `0.0` |
-| `z_score <= -entry_z` | `1.0` |
-| 持有中且 `z_score >= -exit_z` | `0.0` |
-| 啟用 regime filter 且 close 低於 regime SMA | `0.0` |
+| 判定點 | 目標曝險 | 維護語意 |
+|---|---:|---|
+| VWAP 或標準差尚未暖機 | `0.0` | rolling VWAP 與偏離幅度還不可信時，不把早期資料硬解讀成跌深訊號。 |
+| `z_score <= -entry_z` | `1.0` | 價格低於 VWAP 達指定標準化距離，才視為足夠跌深的 long candidate。 |
+| 持有中且 `z_score >= -exit_z` | `0.0` | 價格已回到 VWAP 附近，均值回歸假設完成，退出而不是繼續當趨勢單持有。 |
+| 啟用 regime filter 且 close 低於 regime SMA | `0.0` | 即使跌深，也先擋掉處於下跌 regime 的接刀訊號。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `vwap_window` | `20` | `--vwap-window` | rolling VWAP 視窗 |
-| `entry_z` | `1.5` | `--entry-z` | 跌深進場門檻 |
-| `exit_z` | `0.25` | `--exit-z` | 回到 VWAP 附近平倉 |
-| `vwap_regime_filter` | `False` | `--vwap-regime-filter` | 要求價格仍在長期趨勢上方 |
-| `vwap_regime_window` | `50` | `--vwap-regime-window` | regime SMA 視窗 |
+| `vwap_window` | `20` | `--vwap-window` | rolling VWAP 與偏離標準差的計算範圍；太短會讓平均成本跟著價格劇烈晃動，太長會讓回歸訊號反應慢。 |
+| `entry_z` | `1.5` | `--entry-z` | 進場偏離門檻；數值越大訊號越少且更極端，數值越小交易數增加但假跌深也會增加。 |
+| `exit_z` | `0.25` | `--exit-z` | 出場靠近 VWAP 的程度；越接近 0 越要求回到均值附近，越大則較早離場。 |
+| `vwap_regime_filter` | `False` | `--vwap-regime-filter` | 可選接刀防線；啟用後只有 close 仍在 regime SMA 上方才接受 long。 |
+| `vwap_regime_window` | `50` | `--vwap-regime-window` | regime SMA 的視窗；調大會更慢確認趨勢，調小會更容易頻繁切換 regime。 |
 
 ## 怎麼跑
 

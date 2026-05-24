@@ -32,21 +32,21 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\volatility_targe
 
 ## 控制規則
 
-| 條件 | 輸出 |
-|---|---:|
-| 底層訊號為 flat | 保持 `0.0` |
-| 樣本不足 | `0.0` 或等候暖機 |
-| realized volatility 低於目標 | 保留原曝險，上限為 `max_scale` |
-| realized volatility 高於目標 | 按比例降低曝險 |
+| 判定點 | 輸出 | 維護語意 |
+|---|---:|---|
+| 底層訊號為 flat | 保持 `0.0` | Overlay 不創造新方向，只處理原本已經要持有的曝險大小。 |
+| 樣本不足 | `0.0` 或等候暖機 | 沒有足夠 close-to-close return 時，不用不穩定波動估計持倉。 |
+| realized volatility 低於目標 | 保留原曝險，上限為 `max_scale` | 目前風險沒有超標，維持底層策略曝險；預設仍不放大到超過 1。 |
+| realized volatility 高於目標 | 按比例降低曝險 | 用 `target_vol / realized_vol` 計算 scale，只降曝險、不改訊號方向。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `lookback_bars` | target-state `20`；portfolio `21` | `--volatility-lookback-bars` | 波動估算視窗 |
-| `target_annual_volatility` | `0.20` | `--target-annual-volatility` | 年化波動目標 |
-| `min_observations` | 同 lookback 或未指定 | `--volatility-min-observations` | 暖機樣本數 |
-| `max_scale` | `1.0` | `--volatility-max-scale` | 曝險上限，預設不加槓桿 |
+| `lookback_bars` | target-state `20`；portfolio `21` | `--volatility-lookback-bars` | realized volatility 的估算視窗；短視窗更快降曝險但容易過度反應，長視窗較穩但反應慢。 |
+| `target_annual_volatility` | `0.20` | `--target-annual-volatility` | 目標年化波動；降低會更保守，提高則更接近原始策略曝險。 |
+| `min_observations` | 同 lookback 或未指定 | `--volatility-min-observations` | 啟用縮放前需要的最少報酬樣本；用來避免剛開始幾根 bar 的估計不穩。 |
+| `max_scale` | `1.0` | `--volatility-max-scale` | 曝險上限；預設 1.0 表示不加槓桿，只允許縮小持倉。 |
 
 ## 怎麼跑
 
@@ -77,7 +77,7 @@ python tools\portfolio_rotation_sweep.py `
 
 ## 股價走勢解說圖
 
-![[assets/absolute-momentum-trend-explainer.png]]
+![[assets/volatility-target-explainer.png]]
 
 此圖借用趨勢持有示意：Volatility Target 只調整持倉大小，不保證降低所有回撤。
 

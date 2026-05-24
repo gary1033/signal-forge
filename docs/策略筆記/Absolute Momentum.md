@@ -34,20 +34,20 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\absolute_momentu
 
 ## 進出場規則
 
-| 條件 | 目標曝險 |
-|---|---:|
-| momentum 或 trend SMA 尚未暖機 | `0.0` |
-| `close / close[t - momentum_window] - 1 > 0` 且 `close > trend_sma` | `1.0` |
-| 動能不為正，或 close 跌破 trend SMA | `0.0` |
+| 判定點 | 目標曝險 | 維護語意 |
+|---|---:|---|
+| momentum 或 trend SMA 尚未暖機 | `0.0` | 回看報酬或長期趨勢基準缺資料時，不提前建立持倉。 |
+| `close / close[t - momentum_window] - 1 > 0` 且 `close > trend_sma` | `1.0` | 股票自身中期報酬為正，且價格仍站上長期趨勢，才允許完整 long。 |
+| 動能不為正，或 close 跌破 trend SMA | `0.0` | 任一條件失效都代表趨勢持有假設不足，回到 flat。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `momentum_window` | `126` | `--fast-window` | 半年左右的動能回看期 |
-| `trend_window` | `200` | `--slow-window` | 長期趨勢確認 |
-| `volatility_target` | 關閉 | `--volatility-target` | target-state 風控 overlay，見 [[Volatility Target]] |
-| `drawdown_risk_off` | 關閉 | `--drawdown-risk-off` | target-state 風控 overlay，見 [[Drawdown Risk-Off]] |
+| `momentum_window` | `126` | `--fast-window` | 自身動能回看期；越短越像中短線 momentum，越長越偏長期趨勢確認。 |
+| `trend_window` | `200` | `--slow-window` | 長期趨勢濾網；它用來防止只因短期反彈就持有長期弱勢股。 |
+| `volatility_target` | 關閉 | `--volatility-target` | target-state 風控 overlay；只縮小非零曝險，用來測風險調整後是否改善，見 [[Volatility Target]]。 |
+| `drawdown_risk_off` | 關閉 | `--drawdown-risk-off` | target-state 風控 overlay；以單檔 proxy equity 回撤暫停持倉，見 [[Drawdown Risk-Off]]。 |
 
 ## 怎麼跑
 

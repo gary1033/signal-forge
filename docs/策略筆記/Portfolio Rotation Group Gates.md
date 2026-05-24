@@ -34,25 +34,25 @@ Portfolio rotation 可能看起來有效，但實際上只依賴少數產業或�
 
 ## 控制規則
 
-| Gate | CLI | 控制語意 |
-|---|---|---|
-| Group breadth | `--group-breadth-filter` | 候選股票所屬群組內部正動能比例不足時排除 |
-| Group regime | `--group-regime-filter` | 候選股票所屬群組等權 lookback return 不足時排除 |
-| Group cap | `--max-selections-per-group` | 每次 rebalance 限制同組最多入選檔數 |
-| Single-member guard | `--min-symbols-per-selected-group` | 群組成員數不足時排除 |
-| Group contribution | `--group-contribution-lookback-bars` + `--max-group-contribution-share` | 若近期已實現貢獻過度集中，暫時排除該群組 |
+| Gate | CLI | 控制語意 | 維護語意 |
+|---|---|---|---|
+| Group breadth | `--group-breadth-filter` | 候選股票所屬群組內部正動能比例不足時排除 | 檢查候選不是只靠單一同組成員撐起排名；若群組內大多數成員都弱，候選也不放行。 |
+| Group regime | `--group-regime-filter` | 候選股票所屬群組等權 lookback return 不足時排除 | 檢查候選所屬產業或群組本身是否仍在正趨勢，避免弱勢群組內的相對強股被誤選。 |
+| Group cap | `--max-selections-per-group` | 每次 rebalance 限制同組最多入選檔數 | 控制持倉分散度，避免 top-N 全被同一 group 佔滿。 |
+| Single-member guard | `--min-symbols-per-selected-group` | 群組成員數不足時排除 | 阻擋只有一檔股票的 group 被誤讀成有群組代表性。 |
+| Group contribution | `--group-contribution-lookback-bars` + `--max-group-contribution-share` | 若近期已實現貢獻過度集中，暫時排除該群組 | 只用已完成持倉貢獻作下一次 rebalance 的 gate，不可偷看完整 window 結果。 |
 
 ## 主要參數
 
-| 參數 | 預設 | 用途 |
+| 參數 | 預設 | 用途與調整判斷 |
 |---|---:|---|
-| `--symbol-group` | 無 | `SYMBOL:GROUP` 映射 |
-| `--group-breadth-lookback-bars` | `21` | group breadth 回看期 |
-| `--group-breadth-min-positive-share` | `0.50` | 群組內正動能比例下限 |
-| `--group-breadth-min-members` | `1` | 群組最少成員數 |
-| `--group-regime-lookback-bars` | `63` | group regime 回看期 |
-| `--group-regime-min-return` | `0.0` | 群組等權報酬下限 |
-| `--group-regime-min-members` | `1` | 群組最少成員數 |
+| `--symbol-group` | 無 | 必填的 group mapping；格式是 `SYMBOL:GROUP`，分組本身就是研究假設，改分組會改變 gate 結果。 |
+| `--group-breadth-lookback-bars` | `21` | 群組內部正動能比例的回看期；短期反應快但較噪，長期較穩但可能錯過群組轉弱。 |
+| `--group-breadth-min-positive-share` | `0.50` | 群組內正動能比例下限；提高會更嚴格但可能把有效 group regime 一併排除。 |
+| `--group-breadth-min-members` | `1` | 群組成員數下限；提高可阻擋單成員依賴，但也可能讓薄群組無法參與。 |
+| `--group-regime-lookback-bars` | `63` | 群組等權報酬回看期；短期 gate 較敏感，長期 gate 可能過晚發現轉弱。 |
+| `--group-regime-min-return` | `0.0` | 群組等權報酬下限；提高門檻會要求群組本身更強，但也會降低入選機會。 |
+| `--group-regime-min-members` | `1` | 群組 regime 計算的成員數下限；用來控制單檔 proxy group 的可靠性。 |
 
 ## 怎麼跑
 
@@ -105,7 +105,7 @@ python tools\portfolio_rotation_sweep.py `
 
 ## 股價走勢解說圖
 
-![[assets/portfolio-relative-momentum-rotation-explainer.png]]
+![[assets/portfolio-rotation-group-gates-explainer.png]]
 
 此圖借用 portfolio rotation 示意：group gates 只限制候選與曝險集中度，不代表能保證降低回撤。
 

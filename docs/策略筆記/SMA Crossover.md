@@ -34,20 +34,20 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\sma_crossover.py
 
 ## 進出場規則
 
-| 條件 | 目標曝險 |
-|---|---:|
-| fast SMA 尚未暖機 | `0.0` |
-| slow SMA 尚未暖機 | `0.0` |
-| `fast_sma > slow_sma` | `1.0` |
-| `fast_sma <= slow_sma` | `0.0` |
+| 判定點 | 目標曝險 | 維護語意 |
+|---|---:|---|
+| fast SMA 尚未暖機 | `0.0` | 短期趨勢線還沒有足夠資料，不允許用不完整均線判斷進場。 |
+| slow SMA 尚未暖機 | `0.0` | 長期基準線尚未形成時，策略沒有趨勢濾網，因此保持空手。 |
+| `fast_sma > slow_sma` | `1.0` | 短期價格平均已站上長期平均，視為趨勢轉強並持有 long。 |
+| `fast_sma <= slow_sma` | `0.0` | 短期趨勢不再優於長期基準，既有 long 也應退回 flat。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `fast_window` | `20` | `--fast-window` | 短期均線視窗 |
-| `slow_window` | `200` | `--slow-window` | 長期均線視窗 |
-| `allow_short` | `False` | 不開放 Phase 1 short | 目前固定 long-only |
+| `fast_window` | `20` | `--fast-window` | 控制短期趨勢反應速度；調小會更快進出但更容易被盤整雜訊干擾，調大則訊號更慢。 |
+| `slow_window` | `200` | `--slow-window` | 定義長期趨勢基準；調小會讓 baseline 更敏感，調大會更保守但可能錯過反轉初期。 |
+| `allow_short` | `False` | 不開放 Phase 1 short | Phase 1 刻意固定 long-only，避免把趨勢 baseline 和放空語意混在同一次研究裡。 |
 
 ## 怎麼跑
 

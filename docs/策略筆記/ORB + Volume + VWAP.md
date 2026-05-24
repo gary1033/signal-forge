@@ -37,29 +37,29 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 
 ## 進出場規則
 
-| 狀態 / 條件 | 目標曝險 |
-|---|---:|
-| 開盤區間尚未建立完成 | `0.0` |
-| timestamp 不含 intraday 時間 | `0.0` |
-| close 未突破 OR high | `0.0` |
-| close 突破 OR high 但未站上 session VWAP | `0.0` |
-| 啟用量能條件但 breakout volume 不足 | `0.0` |
-| 啟用 retest，第一次突破後尚未回踩確認 | `0.0` |
-| breakout 通過 OR、VWAP、量能與可選 refinement | `1.0` |
-| 新 session 開始 | 重設狀態 |
+| 狀態 / 條件 | 目標曝險 | 維護語意 |
+|---|---:|---|
+| 開盤區間尚未建立完成 | `0.0` | OR high / low 還在收集期，任何突破判斷都太早。 |
+| timestamp 不含 intraday 時間 | `0.0` | ORB 依賴 session 時間；日線資料不能硬套 intraday 規則。 |
+| close 未突破 OR high | `0.0` | 價格還在開盤區間內或下方，沒有 breakout entry。 |
+| close 突破 OR high 但未站上 session VWAP | `0.0` | 突破位置不足，還要確認價格高於當日平均成交成本。 |
+| 啟用量能條件但 breakout volume 不足 | `0.0` | 低量越線容易是假突破，先擋掉而不是追價。 |
+| 啟用 retest，第一次突破後尚未回踩確認 | `0.0` | retest 模式下第一次突破只記錄狀態，等回踩後重新站回才進場。 |
+| breakout 通過 OR、VWAP、量能與可選 refinement | `1.0` | 價格位置、平均成本、量能與結構條件同時通過，才接受 long。 |
+| 新 session 開始 | 重設狀態 | 前一日 OR 與持倉狀態不能直接帶到下一個 session。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `opening_range_minutes` | `30` | `--orb-opening-range-minutes` | OR 建立期 |
-| `session_start` | `09:30` | `--orb-session-start-hour` / `--orb-session-start-minute` | session 起點 |
-| `session_end` | 策略 metadata | `--orb-session-end-hour` / `--orb-session-end-minute` | 報表用 regular-session 邊界 |
-| `session_timezone` | 策略 metadata | `--orb-session-timezone` | 報表用市場時區 |
-| `ema_window` | `20` | `--orb-ema-window` | EMA trend confirmation |
-| retest | 關閉 | `--orb-retest-confirmation` | 等回踩再確認 |
-| signal window | 關閉 | `--orb-signal-window-minutes` | 限制新 breakout 時間 |
-| OR volume baseline | 關閉 | `--orb-use-opening-range-volume-baseline` | 用 OR 平均量能作 breakout baseline |
+| `opening_range_minutes` | `30` | `--orb-opening-range-minutes` | OR 建立期長度；太短會讓 OR high / low 太敏感，太長會錯過早盤突破。 |
+| `session_start` | `09:30` | `--orb-session-start-hour` / `--orb-session-start-minute` | session 起點；台股、美股與期貨市場不同，不能沿用錯誤開盤時間。 |
+| `session_end` | 策略 metadata | `--orb-session-end-hour` / `--orb-session-end-minute` | 報表用 regular-session 邊界；目前主要記錄研究假設，不等於已完成 forced-flat 出場。 |
+| `session_timezone` | 策略 metadata | `--orb-session-timezone` | 報表用市場時區；用來避免跨市場資料把 session 解讀錯。 |
+| `ema_window` | `20` | `--orb-ema-window` | EMA trend confirmation 的趨勢基線；太短會接近價格，太長可能讓早盤訊號暖機不足。 |
+| retest | 關閉 | `--orb-retest-confirmation` | 突破後必須回踩再確認；降低假突破但會延後進場，也可能錯過不回踩的強勢行情。 |
+| signal window | 關閉 | `--orb-signal-window-minutes` | 限制新 breakout 必須發生在 session 開始後 N 分鐘內；它不會平掉既有持倉。 |
+| OR volume baseline | 關閉 | `--orb-use-opening-range-volume-baseline` | 量能改拿 breakout bar 對比 OR 期間平均量；比 rolling volume SMA 更貼近 ORB 語意。 |
 
 ## 怎麼跑
 

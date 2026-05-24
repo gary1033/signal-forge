@@ -32,18 +32,18 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\signal_cooldown.
 
 ## 控制規則
 
-| 條件 | 輸出 |
-|---|---:|
-| 沒有新 long entry | 保持原訊號 |
-| 新 long entry 且不在 cooldown 內 | 保留 long，啟動 cooldown |
-| 新 long entry 但仍在 cooldown 內 | `0.0` |
-| 已持有中的延續訊號 | 保持原訊號 |
+| 判定點 | 輸出 | 維護語意 |
+|---|---:|---|
+| 沒有新 long entry | 保持原訊號 | Cooldown 不處理 flat、出場或既有持倉延續，只處理新進場。 |
+| 新 long entry 且不在 cooldown 內 | 保留 long，啟動 cooldown | 第一個被接受的 entry 代表一段新行情開始，後續 N 根 bar 進入防重複狀態。 |
+| 新 long entry 但仍在 cooldown 內 | `0.0` | 同一段行情太密集的新 entry 會被視為 overlap，改成 flat。 |
+| 已持有中的延續訊號 | 保持原訊號 | 已經接受的 long 不會因 cooldown 被強制平倉，避免把去重工具誤用成出場規則。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `cooldown_bars` | 無預設，需手動指定 | `--signal-cooldown-bars` | 接受 long entry 後封鎖幾根 bar |
+| `cooldown_bars` | 無預設，需手動指定 | `--signal-cooldown-bars` | 接受 long entry 後封鎖幾根 bar；值越大越能降低 overlap，但也越可能錯過新的獨立機會。 |
 
 ## 怎麼跑
 
@@ -71,7 +71,7 @@ python tools\multi_stock_target_state_sweep.py `
 
 ## 股價走勢解說圖
 
-![[assets/confluence-score-trend-explainer.png]]
+![[assets/signal-cooldown-explainer.png]]
 
 此圖借用多條件訊號示意：Cooldown 只處理重複 entry 的間隔，不代表績效保證。
 

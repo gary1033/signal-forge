@@ -32,19 +32,19 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\volume_filter.py
 
 ## 控制規則
 
-| 條件 | 輸出 |
-|---|---:|
-| 底層策略不是 long | 保持原訊號 |
-| 成交量 SMA 尚未暖機 | `0.0` |
-| `volume >= sma(volume, volume_window) * volume_multiplier` | 保留 long |
-| 成交量不足 | `0.0` |
+| 判定點 | 輸出 | 維護語意 |
+|---|---:|---|
+| 底層策略不是 long | 保持原訊號 | Volume Filter 只處理 long entry quality，不把 flat 訊號改成交易。 |
+| 成交量 SMA 尚未暖機 | `0.0` | 沒有均量基準時不接受 long，避免前幾根資料造成假放量。 |
+| `volume >= sma(volume, volume_window) * volume_multiplier` | 保留 long | 當前量能達到相對門檻，代表訊號至少有成交量參與。 |
+| 成交量不足 | `0.0` | 底層策略雖然偏多，但缺少量能確認，因此改成 flat。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `volume_window` | `20` | `--volume-window` | 成交量均線視窗 |
-| `volume_multiplier` | `1.2` | `--volume-multiplier` | 放量門檻 |
+| `volume_window` | `20` | `--volume-window` | 成交量基準視窗；短視窗更快反應近期量能變化，長視窗更穩但容易忽略短期成交結構。 |
+| `volume_multiplier` | `1.2` | `--volume-multiplier` | 放量倍數門檻；提高會保留更少但更有量能的訊號，降低則更接近原策略。 |
 
 ## 怎麼跑
 
@@ -72,7 +72,7 @@ python -m signal_forge.cli entry-edge `
 
 ## 股價走勢解說圖
 
-![[assets/confluence-score-trend-explainer.png]]
+![[assets/volume-filter-explainer.png]]
 
 此圖借用多條件訊號示意：Volume Filter 只處理訊號是否有量能確認，不代表策略績效保證。
 

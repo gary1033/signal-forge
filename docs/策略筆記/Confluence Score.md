@@ -34,25 +34,25 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\confluence_score
 
 ## 進出場規則
 
-| 條件類型 | 加分語意 |
-|---|---|
-| 快均線高於慢均線 | 趨勢偏多 |
-| close 高於 slow SMA | 價格仍在中期趨勢上方 |
-| close 高於 rolling VWAP | 價格站上平均成交成本 |
-| RSI 未過熱且偏強 | 避免只追極端過熱 |
-| 成交量支持 | 訊號有參與度 |
+| 條件類型 | 加分語意 | 維護語意 |
+|---|---|---|
+| 快均線高於慢均線 | 趨勢偏多 | 檢查短期趨勢是否真的優於中期基準，避免單純看當根 K 棒。 |
+| close 高於 slow SMA | 價格仍在中期趨勢上方 | 即使快線轉強，也要求現價沒有跌回主要趨勢基準下方。 |
+| close 高於 rolling VWAP | 價格站上平均成交成本 | 用成交量加權成本確認價格位置，不只靠均線。 |
+| RSI 未過熱且偏強 | 避免只追極端過熱 | RSI 用來避免在過熱區硬追，也避免弱勢反彈被誤判成趨勢。 |
+| 成交量支持 | 訊號有參與度 | 量能條件用來確認訊號不是低量漂移，但不能單獨當作進場理由。 |
 
 分數達到 `threshold` 時 `target_position=1.0`，否則維持 `0.0`。
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `fast_window` | `20` | `--fast-window` | 短期趨勢 |
-| `slow_window` | `50` | `--slow-window` | 中期趨勢 |
-| `rsi_window` | `14` | `--rsi-window` | RSI 視窗 |
-| `vwap_window` | `20` | `--vwap-window` | rolling VWAP 視窗 |
-| `threshold` | `3.0` | `--threshold` | 進場分數門檻 |
+| `fast_window` | `20` | `--fast-window` | 短期趨勢 component；越短越容易補捉早期轉強，也越容易把雜訊加分。 |
+| `slow_window` | `50` | `--slow-window` | 中期趨勢 component；用來當快線與價格位置的共同基準。 |
+| `rsi_window` | `14` | `--rsi-window` | 動能與過熱 component；調整時要觀察它是否真的補充新資訊，而不是重複趨勢條件。 |
+| `vwap_window` | `20` | `--vwap-window` | 平均成交成本 component；調太短會接近價格本身，調太長會讓成本基準落後。 |
+| `threshold` | `3.0` | `--threshold` | 進場分數門檻；提高會減少交易並要求更多條件共振，降低會讓策略更接近泛用趨勢追蹤。 |
 
 ## 怎麼跑
 

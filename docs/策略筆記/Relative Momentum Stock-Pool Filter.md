@@ -32,19 +32,19 @@ repo_impl: C:\Projects\signal-forge\tools\multi_stock_target_state_sweep.py
 
 ## 控制規則
 
-| 條件 | 輸出 |
-|---|---:|
-| 股票當天在 top-N 且 lookback return 達門檻 | 保留底層曝險 |
-| 股票不在 allowlist | `0.0` |
-| 股票自身 lookback return 不達門檻 | `0.0` |
+| 判定點 | 輸出 | 維護語意 |
+|---|---:|---|
+| 股票當天在 top-N 且 lookback return 達門檻 | 保留底層曝險 | 股票同時具備橫向排名優勢與自身正動能，才允許原策略持倉。 |
+| 股票不在 allowlist | `0.0` | 底層策略即使偏多，若相對排名不夠強，也不分配曝險。 |
+| 股票自身 lookback return 不達門檻 | `0.0` | 避免在整個股票池都弱時，只因相對排名高就持有絕對弱勢股。 |
 
 ## 主要參數
 
-| 參數 | 預設 | CLI | 用途 |
+| 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
-| `lookback_bars` | `126` | `--relative-momentum-lookback-bars` | 相對動能回看期 |
-| `top_n` | `3` | `--relative-momentum-top-n` | 每天允許持倉的檔數 |
-| `min_return` | `0.0` | `--relative-momentum-min-return` | 自身動能下限 |
+| `lookback_bars` | `126` | `--relative-momentum-lookback-bars` | 橫向排名的回看期；短期更敏感，長期更平滑但可能落後。 |
+| `top_n` | `3` | `--relative-momentum-top-n` | 每天允許持倉的檔數；越小越集中，越大越接近未篩選版本。 |
+| `min_return` | `0.0` | `--relative-momentum-min-return` | 自身動能下限；用來阻擋相對排名高但絕對報酬仍不好的股票。 |
 
 ## 怎麼跑
 
@@ -77,7 +77,7 @@ python tools\multi_stock_target_state_sweep.py `
 
 ## 股價走勢解說圖
 
-![[assets/portfolio-relative-momentum-rotation-explainer.png]]
+![[assets/relative-momentum-stock-pool-filter-explainer.png]]
 
 此圖借用股票池輪動示意：allowlist filter 只限制哪些股票可持倉，不等於完整 portfolio rotation。
 
