@@ -7282,3 +7282,71 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Keep as high-return benchmark**：`top3 + breadth42/min3` 仍保留為最高報酬比較錨點，但不再是「穩健性」優先的首選。
 - **Compare-only / do not promote**：`top5 + breadth42/min3`。它降低 concentration，但 edge 衰退太多，不符合「不要只為了降低集中度而犧牲 active return」的方向。
 - **Next**：不要再只測更大的 `top_n`；下一步應測 sector / group cap、限制單檔連續入選、或擴大股票池，目標是處理 rolling concentration，而不是只降低 full-window concentration。
+
+## 2026-05-24 Portfolio rotation 單檔連續入選上限比較
+
+### 目的
+
+上一輪 `top_n=4` 降低了 full-window drawdown 與 full-window top-3 concentration，但 rolling concentration 仍未解。本輪不改 breadth gate、不新增資料，只新增一個可關閉的 concentration-aware 約束：
+
+> 若某檔股票已連續入選達 `max_consecutive_selections_per_symbol`，下一次 rebalance 暫時排除它一次，迫使策略不要無限制追同一檔股票。
+
+### 程式改動
+
+- `tools/portfolio_rotation_sweep.py`
+  - `run_portfolio_rotation(...)`、`run_portfolio_rotation_sweep(...)`、`run_walk_forward_rotation(...)` 新增 `max_consecutive_selections_per_symbol`，預設 `None`，不改既有行為。
+  - CLI 新增 `--max-consecutive-selections-per-symbol`。
+  - `PortfolioRotationResult` 新增 `max_consecutive_selections_per_symbol` 與 `consecutive_selection_block_count`。
+  - Markdown full-window 與 walk-forward tables 新增 `Consec cap` / `Consec blocks`。
+- `tests/test_portfolio_rotation_sweep_tool.py`
+  - 新增 parser regression。
+  - 新增兩檔股票測試，確認連續入選達上限後，強勢股會暫停一次，替代股票可入選。
+
+### 固定條件
+
+```text
+universe = TWSE14
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_min_positive_count = 3
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+報表檔案：
+
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec3-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec4-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec6-rolling24m-20260524.json`
+
+### Full-window 與 rolling 摘要
+
+以下皆看 `1x` 成本倍率；無上限列使用前一輪 `top4 + breadth42/min3` 報表作基準。
+
+| Max consecutive | Full return | Full excess | Full IR | Full MDD | Full active MDD | Full top-3 share | Full blocks | Min rolling excess | Min rolling IR | Max rolling top-3 share | Rolling blocks | 判斷 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `none` | `1546.66%` | `1210.48%` | `1.401` | `-18.61%` | `-20.21%` | `48.32%` | `0` | `28.52%` | `0.724` | `81.68%` | `0` | 原 top4 風險調整折衷 |
+| `3` | `1221.90%` | `885.72%` | `1.190` | `-19.18%` | `-20.42%` | `45.60%` | `10` | `11.89%` | `0.360` | `83.05%` | `14` | 過度干預，edge 明顯受損 |
+| `4` | `1761.80%` | `1425.62%` | `1.536` | `-18.61%` | `-20.21%` | `50.80%` | `3` | `31.98%` | `0.719` | `82.82%` | `6` | IR 高，但 full top-3 與 rolling top-3 concentration 變差 |
+| `5` | `1738.80%` | `1402.62%` | `1.515` | `-18.61%` | `-20.21%` | `46.31%` | `2` | `37.22%` | `0.814` | `82.62%` | `4` | 最新 compare candidate；改善 IR 與最弱 rolling，但未解 concentration |
+| `6` | `1585.81%` | `1249.63%` | `1.424` | `-18.61%` | `-20.21%` | `47.98%` | `1` | `28.52%` | `0.724` | `81.68%` | `1` | 幾乎不傷害策略，但也幾乎不約束 concentration |
+
+### 解讀
+
+1. **`max consecutive 3` 太硬**：full IR 掉到 `1.190`，min rolling IR 掉到 `0.360`，且 rolling top-3 concentration 沒有下降，應 discard。
+2. **`max consecutive 4` 追到更高 IR，但 concentration 反而變差**：full top-3 share 升到 `50.80%`，max rolling top-3 share 升到 `82.82%`，不適合作為 concentration 修復結論。
+3. **`max consecutive 5` 是最新 compare candidate**：full IR `1.515`、min rolling IR `0.814`，MDD 與 active MDD 維持在 `-18.61%` / `-20.21%`，且 full top-3 share 比原 top4 低。
+4. **但連續入選限制沒有解 rolling concentration**：`max consecutive 5` 的 max rolling top-3 share 仍約 `82.62%`，比原 top4 的 `81.68%` 還高一點。它改善的是部分 window 的 return / IR，不是 concentration 問題本身。
+5. **不能宣稱穩定營利**：結果仍受未還原權息、TWSE14 小股票池、少數強勢股行情與未檢查流動性/容量限制影響。
+
+### Keep / Discard 判斷
+
+- **Keep code**：單檔連續入選上限、block count 與 Markdown 報表欄位。它是 deterministic、預設關閉、test-covered 的策略約束。
+- **Promote compare candidate**：`TWSE14 monthly + 21 bars + top4 + breadth42/min3 + max consecutive 5`。它是目前 IR / rolling IR 較強的比較候選，但不是穩定營利證明。
+- **Discard as primary fix**：`max consecutive 3` 與 `4` 不適合作為 concentration 修復；前者傷害 edge，後者讓 concentration 變差。
+- **Next**：改測 sector / group cap、更大股票池或 canary universe。若下一輪仍要留在同一批 TWSE14，應把目標明確放在降低 rolling max share / rolling top-3 share，而不是只提高 full-window IR。

@@ -49,6 +49,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "2",
                 "--breadth-positive-threshold",
                 "0.01",
+                "--max-consecutive-selections-per-symbol",
+                "2",
                 "--volatility-target",
                 "--volatility-lookback-bars",
                 "3",
@@ -72,6 +74,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.breadth_lookback_bars, 4)
         self.assertEqual(args.breadth_min_positive_count, 2)
         self.assertEqual(args.breadth_positive_threshold, 0.01)
+        self.assertEqual(args.max_consecutive_selections_per_symbol, 2)
         self.assertTrue(args.volatility_target)
         self.assertEqual(args.volatility_lookback_bars, 3)
         self.assertEqual(args.target_annual_volatility, 0.15)
@@ -216,6 +219,60 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertGreater(result.max_symbol_abs_contribution_share, 0.99)
         self.assertGreater(result.top3_symbol_abs_contribution_share, 0.99)
 
+    def test_max_consecutive_selection_limit_forces_symbol_to_sit_out(self) -> None:
+        """
+        用途與流程：驗證單檔連續入選上限會讓過度連續入選的股票暫停一次 rebalance，降低單檔主導風險。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若連續入選限制、block count 或替代股票入選語意漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 121.0),
+                    _bar("2026-01-04", 133.1),
+                    _bar("2026-01-05", 146.41),
+                    _bar("2026-01-06", 161.051),
+                ],
+            ),
+            (
+                "2317",
+                Path("2317.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 102.0),
+                    _bar("2026-01-03", 104.04),
+                    _bar("2026-01-04", 106.1208),
+                    _bar("2026-01-05", 108.243216),
+                    _bar("2026-01-06", 110.40808032),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            max_consecutive_selections_per_symbol=2,
+        )
+
+        alternative = next(row for row in result.symbol_attribution if row.symbol == "2317")
+        self.assertEqual(result.max_consecutive_selections_per_symbol, 2)
+        self.assertEqual(result.consecutive_selection_block_count, 1)
+        self.assertEqual(alternative.rebalance_selected_count, 1)
+
     def test_format_markdown_includes_symbol_attribution(self) -> None:
         """
         用途與流程：驗證 portfolio rotation Markdown 會輸出逐股 attribution 區段，讓策略候選能檢查報酬是否集中於少數股票。
@@ -233,6 +290,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
 
         self.assertIn("## Top Symbol Attribution", markdown)
         self.assertIn("Max contrib symbol", markdown)
+        self.assertIn("Consec cap", markdown)
         self.assertIn("2330 | 75.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)
 
@@ -506,6 +564,7 @@ def _rotation_result(
         breadth_lookback_bars=21,
         breadth_min_positive_count=1,
         breadth_positive_threshold=0.0,
+        max_consecutive_selections_per_symbol=None,
         volatility_target=False,
         volatility_lookback_bars=21,
         target_annual_volatility=0.20,
@@ -534,6 +593,7 @@ def _rotation_result(
         regime_block_count=0,
         breadth_block_count=0,
         breadth_warmup_count=0,
+        consecutive_selection_block_count=0,
         volatility_scaled_rebalance_count=0,
         volatility_warmup_count=0,
         total_cost=0.0,
