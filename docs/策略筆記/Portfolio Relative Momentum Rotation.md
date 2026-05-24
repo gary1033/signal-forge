@@ -23,6 +23,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Equal-weight benchmark / 等權買進持有基準**：把資金平均分配到同一批股票並長期持有，用來檢查輪動是否真的有 portfolio-level active return。
 - **Market regime filter / 市場狀態濾網**：用同一股票池的等權 normalized price index 當市場 proxy；若 index 低於自己的 SMA，該次 rebalance 改持現金。這是風險 overlay，不是新的選股 alpha。
 - **Breadth filter / 市場寬度濾網**：在 rebalance date 計算股票池中有多少檔股票的近期報酬大於門檻；若正動能檔數不足，代表強勢不夠廣，該次 rebalance 改持現金。
+- **Group breadth filter / 群組內部廣度濾網**：在 rebalance date 檢查候選股票所屬產業或自訂群組中，有多少成員的 lookback return 為正；若同群組正動能比例不足，該群組候選不可入選。
 - **Volatility target / 波動目標降曝險**：用已選出投組的近期 realized volatility 估算目前風險，若高於目標年化波動，就按比例縮小目標權重。SignalForge 版本預設 `max_scale=1.0`，所以只降曝險、不加槓桿。
 - **Liquidity filter / 流動性濾網**：用近 N 根 `close * volume` 平均成交金額定義股票是否可被選入，避免策略把資金分配到成交金額太低、容量較差或滑價風險較高的標的。
 - **Turnover / 週轉率**：每次再平衡時權重變化的總量。週轉率越高，交易成本與滑價風險越大。
@@ -49,17 +50,19 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 2. 若 `ranking_mode=total-return`，用上述原始動能排序；若 `ranking_mode=group-residual`，先保留原始動能必須大於 `min_return` 的絕對動能 gate，再用 `原始動能 - 同組平均動能` 排序。
 3. 排除近期報酬小於或等於 `min_return` 的股票。
 4. 若啟用 breadth filter，另用 `breadth_lookback_bars` 計算股票池中正動能檔數；若低於 `breadth_min_positive_count`，本次 rebalance 全部留現金。
-5. 若啟用 liquidity filter，排除近 N 根平均成交金額低於門檻的股票。
-6. 若啟用 re-entry cooldown，排除剛退出且仍在 cooldown 內的股票。
-7. 在剩下股票中依 ranking score 由高到低排序。
-8. 選前 `top_n` 檔股票。
-9. 入選股票等權配置；未入選股票權重為 `0.0`。
-10. 若沒有股票通過門檻，投組維持現金。
+5. 若啟用 group breadth filter，檢查候選股票所屬群組的正動能成員比例；未達 `group_breadth_min_positive_share` 或群組成員數低於 `group_breadth_min_members` 時排除該群組候選。
+6. 若啟用 liquidity filter，排除近 N 根平均成交金額低於門檻的股票。
+7. 若啟用 re-entry cooldown，排除剛退出且仍在 cooldown 內的股票。
+8. 在剩下股票中依 ranking score 由高到低排序。
+9. 選前 `top_n` 檔股票。
+10. 入選股票等權配置；未入選股票權重為 `0.0`。
+11. 若沒有股票通過門檻，投組維持現金。
 
 | 條件 | 目標權重 |
 |---|---:|
 | 股票進入 top-N 且近期報酬大於門檻 | `1 / 入選檔數` |
 | breadth filter 啟用且正動能檔數不足 | 全部 `0.0`，投組留現金 |
+| group breadth filter 啟用且群組內部正動能比例不足 | 該群組候選不可入選，由下一順位補上 |
 | liquidity filter 啟用且平均成交金額不足 | 該股票不可入選，由下一順位補上 |
 | re-entry cooldown 啟用且股票仍在冷卻期 | 該股票不可重新入選，由下一順位補上 |
 | 股票落榜 | `0.0` |
@@ -74,6 +77,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `top_n`：最高報酬錨點是 `3`；目前風險調整折衷候選改看 `4`，因為 full IR 幾乎不變但 MDD、active MDD 與 full-window top-3 concentration 較低。
 - `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
 - `breadth_filter`：七檔股票池最佳折衷是 `breadth_lookback_bars=42`、`breadth_min_positive_count=2`；擴大到 14 檔 TWSE 股票池後，目前最佳折衷改為 `breadth_min_positive_count=3`。
+- `group_breadth_filter`：預設關閉；第一輪 TWSE35 adjusted 實測 `group_breadth_lookback_bars=21`、`group_breadth_min_positive_share=0.50`、`group_breadth_min_members=1` 是目前最佳 compare-only 設定。更嚴格的 `share=0.60/0.75`、`lookback=42` 或 `min_members=2` 會傷害 rolling edge。
 - `liquidity_filter`：目前最新 execution-aware compare candidate 使用 `liquidity_lookback_bars=20`、`min_average_traded_value=500,000,000`，代表近 20 根平均成交金額至少約 5 億。
 - `min_symbols_per_selected_group`：預設 `1`，不影響既有策略；可設為 `2` 以上作為單成員群組依賴 ablation，但目前 adjusted TWSE14 / TWSE35 實測都顯示 `2` 會讓 rolling edge 失效，不能作為主候選規則。
 - `reentry_cooldown_rebalances`：預設 `0`，不影響既有策略；可設為 `1` 以上測試股票退出後等待幾次 rebalance 才能重新入選。此參數只使用已完成的持倉狀態，不讀未來 window。
@@ -151,10 +155,11 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `portfolio_rotation_universe_select.py` 已測第一輪。只從既有 TWSE35 中篩出 balanced-quality 子股票池會讓 rolling edge 轉負；後續若要用 selector，應先補足 singleton / thin groups 的替代標的，再重新 audit 與 selection。
 - TWSE44 thin-group expansion 已把 `shipping` 與 `steel` 的替代性補起來，但 adjusted rolling edge 與 drawdown 變差。下一步不要只補低流動性 food / cement，也不要只加 group cap；要轉向可驗證的 drawdown / risk-off、market / industry regime filter，或搜尋新的策略 family。
 - TWSE35 `market_regime_filter` 已測第一輪。`SMA63` 是目前最好的 risk-off 對照，但 promotion gate 仍是 `compare-only`；後續不要只掃更長 market SMA，應改測 shipping regime 風險、industry breadth / market breadth，或搜尋新的策略 family。
+- TWSE35 `group_breadth_filter` 已測第一輪。`gb21/share0.50/min1` 把 full IR 提到約 `1.867`、3x IR 約 `1.848`、min rolling IR 約 `0.759`、min rolling excess 約 `34.86%`、active MDD 約 `-20.18%`，是目前最強 compare-only anchor；但 full MDD 仍約 `-32.85%`，max rolling top3 group share 仍到 `100%`，group regime / breadth gate 仍失敗，所以不能升級為主候選。
 - 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
-- 目前主比較錨點分成五個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是 execution-aware compare candidate；TWSE35 `skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` 是目前最強 expanded-universe compare-only anchor。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、TWSE35 `mingrp2`、group attribution、group exposure、dominant group exclusion、canary universe 與 adjusted batch 診斷保留為 discard / compare-only / diagnostic 對照；其中 adjusted-ratio 版本應成為後續品質判斷的主要風險版本，不取代核心錨點，也不是穩定營利證明。
+- 目前主比較錨點分成六個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是 execution-aware compare candidate；TWSE35 `skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` 是 expanded-universe compare-only anchor；TWSE35 `gb21/share0.50/min1` 是目前最強 group-breadth compare-only anchor。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、TWSE35 `mingrp2`、group attribution、group exposure、dominant group exclusion、canary universe 與 adjusted batch 診斷保留為 discard / compare-only / diagnostic 對照；其中 adjusted-ratio 版本應成為後續品質判斷的主要風險版本，不取代核心錨點，也不是穩定營利證明。
 
 ## 參考來源
 

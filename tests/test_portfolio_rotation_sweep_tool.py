@@ -55,6 +55,15 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "2",
                 "--breadth-positive-threshold",
                 "0.01",
+                "--group-breadth-filter",
+                "--group-breadth-lookback-bars",
+                "6",
+                "--group-breadth-min-positive-share",
+                "0.75",
+                "--group-breadth-positive-threshold",
+                "0.02",
+                "--group-breadth-min-members",
+                "2",
                 "--liquidity-lookback-bars",
                 "5",
                 "--min-average-traded-value",
@@ -100,6 +109,11 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.breadth_lookback_bars, 4)
         self.assertEqual(args.breadth_min_positive_count, 2)
         self.assertEqual(args.breadth_positive_threshold, 0.01)
+        self.assertTrue(args.group_breadth_filter)
+        self.assertEqual(args.group_breadth_lookback_bars, 6)
+        self.assertEqual(args.group_breadth_min_positive_share, 0.75)
+        self.assertEqual(args.group_breadth_positive_threshold, 0.02)
+        self.assertEqual(args.group_breadth_min_members, 2)
         self.assertEqual(args.liquidity_lookback_bars, 5)
         self.assertEqual(args.min_average_traded_value, 1_000_000.0)
         self.assertEqual(args.symbol_group, ["2330:semiconductor", "2317:electronics"])
@@ -840,6 +854,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("Group cap", markdown)
         self.assertIn("Min group members", markdown)
         self.assertIn("Group member blocks", markdown)
+        self.assertIn("Group breadth", markdown)
+        self.assertIn("Group breadth blocks", markdown)
         self.assertIn("Group contrib lookback", markdown)
         self.assertIn("Group contrib blocks", markdown)
         self.assertIn("Consec cap", markdown)
@@ -968,6 +984,90 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.trade_count, 0)
         self.assertAlmostEqual(result.total_return, 0.0)
         self.assertAlmostEqual(result.average_exposure, 0.0)
+
+    def test_group_breadth_filter_blocks_narrow_group_momentum(self) -> None:
+        """
+        用途與流程：驗證 group breadth filter 只使用 rebalance 當下已知的同群組 lookback return，排除正動能成員比例不足的強勢群組。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若窄廣度群組仍可入選、block count 或平均群組廣度欄位漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "hot_leader",
+                Path("hot_leader.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 130.0),
+                    _bar("2026-01-03", 130.0),
+                ],
+            ),
+            (
+                "hot_peer",
+                Path("hot_peer.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 90.0),
+                    _bar("2026-01-03", 90.0),
+                ],
+            ),
+            (
+                "broad_leader",
+                Path("broad_leader.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 120.0),
+                    _bar("2026-01-03", 130.0),
+                ],
+            ),
+            (
+                "broad_peer",
+                Path("broad_peer.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 120.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            symbol_groups={
+                "hot_leader": "hot",
+                "hot_peer": "hot",
+                "broad_leader": "broad",
+                "broad_peer": "broad",
+            },
+            group_breadth_filter=True,
+            group_breadth_lookback_bars=1,
+            group_breadth_min_positive_share=1.0,
+            group_breadth_min_members=2,
+        )
+
+        selected_by_symbol = {
+            row.symbol: row.rebalance_selected_count
+            for row in result.symbol_attribution
+        }
+        self.assertTrue(result.group_breadth_filter)
+        self.assertEqual(result.group_breadth_lookback_bars, 1)
+        self.assertEqual(result.group_breadth_min_positive_share, 1.0)
+        self.assertEqual(result.group_breadth_min_members, 2)
+        self.assertEqual(result.group_breadth_block_count, 1)
+        self.assertEqual(result.group_breadth_warmup_count, 0)
+        self.assertGreater(result.average_group_breadth_positive_share or 0.0, 0.50)
+        self.assertEqual(selected_by_symbol["hot_leader"], 0)
+        self.assertGreater(selected_by_symbol["broad_leader"], 0)
 
     def test_volatility_target_scales_high_volatility_rotation_weights(self) -> None:
         """
@@ -1121,6 +1221,11 @@ def _rotation_result(
         breadth_lookback_bars=21,
         breadth_min_positive_count=1,
         breadth_positive_threshold=0.0,
+        group_breadth_filter=False,
+        group_breadth_lookback_bars=21,
+        group_breadth_min_positive_share=0.50,
+        group_breadth_positive_threshold=0.0,
+        group_breadth_min_members=1,
         liquidity_lookback_bars=20,
         min_average_traded_value=None,
         symbol_groups={},
@@ -1155,6 +1260,8 @@ def _rotation_result(
         regime_block_count=0,
         breadth_block_count=0,
         breadth_warmup_count=0,
+        group_breadth_block_count=0,
+        group_breadth_warmup_count=0,
         liquidity_block_count=0,
         liquidity_warmup_count=0,
         group_selection_block_count=0,
@@ -1165,6 +1272,7 @@ def _rotation_result(
         total_cost=0.0,
         average_turnover=1.0,
         average_breadth_positive_count=None,
+        average_group_breadth_positive_share=None,
         average_liquidity_eligible_count=None,
         average_volatility_scale=None,
         average_exposure=1.0,

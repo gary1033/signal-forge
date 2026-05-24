@@ -262,8 +262,8 @@ def _result(
 ) -> PortfolioRotationResult:
     """
     用途與流程：建立 grid search 測試所需的最小 PortfolioRotationResult fixture。
-    參數：cost_label/top_n 定義候選；ir/excess/mdd/group 是 ranking 與 gate 使用的指標。
-    回傳與錯誤：回傳 PortfolioRotationResult；此 helper 不做 I/O。
+    參數：cost_label/top_n 定義候選；ir/excess/mdd/group 是 ranking 與 gate 使用的指標；其餘新增 gate 欄位使用中性預設值，避免 mock fixture 影響 grid search 排序語意。
+    回傳與錯誤：回傳 PortfolioRotationResult；此 helper 不做 I/O，也不模擬真實回測。
     """
     multiplier = 3.0 if cost_label == "3x" else 1.0
     return PortfolioRotationResult(
@@ -282,6 +282,11 @@ def _result(
         breadth_lookback_bars=42,
         breadth_min_positive_count=3,
         breadth_positive_threshold=0.0,
+        group_breadth_filter=False,
+        group_breadth_lookback_bars=21,
+        group_breadth_min_positive_share=0.50,
+        group_breadth_positive_threshold=0.0,
+        group_breadth_min_members=1,
         liquidity_lookback_bars=20,
         min_average_traded_value=500_000_000.0,
         symbol_groups={},
@@ -316,6 +321,8 @@ def _result(
         regime_block_count=0,
         breadth_block_count=0,
         breadth_warmup_count=0,
+        group_breadth_block_count=0,
+        group_breadth_warmup_count=0,
         liquidity_block_count=0,
         liquidity_warmup_count=0,
         group_selection_block_count=0,
@@ -326,6 +333,7 @@ def _result(
         total_cost=0.0,
         average_turnover=0.5,
         average_breadth_positive_count=4.0,
+        average_group_breadth_positive_share=None,
         average_liquidity_eligible_count=2.0,
         average_volatility_scale=None,
         average_exposure=0.8,

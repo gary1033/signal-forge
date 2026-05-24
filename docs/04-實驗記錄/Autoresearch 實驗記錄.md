@@ -9406,3 +9406,94 @@ Raw / adjusted comparison gate 通過，且 adjusted 版本比 raw 更好：adju
 - **Discard as current strategy upgrade**：`regime63` 讓 min rolling IR 降到 `0.383`，未達 `0.5` gate；max rolling top3 group share 仍是 `100%`，group regime / breadth gate 仍失敗，所以不能升級為主候選。
 - **Do not promote strategy**：這輪沒有證明穩定營利，只證明短 SMA market regime 是比長 SMA 更合理的風控對照。`regime84+` 在 rolling IR / excess 上明顯失敗，應 discard as improvement。
 - **Next**：若繼續沿 drawdown / risk-off 主線，不要只掃更長 market SMA。下一步應測更直接的「shipping regime 風險」或「industry breadth / market breadth」條件，也可以開始搜尋新的策略 family，但仍要套用 adjusted、rolling、cost-stress、raw/adjusted、group regime 與 group breadth promotion gate。
+
+## 2026-05-24 TWSE35 group breadth gate follow-up
+
+### 目的
+
+這輪接續 market regime risk-off 的結論：`regime63` 能降低 MDD，但沒有修好 rolling IR 與 group concentration。因此這輪不再掃更長 SMA，也不再微調 re-entry / contribution gate，而是把既有的事後 group breadth validation 往前推成事前可交易 gate。
+
+研究假設：
+
+> 若 TWSE35 baseline 的失敗點之一是 narrow group momentum 或單一成員主導，則在每次 rebalance 先檢查候選股票所屬 group 內部正動能比例，應可排除「只有少數成員在漲」的候選，改善 rolling IR、active MDD 與 raw/adjusted robustness；若它只改善 full-window 指標但 group concentration 仍破表，則只能 keep tool / compare-only。
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增預設關閉的 group breadth gate：
+  - `--group-breadth-filter`
+  - `--group-breadth-lookback-bars`
+  - `--group-breadth-min-positive-share`
+  - `--group-breadth-positive-threshold`
+  - `--group-breadth-min-members`
+- `PortfolioRotationResult` 新增 group breadth 設定、block / warmup count 與平均 group breadth share 欄位。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、窄廣度群組 block regression 與 Markdown 欄位檢查。
+
+### 產生 artifact
+
+- Group breadth scan adjusted summaries：
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb21-share050-m1-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb21-share060-m1-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb42-share050-m1-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb42-share060-m1-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb42-share075-m1-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb42-share050-m2-liq500m-rolling24m-20260524.json`
+- Best candidate raw summary：`reports\generated\twse35-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb21-share050-m1-liq500m-rolling24m-20260524.json`
+- Best candidate raw / adjusted comparison：`reports\generated\twse35-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-liq500m-compare-20260524.json`
+- Best candidate group regime validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-liq500m-group-regime-validation-20260524.json`
+- Best candidate group breadth validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-liq500m-group-breadth-validation-20260524.json`
+- Best candidate promotion gate：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-liq500m-promotion-gate-20260524.json`
+
+### Group breadth scan
+
+固定設定：TWSE35 adjusted `monthly + lookback21 + skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M/20 bars`，只額外啟用 group breadth gate。
+
+| Candidate | Full IR | Stress 3x IR | MDD | Active MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Group breadth blocks |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `baseline` | `1.685` | `1.668` | `-37.80%` | `-29.98%` | `0.429` | `11.33%` | `100.00%` | `0` |
+| `gb21/share0.50/min1` | `1.867` | `1.848` | `-32.85%` | `-20.18%` | `0.759` | `34.86%` | `100.00%` | `31` |
+| `gb21/share0.60/min1` | `1.831` | `1.813` | `-26.75%` | `-21.94%` | `0.405` | `13.08%` | `100.00%` | `41` |
+| `gb42/share0.50/min1` | `1.684` | `1.666` | `-33.80%` | `-25.27%` | `0.197` | `1.71%` | `100.00%` | `25` |
+| `gb42/share0.60/min1` | `1.448` | `1.433` | `-31.61%` | `-29.99%` | `-0.078` | `-7.33%` | `100.00%` | `37` |
+| `gb42/share0.75/min1` | `1.371` | `1.356` | `-27.19%` | `-27.77%` | `0.216` | `3.41%` | `100.00%` | `40` |
+| `gb42/share0.50/min2` | `1.378` | `1.353` | `-30.65%` | `-19.44%` | `-0.503` | `-16.51%` | `100.00%` | `43` |
+
+`gb21/share0.50/min1` 是唯一值得補完整 diagnostics 的候選：full IR、3x IR、min rolling IR、min rolling excess 與 active MDD 都明顯優於 TWSE35 baseline；但 max rolling top3 group contribution 仍然到 `100%`。
+
+### gb21/share0.50/min1 promotion gate
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.867` |
+| Full 1x excess | `3117.83%` |
+| Full 1x MDD | `-32.85%` |
+| Full 1x active MDD | `-20.18%` |
+| Stress 3x IR | `1.848` |
+| Min rolling IR | `0.759` |
+| Min rolling excess | `34.86%` |
+| Worst active MDD | `-27.95%` |
+| Max rolling top3 group share | `100.00%` |
+| Group breadth blocks | `31` |
+| Average group breadth share | `56.99%` |
+
+Failure reasons：
+
+```text
+drawdown_above_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+single_member_dominant_group
+narrow_group_momentum
+```
+
+Raw / adjusted comparison gate 通過且 adjusted 比 raw 更強：adjusted full IR `1.867` 高於 raw `1.627`，adjusted MDD `-32.85%` 也略優於 raw `-33.44%`。Group regime validation 仍失敗：`5` 個 high concentration windows，`4` 個 return-regime-dominated、`3` 個 exposure-dominated。Group breadth validation 仍失敗：`5` 個 high concentration windows，其中 `5` 個 broad group momentum、`1` 個 single-member dominant、`1` 個 narrow group momentum。
+
+### Keep / Discard 判斷
+
+- **Keep code/tool**：group breadth gate 是 deterministic、test-covered、預設關閉的事前 gate；它把「group 內部正動能是否足夠廣」從事後診斷轉成可驗證策略假設。
+- **Compare-only artifact**：`gb21/share0.50/min1` 是目前最強 TWSE35 adjusted compare-only anchor，因為它同時改善 full IR、3x IR、min rolling IR、min rolling excess 與 active MDD。
+- **Discard as current strategy upgrade**：full MDD 仍是 `-32.85%`，promotion gate 的 drawdown 門檻仍未過；max rolling top3 group share 仍到 `100%`，group regime / breadth diagnostics 仍失敗。
+- **Do not promote strategy**：這輪沒有證明穩定營利；只能證明 21-bar、50% group breadth gate 比前一輪 market regime 或 contribution gate 更接近正確方向。
+- **Next**：不要只繼續提高 group breadth share 或改成 `min_members=2`，因為較嚴格版本已傷害 rolling edge。下一步若沿這條線，應測「group breadth + group concentration cap / shipping-specific risk-off」的單一新增限制，或開始搜尋新的策略 family，但仍要使用 adjusted、rolling、cost-stress、raw/adjusted、group regime、group breadth 與 promotion gate。
