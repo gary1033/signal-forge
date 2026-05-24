@@ -181,6 +181,20 @@ python tools\portfolio_rotation_group_breadth_validation.py `
 
 這個工具把 dominant contribution group 內部的成員動能廣度也寫成 deterministic gate。它會輸出 group 成員數、rebalance 樣本數、平均正動能成員比例、多數成員正動能比例、全成員同向比例與平均成員 lookback return。2026-05-24 `top3 / breadth4 / maxconsec5 / liq500M` adjusted anchor 的結果仍未通過：`7 / 7` high concentration，`4 / 7` 是 broad group momentum，`2 / 7` 是 `shipping` 單成員 dominant，`1 / 7` 是 `electronics` narrow breadth。這表示下一步不能只說「群組有 regime」；必須區分單成員群組、窄廣度群組與真正廣泛群組動能，再決定是否做更高品質股票池、TWSE30+ 或 realized group contribution concentration gate。
 
+Portfolio promotion gate 工具：
+
+```powershell
+python tools\portfolio_rotation_promotion_gate.py `
+  --summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-rolling24m-20260524.json `
+  --raw-adjusted-comparison-json reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-compare-20260524.json `
+  --group-regime-validation-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-regime-validation-20260524.json `
+  --group-breadth-validation-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-breadth-validation-20260524.json `
+  --output-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-promotion-gate-20260524.json `
+  --output-md reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-promotion-gate-20260524.md
+```
+
+這個工具把 portfolio summary、raw/adjusted comparison、group regime validation 與 group breadth validation 合併成單一升級 gate。2026-05-24 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的結果是 `compare-only`：full 1x IR 約 `1.141`、3x IR 約 `1.114`，但 min rolling IR 只有約 `0.264`，max rolling top3 symbol share 約 `81.40%`，max rolling top3 group share 約 `97.38%`，且 group regime / breadth gate 都失敗。後續若要宣稱策略升級，必須讓這份 promotion gate 或同等 gate 通過，而不是只引用單一 summary 的漂亮 full-window 指標。
+
 ## 策略蒸餾規則
 
 每個策略先整理成獨立策略筆記，並保留：
@@ -220,6 +234,7 @@ python tools\portfolio_rotation_group_breadth_validation.py `
 - `multi_stock_target_state_sweep.py` 支援 `--walk-forward-windows`，可用 `label:start:end` 指定樣本內 / 樣本外分段，並輸出 OOS retention 報表。
 - `multi_stock_target_state_sweep.py` 支援 `--relative-momentum-filter`，可用跨股票 lookback return top-N 建立股票池白名單；目前 OOS 參數掃描顯示它降低曝險但沒有改善 benchmark-relative edge。
 - `portfolio_rotation_sweep.py` 支援 portfolio-level relative momentum rotation、equal-weight buy-and-hold benchmark、成本壓力、walk-forward / rolling split、自動 rolling window 產生、Information Ratio、tracking error、active max drawdown、market regime filter、breadth filter、volatility target、單檔連續入選上限、group cap 與 liquidity gate；股票池已由 7 檔擴到 14 檔，並暫時擴到 TWSE23 做 concentration diagnostic。`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 目前是 execution-aware compare candidate。sector/group cap 已測但未改善 rolling concentration；group attribution / exposure 顯示部分 window 是群組 regime return 主導；dominant group exclusion 顯示固定刪除 `shipping`、`electronics` 或 `semiconductor` 都不能同時改善 edge、回撤與 concentration；TWSE23 可降低 concentration 但犧牲 edge 與 drawdown；Canary9 held-out universe 顯示 full excess 約 `-0.91%`、MDD 約 `-44.29%`；adjusted-ratio 版本顯示 full IR 降到約 `1.156`、MDD 惡化到約 `-27.97%`、min rolling IR 只剩約 `0.104`；`tools\build_twse_adjusted_ohlcv.py` 與 `tools\build_twse_adjusted_ohlcv_batch.py` 已正式化 adjusted price 資料來源、per-symbol manifest 與 TWSE14 batch manifest，`tools\portfolio_rotation_group_regime_validation.py` 已正式化 group contribution vs exposure 診斷，`tools\portfolio_rotation_group_breadth_validation.py` 已正式化 dominant group 內部廣度診斷；後續仍需要 TWSE30+、更高品質股票池或能限制 realized group contribution concentration / 單成員群組依賴的 gate。
+- `tools\portfolio_rotation_promotion_gate.py` 已正式化升級判斷：同時讀 portfolio summary、raw/adjusted comparison、group regime validation 與 group breadth validation，輸出單一 `keep` / `compare-only` 結論。2026-05-24 adjusted `top3 / breadth4 / maxconsec5 / liq500M` promotion gate 仍是 `compare-only`，主要失敗點是 min rolling IR、rolling symbol/group concentration、group regime 與 group breadth。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
@@ -232,7 +247,7 @@ python tools\portfolio_rotation_group_breadth_validation.py `
 
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
-- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics；portfolio rotation 已補 IR / tracking error / active drawdown / rolling windows / market regime compare tool / breadth filter / volatility target compare tool / symbol attribution / group attribution / group exposure summary / concentration guard / 單檔連續入選上限 / group cap / TWSE23 擴大股票池診斷 / liquidity gate / dominant group exclusion 診斷 / canary universe 診斷 / adjusted price 診斷 / group regime validation / group breadth validation，並已把 adjusted price 資料來源正式化為可重跑 per-symbol manifest、TWSE14 batch manifest 與 raw/adjusted comparison artifact。下一步重點轉向較慢批次完成 TWSE30+、更高品質股票池、realized group contribution concentration gate，或更具體的 re-entry 條件。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics；portfolio rotation 已補 IR / tracking error / active drawdown / rolling windows / market regime compare tool / breadth filter / volatility target compare tool / symbol attribution / group attribution / group exposure summary / concentration guard / 單檔連續入選上限 / group cap / TWSE23 擴大股票池診斷 / liquidity gate / dominant group exclusion 診斷 / canary universe 診斷 / adjusted price 診斷 / group regime validation / group breadth validation / promotion gate，並已把 adjusted price 資料來源正式化為可重跑 per-symbol manifest、TWSE14 batch manifest 與 raw/adjusted comparison artifact。下一步重點轉向較慢批次完成 TWSE30+、更高品質股票池、realized group contribution concentration gate，或更具體的 re-entry 條件。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
 - 針對 Absolute Momentum 的 benchmark-relative 問題做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可降低回撤但 2024-2026 OOS 是 `0/7` beat B&H；relative-momentum top-N 股票池也沒有改善 `Beat B&H`。下一步應測 re-entry 條件、weekly rebalance 或市場 regime，不要只靠降曝險或 top-N 過濾。

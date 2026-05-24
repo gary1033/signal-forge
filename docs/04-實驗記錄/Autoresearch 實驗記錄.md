@@ -8293,3 +8293,80 @@ Window 重點：
 - **Do not promote strategy**：即使 `top3 / breadth4` 的 adjusted min rolling IR 從 baseline `0.104` 改到 `0.264`，它仍有 `7 / 7` high concentration、`2 / 7` 單成員 dominant、`1 / 7` 窄廣度，不能視為穩定營利。
 - **Current state**：`top3 / breadth4 / maxconsec5 / liq500M` 只保留為 compare anchor；它比 adjusted top4 baseline 的最弱 rolling IR 好，但 concentration gate 仍明確失敗。
 - **Next**：下一步優先做更高品質股票池或 TWSE30+，但要同時跑 raw/adjusted、group regime、group breadth 與 concentration gate。若要設計新規則，應直接限制 realized group contribution concentration 或處理單成員群組，而不是再擴同一組 top-N / breadth / max-consecutive grid。
+
+## 2026-05-24 Portfolio rotation promotion gate
+
+### 目的
+
+前幾輪已經把 adjusted summary、raw/adjusted comparison、group regime validation 與 group breadth validation 分別做成 artifact，但升級判斷仍需要人工在多份報告間切換。本輪新增 promotion gate，把這些證據合併成單一 `keep` / `compare-only` 結論，避免後續策略疊代只引用單一漂亮指標。
+
+研究假設：
+
+> 如果一個 portfolio rotation 候選要從 compare-only 升級，必須同時通過 full-window IR、3x cost stress、rolling IR、rolling excess、drawdown、symbol concentration、group concentration、raw/adjusted 降級、group regime 與 group breadth gate；只通過其中一部分不能視為穩定營利證明。
+
+### 程式改動
+
+- 新增 `tools/portfolio_rotation_promotion_gate.py`。
+- 新增 `tests/test_portfolio_rotation_promotion_gate_tool.py`。
+- 工具讀取：
+  - portfolio rotation summary JSON。
+  - raw / adjusted comparison JSON。
+  - group regime validation JSON。
+  - group breadth validation JSON。
+- 預設升級門檻：
+  - full 1x IR `>= 1.0`。
+  - stress 3x IR `>= 0.75`。
+  - min rolling IR `>= 0.50`。
+  - min rolling excess `>= 0`。
+  - full MDD / active MDD 絕對值 `<= 30%`。
+  - max rolling top3 symbol share `<= 80%`。
+  - max rolling top3 group share `<= 90%`。
+  - raw/adjusted IR drop 不得超過 `0.25`。
+  - adjusted MDD 惡化不得超過 `5%`。
+
+### 產生 artifact
+
+```powershell
+python tools\portfolio_rotation_promotion_gate.py `
+  --summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-rolling24m-20260524.json `
+  --raw-adjusted-comparison-json reports\generated\twse14-raw-vs-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-compare-20260524.json `
+  --group-regime-validation-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-regime-validation-20260524.json `
+  --group-breadth-validation-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-breadth-validation-20260524.json `
+  --output-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-promotion-gate-20260524.json `
+  --output-md reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-promotion-gate-20260524.md
+```
+
+### 主要結果
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.141` |
+| Full 1x excess | `1406.71%` |
+| Full 1x MDD | `-22.67%` |
+| Full 1x active MDD | `-26.91%` |
+| Stress 3x IR | `1.114` |
+| Min rolling IR | `0.264` |
+| Min rolling excess | `10.73%` |
+| Worst rolling MDD | `-19.91%` |
+| Worst rolling active MDD | `-26.91%` |
+| Max rolling top3 symbol share | `81.40%` |
+| Max rolling top3 group share | `97.38%` |
+
+Failure reasons：
+
+- `rolling_ir_below_threshold`
+- `symbol_concentration_above_threshold`
+- `group_concentration_above_threshold`
+- `group_regime_gate_failed`
+- `group_breadth_gate_failed`
+- `single_member_dominant_group`
+- `narrow_group_momentum`
+
+### Keep / Discard 判斷
+
+- **Keep code**：promotion gate 是回測可驗證性與策略升級判斷工具，能把多份 diagnostic artifact 收斂成單一可重跑結論，並有 regression tests。
+- **Keep artifact**：本輪 promotion artifact 直接證明 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 不能升級；它雖然 full-window 與 3x stress IR 仍強，但 rolling IR、rolling concentration、group regime 與 group breadth 都未通過。
+- **Do not promote strategy**：目前沒有任何 portfolio rotation candidate 可稱為穩定營利。`top3 / breadth4 / maxconsec5 / liq500M` 仍只是 compare anchor，不是 keep。
+- **Next**：下一步若繼續找新策略或調參，必須讓 promotion gate 同時改善 min rolling IR、max rolling top3 symbol/group share、group regime 與 group breadth。優先方向仍是更高品質股票池、TWSE30+ raw/adjusted 共同 gate，或直接限制 realized group contribution concentration / 單成員群組依賴。
