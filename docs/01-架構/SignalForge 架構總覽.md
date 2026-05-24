@@ -31,6 +31,7 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 | Data fetch | `src\signal_forge\data\` | 下載免費日線資料，輸出 SignalForge 固定 CSV 與 manifest；`data_fetch.py` 保留相容入口。 |
 | Strategy | `src\signal_forge\core\strategy.py`、`src\signal_forge\strategies\` | 提供 hook-based `BarByBarStrategy` 模板、strategy registry，並讓每根 bar 產生一筆 `Signal`。 |
 | Entry Edge | `src\signal_forge\backtesting\entry_edge.py` | 第一階段 long-only 固定持有期進場優勢評估；支援 precomputed signals，避免 Phase 重複產生訊號。 |
+| Target-state sweep | `tools\multi_stock_target_state_sweep.py` | Phase 2 研究用完整持倉評估工具，跨多股票、多策略與成本壓力比較 target exposure、benchmark relative、風險調整與 turnover。 |
 | Phase | `src\signal_forge\phase\` | 定義 `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。 |
 | Reporting | `src\signal_forge\reporting\` | 依 entry-edge、phase、signal digest、validator、markdown、paths 拆出 reporting API；`_legacy.py` 暫保留原 artifact contract 實作。 |
 | Readiness | `tools\phase_readiness_score.py` | bounded autoresearch 使用的輕量 deterministic readiness metric。 |
@@ -97,6 +98,20 @@ flowchart TD
 - Entry Edge outputs：summary JSON、markdown、trade log CSV。
 - `*_signals.csv`：每根 bar 的 signal digest。
 - `*_trace_summary.json`：由 signal digest 派生的 counts、timestamp、reason、position buckets 與 hash。
+
+## Target-state 研究路徑
+
+`tools\multi_stock_target_state_sweep.py` 是 Phase 2 研究工具，和 Phase 1 entry-edge 的問題不同。它使用 `Backtester` 按每根 bar 的 `target_position` 做 close-to-close target exposure 回測，用來回答完整持倉規則是否真的比 benchmark 更值得承擔風險。
+
+目前 target-state 報表包含：
+
+- 多股票、多策略與多成本倍率 sweep。
+- 策略 total return、CAGR、Sharpe、Sortino、Calmar、max drawdown。
+- Buy-and-hold total return、CAGR、max drawdown 與 excess return。
+- Trade count、turnover、time in market 與 total cost。
+- Aggregate 層級的 positive return count、beat benchmark count、lower drawdown count。
+
+這個工具不接 broker、不產生 order intent，也不改變 `live` dry-run 邊界。它只用於研究完整持倉候選是否值得進一步加入風控、volatility scaling 或 walk-forward 驗證。
 
 ## SignalDigest 與 trace summary
 

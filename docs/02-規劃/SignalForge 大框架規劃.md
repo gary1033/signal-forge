@@ -50,6 +50,7 @@ SignalForge 的大方向是把交易想法整理成可驗證研究流程，而�
 - 停損、停利、成本敏感度與最大回撤檢查。
 - regime filter，例如趨勢、波動或成交量環境。
 - 風險調整與穩健性指標，例如 Sharpe、Sortino、Calmar、Information Ratio、walk-forward / OOS 與 drawdown attribution。
+- 目前 Phase 2 研究工具是 `tools\multi_stock_target_state_sweep.py`，用完整 target exposure 評估多股票、多策略與 1x / 2x / 3x 成本壓力。
 
 ### Phase 3：Live intent schema
 
@@ -126,6 +127,7 @@ python -m signal_forge.cli fetch-data `
 - 策略開發模板已整理為 hook-based `BarByBarStrategy`，三個既有策略透過 `prepare_context(...)` / `decide_bar(...)` 實作，外部 `Signal` contract 不變。
 - Strategy registry / factory 已接上 CLI，Phase 1 factory 固定建構 long-only 策略，並保留 `VolumeFilteredStrategy` wrapper。
 - `entry-edge` 支援 `--hold-bars-list`，可用同一個 strategy、資料與成本設定比較多個固定持有期，並輸出 deterministic hold comparison JSON/Markdown。
+- `multi_stock_target_state_sweep.py` 支援完整持倉 target-state 多股票報表，輸出 benchmark-relative return、MDD、Sharpe、Sortino、Calmar、turnover、time in market 與成本壓力。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
@@ -138,9 +140,9 @@ python -m signal_forge.cli fetch-data `
 
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
-- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 補齊 risk-adjusted / benchmark-relative metrics：Sharpe、Sortino、Calmar、Information Ratio、cost stress、drawdown attribution 與 walk-forward / OOS。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics：Information Ratio、drawdown attribution 與 walk-forward / OOS。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
-- 針對成交量過濾器，比較 entry-only filter 與 target-state filter，避免濾網語意本身造成交易數失真。
+- 針對 Absolute Momentum 研究 volatility scaling 或 drawdown control，目標是降低約 `-50%` 的 worst MDD，同時保留比 Confluence target-state 更好的 avg excess return。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

@@ -101,6 +101,8 @@ Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\策略回測與優化評�
 
 每輪策略相關結論都要明確標示為 `keep`、`discard` 或 `compare-only`，並說明 tradeoff。若結果只改善單一指標、只靠少數大贏家、交易數不足、成本壓力後失效、或回撤惡化無法解釋，不得升級為主候選。
 
+若策略靈感來自網路、TradingView、論文、部落格、社群文章或公開回測，必須先轉成 SignalForge 可驗證的研究假設，再進入實作或優化。筆記至少要保留來源連結、策略假設、進出場條件、適用市場/週期、可能資料偏誤、成本與滑價假設，以及如何用本 repo 的 multi-stock、cost-stress、benchmark-relative 與 OOS / walk-forward 檢查驗證。不得因外部來源宣稱高報酬、高勝率或漂亮 equity curve，就直接視為可用策略。
+
 ## Live 安全邊界
 
 `live` 永遠維持 dry-run only，直到使用者明確要求並另外審核真實交易介面。以下 invariant 不可破壞：

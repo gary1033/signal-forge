@@ -5830,3 +5830,107 @@ python tools\multi_stock_entry_edge_sweep.py `
 1. 不再優先擴大 Absolute Momentum 參數搜尋；避免把樣本內強趨勢貼合成漂亮回測。
 2. 下一輪優先補正式 Phase 2 target-state 報表，讓完整持倉策略能直接輸出 benchmark-relative return、MDD、Sortino、Calmar 與 cost stress。
 3. 若繼續研究動能類策略，應加入波動縮放或 drawdown control，而不是只調整回看期與均線期數。
+
+## 2026-05-24 研究與執行：Target-state 多股票正式報表
+
+這輪補上正式 Phase 2 target-state 報表工具，避免再用臨時 script 解讀完整持倉策略。新工具是 `tools\multi_stock_target_state_sweep.py`，用既有 `Backtester` 執行 close-to-close target exposure 回測，並在同一份報表中輸出策略績效、buy-and-hold benchmark、excess return、Sharpe、Sortino、Calmar、turnover、time in market 與 1x / 2x / 3x cost stress。
+
+### 本輪程式改動
+
+- 新增 `tools\multi_stock_target_state_sweep.py`。
+- 新增 `TargetStateRow` / `TargetStateAggregate`，固定逐檔與 aggregate JSON schema。
+- 支援多股票、多策略、多成本倍率：
+  - `--strategy` 可重複指定；未指定時使用日線策略清單。
+  - `--cost-multipliers-list 1,2,3` 會等比例放大 commission / slippage / transaction tax。
+  - `--signal-cooldown-bars` 可沿用 entry-edge wrapper，但 target-state 解讀必須特別小心。
+- `tests\test_multi_stock_sweep_tool.py` 新增 parser 與 aggregate regression，鎖住成本倍率解析、benchmark-relative counts 與 drawdown counts。
+
+### Target-state 報表命令
+
+Confluence 無 cooldown：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy confluence-score `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --summary-json reports\generated\twse-target-state-confluence-coststress-20260524.json `
+  --summary-md reports\generated\twse-target-state-confluence-coststress-20260524.md
+```
+
+Confluence cooldown：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy confluence-score `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --signal-cooldown-bars 10 `
+  --summary-json reports\generated\twse-target-state-confluence-cooldown10-coststress-20260524.json `
+  --summary-md reports\generated\twse-target-state-confluence-cooldown10-coststress-20260524.md
+```
+
+Absolute Momentum：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --summary-json reports\generated\twse-target-state-absolute-momentum-coststress-20260524.json `
+  --summary-md reports\generated\twse-target-state-absolute-momentum-coststress-20260524.md
+```
+
+### Aggregate 結果
+
+| Candidate | Cost | Positive | Beat B&H | Lower MDD | Avg return | Avg excess | Worst MDD | Avg Sharpe | Avg Sortino | Avg Calmar | Trades | Avg time in market | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `absolute-momentum` | `1x` | `6/7` | `1/7` | `6/7` | `225.78%` | `-226.95%` | `-50.74%` | `0.727` | `1.160` | `0.653` | `350` | `54.05%` | compare-only：報酬 / turnover 最好，但 MDD 太接近 B&H |
+| `absolute-momentum` | `3x` | `6/7` | `1/7` | `6/7` | `219.77%` | `-232.52%` | `-51.33%` | `0.709` | `1.133` | `0.631` | `350` | `54.05%` | compare-only：成本壓力後仍穩，但 MDD 未解 |
+| `confluence-score` | `1x` | `6/7` | `0/7` | `6/7` | `176.57%` | `-276.16%` | `-51.40%` | `0.636` | `1.084` | `0.422` | `1299` | `39.39%` | discard as target-state main：交易切換太多，且沒有 beat B&H |
+| `confluence-score` | `3x` | `6/7` | `0/7` | `6/7` | `157.93%` | `-294.36%` | `-52.63%` | `0.559` | `0.966` | `0.355` | `1299` | `39.39%` | discard as target-state main：成本壓力下更弱 |
+| `confluence-score + cooldown10` | `1x` | `6/7` | `0/7` | `6/7` | `108.16%` | `-344.57%` | `-49.24%` | `0.586` | `0.951` | `0.342` | `879` | `30.21%` | discard as target-state main：cooldown 降低曝險但犧牲更多 upside |
+| `confluence-score + cooldown10` | `3x` | `6/7` | `0/7` | `5/7` | `98.03%` | `-354.25%` | `-50.91%` | `0.529` | `0.863` | `0.297` | `879` | `30.21%` | discard as target-state main：成本後仍未改善核心問題 |
+
+### 解讀
+
+1. **Absolute Momentum 是目前 target-state 較好的 compare-only 錨點**：平均報酬、平均 excess、交易數與成本壓力都比 Confluence target-state 乾淨，但 worst MDD 仍在 `-50%` 左右，不能說已經朝穩定營利完成。
+2. **Confluence cooldown 是 entry-edge 工具，不是自然的完整持倉規則**：在 target-state 回測中，`SignalCooldownStrategy` 會把 cooldown 期間的新 long entry 改成 flat；這可降低 entry overlap，但用完整持倉解讀時會造成額外曝險切換，所以不能把 entry-edge 的 keep 結論直接搬到 Phase 2。
+3. **1x / 2x / 3x 成本壓力沒有摧毀平均正報酬，但也沒有解決 benchmark-relative 問題**：三個候選在 3x 成本下平均仍為正，但 `Beat B&H` 最多只有 Absolute Momentum 的 `1/7`。
+4. **下一步不該再只調參**：目前缺的是 drawdown control / volatility scaling / allocation rule，而不是更細的 moving window 搜尋。
+
+### Keep / Discard 判斷
+
+- **Keep**：`multi_stock_target_state_sweep.py`。它補上 Phase 2 必要報表，讓完整持倉策略能直接看 benchmark-relative、cost stress 與 risk-adjusted metrics。
+- **Compare-only**：`absolute-momentum` target-state。它是目前較好的完整持倉比較錨點，但 MDD 太高。
+- **Discard as target-state main**：`confluence-score` 與 `confluence-score + cooldown10`。它們在 entry-edge 有研究價值，但完整持倉報酬 / MDD / turnover tradeoff 不適合直接升級。
+
+### 下一步
+
+1. 優先研究 volatility scaling 或 drawdown control，目標是把 Absolute Momentum 的 `Worst MDD` 從約 `-50%` 降到明顯低於 buy-and-hold，同時不要把 avg excess return 打回 Confluence cooldown 水準。
+2. 替 target-state 報表加入 drawdown attribution，定位 worst MDD 主要來自 `2454` 還是其他標的與期間。
+3. 做 walk-forward / OOS split，確認 Absolute Momentum 的 target-state edge 是否集中在 2020-2026 強趨勢樣本。

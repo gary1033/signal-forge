@@ -7,6 +7,11 @@ from tools.multi_stock_entry_edge_sweep import (
     build_aggregates,
     parse_hold_bars_list,
 )
+from tools.multi_stock_target_state_sweep import (
+    TargetStateRow,
+    build_aggregates as build_target_state_aggregates,
+    parse_cost_multipliers_list,
+)
 
 
 class MultiStockSweepToolTests(unittest.TestCase):
@@ -42,6 +47,51 @@ class MultiStockSweepToolTests(unittest.TestCase):
         self.assertEqual(aggregates[0].total_trades, 20)
         self.assertAlmostEqual(aggregates[0].aggregate_profit_factor or 0.0, 2.0)
 
+    def test_parse_cost_multipliers_list_requires_positive_numbers(self) -> None:
+        """
+        用途與流程：驗證 target-state sweep 可解析 1x/2x/3x 成本壓力倍率，並拒絕空欄位、非數字或非正數。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 parser 行為偏離預期，unittest assertion 會回報失敗。
+        """
+        self.assertEqual(parse_cost_multipliers_list("1, 2.5,3"), (1.0, 2.5, 3.0))
+        with self.assertRaises(ValueError):
+            parse_cost_multipliers_list("1,0")
+        with self.assertRaises(ValueError):
+            parse_cost_multipliers_list("1,,3")
+
+    def test_target_state_aggregates_track_benchmark_and_drawdown_counts(self) -> None:
+        """
+        用途與流程：驗證 target-state aggregate 會同時計算正報酬、勝過 benchmark 與低於 benchmark 回撤的股票數，避免只看平均報酬。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 aggregate 規則改變，unittest assertion 會回報失敗。
+        """
+        rows = [
+            _target_state_row(
+                "2330",
+                total_return=0.20,
+                benchmark_total_return=0.10,
+                max_drawdown=-0.05,
+                benchmark_max_drawdown=-0.20,
+            ),
+            _target_state_row(
+                "2317",
+                total_return=-0.10,
+                benchmark_total_return=0.05,
+                max_drawdown=-0.25,
+                benchmark_max_drawdown=-0.15,
+            ),
+        ]
+
+        aggregates = build_target_state_aggregates(rows)
+
+        self.assertEqual(len(aggregates), 1)
+        self.assertEqual(aggregates[0].stock_count, 2)
+        self.assertEqual(aggregates[0].positive_return_count, 1)
+        self.assertEqual(aggregates[0].outperform_benchmark_count, 1)
+        self.assertEqual(aggregates[0].lower_drawdown_than_benchmark_count, 1)
+        self.assertAlmostEqual(aggregates[0].average_total_return, 0.05)
+        self.assertAlmostEqual(aggregates[0].average_benchmark_excess_return, -0.025)
+
 
 def _row(symbol: str, *, gross_profit: float, gross_loss: float) -> SweepRow:
     """
@@ -73,6 +123,48 @@ def _row(symbol: str, *, gross_profit: float, gross_loss: float) -> SweepRow:
         gross_loss=gross_loss,
         end_equity=10_100.0,
         overlapping_signal_count=0,
+    )
+
+
+def _target_state_row(
+    symbol: str,
+    *,
+    total_return: float,
+    benchmark_total_return: float,
+    max_drawdown: float,
+    benchmark_max_drawdown: float,
+) -> TargetStateRow:
+    """
+    用途與流程：建立 target-state sweep 測試用 row，讓 aggregate 測試聚焦在 benchmark-relative 計算。
+    參數：symbol 是股票代號；total_return/benchmark_total_return 是策略與 benchmark 報酬；max_drawdown/benchmark_max_drawdown 是兩者回撤。
+    回傳與錯誤：回傳 TargetStateRow；此 helper 不做 I/O，也不主動拋錯。
+    """
+    return TargetStateRow(
+        symbol=symbol,
+        csv_path=f"{symbol}.csv",
+        strategy="absolute-momentum",
+        strategy_impl="absolute_momentum_m126_sma200_long_only",
+        cost_multiplier=1.0,
+        cost_label="1x",
+        commission_bps=1.0,
+        slippage_bps=1.0,
+        transaction_tax_bps=0.0,
+        total_return=total_return,
+        cagr=0.03,
+        sharpe_ratio=0.5,
+        sortino_ratio=0.8,
+        calmar_ratio=0.4,
+        max_drawdown=max_drawdown,
+        benchmark_total_return=benchmark_total_return,
+        benchmark_cagr=0.02,
+        benchmark_max_drawdown=benchmark_max_drawdown,
+        benchmark_excess_return=total_return - benchmark_total_return,
+        benchmark_excess_cagr=0.01,
+        trade_count=4,
+        total_cost=12.0,
+        turnover=2.0,
+        time_in_market=0.5,
+        end_equity=10_000.0 * (1.0 + total_return),
     )
 
 
