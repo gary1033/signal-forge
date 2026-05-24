@@ -256,6 +256,21 @@ python tools\portfolio_rotation_sweep.py `
   --summary-md reports\generated\portfolio-rotation.md
 ```
 
+## Portfolio rotation 進階工具鏈
+
+如果目標是判斷一個 portfolio rotation 候選能否升級，不要只看 `portfolio_rotation_sweep.py` 的單一 summary。建議依序保留這些 artifact，讓結論可重跑、可比對：
+
+| 順序 | 工具 | 主要用途 |
+|---:|---|---|
+| 1 | `tools\portfolio_rotation_universe_audit.py` | 先檢查股票池歷史長度、平均成交金額、群組成員數與 adjusted CSV availability。 |
+| 2 | `tools\portfolio_rotation_universe_select.py` | 需要平衡子股票池時，從 audit 結果 deterministic 選股。 |
+| 3 | `tools\portfolio_rotation_sweep.py` | 產生 full-window、cost stress、rolling windows、symbol / group attribution。 |
+| 4 | `tools\portfolio_rotation_grid_search.py` | 掃描 top-N、breadth、liquidity、max consecutive 等候選參數。 |
+| 5 | `tools\compare_portfolio_rotation_reports.py` | 對照 raw 與 adjusted summary，檢查資料調整後是否降級。 |
+| 6 | `tools\portfolio_rotation_group_regime_validation.py` | 檢查 dominant group contribution 是曝險主導、return regime 主導或混合。 |
+| 7 | `tools\portfolio_rotation_group_breadth_validation.py` | 檢查 dominant group 內部是 broad momentum、narrow momentum 或 single-member dependency。 |
+| 8 | `tools\portfolio_rotation_promotion_gate.py` | 合併 summary、raw/adjusted、group regime、group breadth，輸出單一 `keep` / `compare-only` gate。 |
+
 ## Python API 呼叫
 
 CLI 以外，可以直接走 public API。這是 tests、notebook 或研究腳本比較適合的方式：

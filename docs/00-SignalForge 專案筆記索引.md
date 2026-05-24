@@ -26,9 +26,18 @@ updated: 2026-05-24
 - [[策略筆記/策略筆記索引|策略筆記索引]]
 - [[03-程式疊代/Phase 程式疊代紀錄|Phase 程式疊代紀錄]]
 - [[04-實驗記錄/Autoresearch 實驗記錄|Autoresearch 實驗記錄]]
-- [[04-實驗記錄/台積電資料與三策略回測|台積電資料與三策略回測]]
-- [[04-實驗記錄/台積電四策略延伸研究|台積電四策略延伸研究]]
+- [[04-實驗記錄/2026-05-24 Portfolio Rotation Adjusted Grid Search|Portfolio Rotation Adjusted Grid Search]]
 - [[04-實驗記錄/台股多股票策略基準回測|台股多股票策略基準回測]]
+
+## 文件維護狀態
+
+| 類型 | 文件 | 閱讀建議 |
+|---|---|---|
+| 新讀者入口 | README、[[01-架構/SignalForge 資料夾與程式碼導覽|資料夾與程式碼導覽]]、[[01-架構/SignalForge 呼叫程式方式|呼叫程式方式]] | 優先閱讀；用來理解整個 project、function map、策略呼叫與修改位置。 |
+| 架構與安全邊界 | [[01-架構/SignalForge 架構總覽|架構總覽]]、[[02-規劃/SignalForge 大框架規劃|大框架規劃]]、[[02-規劃/策略回測與優化評估準則|策略回測與優化評估準則]] | active；策略研究、回測解讀與 live dry-run 邊界都要回扣這裡。 |
+| 實驗主紀錄 | [[04-實驗記錄/Autoresearch 實驗記錄|Autoresearch 實驗記錄]] | canonical，但內容很長；新讀者先看 README / code map，需要追溯證據時再搜尋這份。 |
+| 近期焦點實驗 | [[04-實驗記錄/2026-05-24 Portfolio Rotation Adjusted Grid Search|Portfolio Rotation Adjusted Grid Search]]、[[04-實驗記錄/台股多股票策略基準回測|台股多股票策略基準回測]] | active reference；用來看目前 portfolio rotation 與多股票 baseline 的關鍵證據。 |
+| 歷史參考 | [[04-實驗記錄/台積電資料與三策略回測|台積電資料與三策略回測]]、[[04-實驗記錄/台積電四策略延伸研究|台積電四策略延伸研究]] | archived reference；保留早期 TSMC entry-edge / ORB 脈絡，不再放在主要閱讀路徑。 |
 
 ## 目前狀態
 

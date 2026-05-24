@@ -458,7 +458,22 @@ python tools\multi_stock_target_state_sweep.py `
 
 ### Portfolio rotation
 
-把多檔股票視為同一資金池，和 equal-weight buy-and-hold portfolio 比較：
+把多檔股票視為同一資金池，和 equal-weight buy-and-hold portfolio 比較。精簡版只指定股票池、日期與輸出路徑；未填參數會使用工具預設：`weekly` rebalance、`lookback_bars=126`、`top_n=3`、`min_return=0`、`1x` 成本、無額外風控 gate。
+
+精簡版：
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --summary-json reports\generated\portfolio-rotation-default.json `
+  --summary-md reports\generated\portfolio-rotation-default.md
+```
+
+完整版範例會把目前常用研究參數攤開，方便你換股票池、成本壓力、rebalance、ranking、breadth、liquidity、rolling window 與輸出檔名：
 
 ```powershell
 python tools\portfolio_rotation_sweep.py `
@@ -536,6 +551,19 @@ python tools\compare_portfolio_rotation_reports.py `
   --output-md reports\generated\raw-vs-adjusted-compare.md
 ```
 
+### Portfolio rotation 進階工具鏈
+
+Portfolio rotation 候選不能只看單一 summary。常用檢查順序是：先建資料與股票池，再跑 sweep / grid，最後用 diagnostics 與 promotion gate 決定 `keep`、`discard` 或 `compare-only`。
+
+| 需求 | 工具 | 用途 |
+|---|---|---|
+| 批次掃 top-N / breadth / liquidity / max consecutive | `tools\portfolio_rotation_grid_search.py` | 產生候選排序，避免只手挑一組參數。 |
+| 檢查股票池品質 | `tools\portfolio_rotation_universe_audit.py` | 檢查歷史長度、成交金額、群組成員數與 adjusted CSV availability。 |
+| 從 audit 產生平衡子股票池 | `tools\portfolio_rotation_universe_select.py` | 依 group 與流動性挑 deterministic 子集合。 |
+| 檢查群組集中度來源 | `tools\portfolio_rotation_group_regime_validation.py` | 判斷 dominant group 是長期曝險、特定 group return regime，或混合來源。 |
+| 檢查 dominant group 內部廣度 | `tools\portfolio_rotation_group_breadth_validation.py` | 判斷是 broad group momentum、narrow group momentum 或 single-member dependency。 |
+| 合併升級判斷 | `tools\portfolio_rotation_promotion_gate.py` | 把 summary、raw/adjusted、group regime、group breadth 合成單一 gate。 |
+
 ## 要修改功能時去哪裡
 
 | 想改的東西 | 優先找 |
@@ -549,7 +577,9 @@ python tools\compare_portfolio_rotation_reports.py `
 | Entry-edge 計算與 trade log | `src\signal_forge\backtesting\entry_edge.py` |
 | Phase mode、backtest/live 分流 | `src\signal_forge\phase\config.py`、`adapters.py`、`runner.py` |
 | Markdown / JSON / CSV artifacts | `src\signal_forge\reporting\` |
-| 多股票 sweep、target-state、portfolio rotation | `tools\multi_stock_*.py`、`tools\portfolio_rotation_sweep.py` |
+| 多股票 sweep、target-state | `tools\multi_stock_*.py` |
+| Portfolio rotation 回測與參數 | `tools\portfolio_rotation_sweep.py`、`tools\portfolio_rotation_grid_search.py` |
+| Portfolio rotation 股票池與升級 gate | `tools\portfolio_rotation_universe_*.py`、`tools\portfolio_rotation_group_*_validation.py`、`tools\portfolio_rotation_promotion_gate.py` |
 | 測試 fixture 或測試替身 | `tests\helpers.py` |
 | 策略筆記與研究結論 | `docs\策略筆記\`、`docs\04-實驗記錄\` |
 

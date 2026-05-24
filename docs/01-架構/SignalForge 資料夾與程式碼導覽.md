@@ -91,7 +91,10 @@ flowchart TD
 | 修改 markdown / JSON / CSV artifact | `src\signal_forge\reporting\` | `tests\test_reporting.py`、exact-text regression |
 | 修改多股票 entry-edge | `tools\multi_stock_entry_edge_sweep.py` | `tests\test_multi_stock_sweep_tool.py` |
 | 修改 target-state 多股票回測 | `tools\multi_stock_target_state_sweep.py` | `tests\test_multi_stock_sweep_tool.py` |
-| 修改 portfolio rotation | `tools\portfolio_rotation_sweep.py` | `tests\test_portfolio_rotation_sweep_tool.py` |
+| 修改 portfolio rotation 回測邏輯 | `tools\portfolio_rotation_sweep.py` | `tests\test_portfolio_rotation_sweep_tool.py` |
+| 修改 portfolio rotation 參數掃描 | `tools\portfolio_rotation_grid_search.py` | `tests\test_portfolio_rotation_grid_search_tool.py` |
+| 修改 portfolio rotation 股票池 audit / selection | `tools\portfolio_rotation_universe_audit.py`、`tools\portfolio_rotation_universe_select.py` | `tests\test_portfolio_rotation_universe_audit_tool.py`、`tests\test_portfolio_rotation_universe_select_tool.py` |
+| 修改 portfolio rotation group diagnostics / promotion gate | `tools\portfolio_rotation_group_regime_validation.py`、`tools\portfolio_rotation_group_breadth_validation.py`、`tools\portfolio_rotation_promotion_gate.py` | 對應 `tests\test_portfolio_rotation_*_tool.py` |
 | 修改 adjusted price 工具 | `tools\build_twse_adjusted_ohlcv*.py` | 對應 `tests\test_build_twse_adjusted_ohlcv*_tool.py` |
 | 修改 raw / adjusted 比較 | `tools\compare_portfolio_rotation_reports.py` | `tests\test_compare_portfolio_rotation_reports_tool.py` |
 | 修改測試 fixture | `tests\helpers.py` | 確認 production code 沒依賴 test helper |
@@ -302,11 +305,24 @@ orb-volume-vwap
 | `tools\portfolio_rotation_sweep.py` | `load_rotation_inputs(...)` | 載入多檔股票 OHLCV，套用共同日期窗。 |
 | `tools\portfolio_rotation_sweep.py` | `align_close_table(...)` | 對齊多檔 close matrix。 |
 | `tools\portfolio_rotation_sweep.py` | `align_traded_value_table(...)` | 對齊成交金額 matrix，供 liquidity gate 使用。 |
-| `tools\portfolio_rotation_sweep.py` | `run_portfolio_rotation(...)` | 執行 long-only relative momentum portfolio rotation，支援 breadth、liquidity、group cap、consecutive cap、vol target。 |
+| `tools\portfolio_rotation_sweep.py` | `run_portfolio_rotation(...)` | 執行 long-only relative momentum portfolio rotation，支援 market regime、breadth、group breadth、liquidity、group cap、consecutive cap、re-entry cooldown、group contribution gate 與 vol target。 |
 | `tools\portfolio_rotation_sweep.py` | `run_equal_weight_benchmark(...)` | 建立 equal-weight buy-and-hold portfolio benchmark。 |
 | `tools\portfolio_rotation_sweep.py` | `run_portfolio_rotation_sweep(...)` | 對同一股票池跑多個成本倍率。 |
 | `tools\portfolio_rotation_sweep.py` | `build_rolling_windows(...)` | 自動產生 rolling windows。 |
 | `tools\portfolio_rotation_sweep.py` | `format_markdown(...)` | 輸出 portfolio rotation 報表 Markdown。 |
+| `tools\portfolio_rotation_grid_search.py` | `run_portfolio_rotation_grid_search(...)` | 掃描 top-N、breadth、liquidity、max consecutive 等候選組合並依 gate 排序。 |
+| `tools\portfolio_rotation_grid_search.py` | `_build_candidates(...)` | 從 CLI list 參數展開 deterministic candidate grid。 |
+| `tools\portfolio_rotation_grid_search.py` | `_gate_failure_reasons(...)` | 將 full IR、rolling IR、rolling excess、MDD、group concentration 轉成失敗原因。 |
+| `tools\portfolio_rotation_universe_audit.py` | `run_universe_audit(...)` | 檢查股票池歷史長度、平均成交金額、群組成員數與 adjusted CSV availability。 |
+| `tools\portfolio_rotation_universe_audit.py` | `_build_audit_row(...)` | 對單檔股票建立 audit row 與 eligibility 判斷。 |
+| `tools\portfolio_rotation_universe_select.py` | `run_universe_selection(...)` | 從 audit 結果依流動性、群組最低成員數與每組上限選出子股票池。 |
+| `tools\portfolio_rotation_universe_select.py` | `_select_symbols_by_group(...)` | 依 group ranking 選出符合上限的 symbol。 |
+| `tools\portfolio_rotation_group_regime_validation.py` | `validate_group_regime(...)` | 讀取 portfolio summary，判斷 group contribution concentration 的曝險 / 報酬來源。 |
+| `tools\portfolio_rotation_group_regime_validation.py` | `_classify_dominance(...)` | 將 dominant group 分成 exposure dominated、return-regime dominated 或 mixed。 |
+| `tools\portfolio_rotation_group_breadth_validation.py` | `validate_group_breadth(...)` | 讀取 portfolio summary 與 OHLCV，檢查 dominant group 內部正動能廣度。 |
+| `tools\portfolio_rotation_group_breadth_validation.py` | `_classify_breadth(...)` | 將 dominant group 分成 broad group momentum、narrow group momentum 或 single-member dependency。 |
+| `tools\portfolio_rotation_promotion_gate.py` | `build_promotion_gate(...)` | 合併 portfolio summary、raw/adjusted、group regime、group breadth，輸出 `keep` / `compare-only`。 |
+| `tools\portfolio_rotation_promotion_gate.py` | `_metric_failure_reasons(...)` | 將 IR、rolling、drawdown、concentration 與 raw/adjusted threshold 轉成 gate failure reasons。 |
 | `tools\build_twse_adjusted_ohlcv.py` | `build_adjusted_ohlcv(...)` | 用 Yahoo `adjclose / close` ratio 調整 TWSE OHLC，保留 TWSE volume。 |
 | `tools\build_twse_adjusted_ohlcv.py` | `parse_yahoo_adjustment_ratios(...)` | 解析 Yahoo chart JSON，建立 date -> adjustment ratio。 |
 | `tools\build_twse_adjusted_ohlcv.py` | `apply_adjustment_ratios(...)` | 套用 ratio，統計缺 ratio 與略過列。 |
@@ -339,6 +355,12 @@ orb-volume-vwap
 | `tests\test_compatibility.py` | 舊 public import path。 |
 | `tests\test_multi_stock_sweep_tool.py` | multi-stock entry-edge 與 target-state 工具。 |
 | `tests\test_portfolio_rotation_sweep_tool.py` | portfolio rotation parser、回測、rolling、filters、attribution。 |
+| `tests\test_portfolio_rotation_grid_search_tool.py` | portfolio rotation 參數掃描與 gate 排序。 |
+| `tests\test_portfolio_rotation_universe_audit_tool.py` | 股票池 audit eligibility、群組統計與輸出。 |
+| `tests\test_portfolio_rotation_universe_select_tool.py` | 從 audit 結果建立平衡子股票池。 |
+| `tests\test_portfolio_rotation_group_regime_validation_tool.py` | group regime validation schema、classification 與 Markdown。 |
+| `tests\test_portfolio_rotation_group_breadth_validation_tool.py` | group breadth validation schema、breadth classification 與 Markdown。 |
+| `tests\test_portfolio_rotation_promotion_gate_tool.py` | promotion gate thresholds、diagnostics 與輸出。 |
 | `tests\test_build_twse_adjusted_ohlcv_tool.py` | 單檔 adjusted OHLCV 工具。 |
 | `tests\test_build_twse_adjusted_ohlcv_batch_tool.py` | 批次 adjusted OHLCV 工具。 |
 | `tests\test_compare_portfolio_rotation_reports_tool.py` | raw / adjusted 比較工具。 |
@@ -374,8 +396,9 @@ orb-volume-vwap
 2. 確認策略筆記已存在或先建立。
 3. 單檔先用 `entry-edge` 或 `phase` 檢查 artifact 是否可信。
 4. 多股票用 `multi_stock_entry_edge_sweep.py` 或 `multi_stock_target_state_sweep.py`。
-5. Portfolio-level rotation 用 `portfolio_rotation_sweep.py`。
-6. 結論必須標成 `keep`、`discard` 或 `compare-only`，不能只看單一 PF、勝率或總報酬。
+5. Portfolio-level rotation 用 `portfolio_rotation_sweep.py`，參數探索用 `portfolio_rotation_grid_search.py`。
+6. 若候選看起來可升級，再跑 raw/adjusted comparison、group regime validation、group breadth validation 與 promotion gate。
+7. 結論必須標成 `keep`、`discard` 或 `compare-only`，不能只看單一 PF、勝率或總報酬。
 
 ## 固定驗證
 
