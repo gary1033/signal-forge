@@ -7227,3 +7227,58 @@ Rolling windows：
 - **Keep**：concentration guard 指標與 tests。這讓策略評估準則中的「不要只靠少數大贏家」變成可直接讀取的報表欄位。
 - **Compare-only**：`TWSE14 breadth42/min3` 仍是目前最強候選，但 concentration risk 未解。
 - **Next**：先用同一批資料測 `top_n=4/5` 或更大股票池，要求 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share` 降低，同時不得犧牲太多 IR / active drawdown。
+
+## 2026-05-24 Portfolio rotation top-N concentration-aware 比較
+
+### 目的
+
+上一輪 concentration guard 顯示 `TWSE14 breadth42/min3 top3` 的 full-window 指標很強，但 rolling window 仍高度集中，尤其 `roll02` 幾乎靠 `2603` 撐住。本輪不新增策略語意、不改 breadth threshold，只測同一組資料與同一個 breadth gate 下的 `top_n=3/4/5`。
+
+核心假設：
+
+> 若提高持股檔數能降低 concentration，同時保留足夠 IR、正 rolling excess 與較好的 active drawdown，則較高 `top_n` 可能比純追求最高總報酬更接近穩健候選。
+
+### 固定條件
+
+```text
+universe = TWSE14
+rebalance = monthly
+lookback_bars = 21
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_min_positive_count = 3
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+報表檔案：
+
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top3-breadth42-min3-concentration-compare-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-concentration-compare-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top5-breadth42-min3-concentration-compare-20260524.json`
+
+### Full-window 與 rolling 摘要
+
+以下皆看 `1x` 成本倍率；`2x/3x` 成本仍維持同方向，未改變結論。
+
+| Top N | Full return | Full excess | Full IR | Full MDD | Full active MDD | Full max share | Full top-3 share | Min rolling excess | Min rolling IR | Worst rolling active MDD | Max rolling max share | Max rolling top-3 share | 判斷 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `3` | `1974.85%` | `1638.67%` | `1.417` | `-23.01%` | `-26.79%` | `23.77%` | `55.04%` | `28.60%` | `0.564` | `-26.79%` | `68.75%` | `82.56%` | 最高報酬，但 active drawdown 與 rolling concentration 較重 |
+| `4` | `1546.66%` | `1210.48%` | `1.401` | `-18.61%` | `-20.21%` | `22.48%` | `48.32%` | `28.52%` | `0.724` | `-20.21%` | `67.39%` | `81.68%` | 最佳風險調整折衷 |
+| `5` | `1239.02%` | `902.84%` | `1.292` | `-19.17%` | `-19.81%` | `19.37%` | `47.60%` | `15.93%` | `0.484` | `-19.81%` | `62.47%` | `77.33%` | 集中度再降，但 edge 與最弱 rolling window 明顯變差 |
+
+### 解讀
+
+1. **`top_n=4` 是目前較好的穩健折衷**：相對 `top_n=3`，full IR 幾乎只從 `1.417` 降到 `1.401`，但 MDD 從 `-23.01%` 改到 `-18.61%`，active MDD 從 `-26.79%` 改到 `-20.21%`。
+2. **`top_n=4` 降低 full-window concentration**：full top-3 絕對貢獻占比從 `55.04%` 降到 `48.32%`，比較不依賴少數大贏家。
+3. **rolling concentration 仍未解**：`top_n=4` 的 max rolling top-3 share 仍有 `81.68%`，只比 `top_n=3` 的 `82.56%` 小幅改善；`roll02` 仍主要依賴 `2603`。
+4. **`top_n=5` 不宜升級**：雖然 concentration 下降，但 full excess、IR、min rolling excess 與 min rolling IR 都明顯變弱，像是過度分散而不是更穩健。
+5. **不能宣稱穩定營利**：top-N 約束改善了風險調整，但資料仍未還原權息、股票池仍小、rolling concentration 仍高，且未檢查流動性、容量與真實成交限制。
+
+### Keep / Discard 判斷
+
+- **Promote current risk-adjusted compare candidate**：`TWSE14 monthly + 21 bars + top4 + breadth42/min3`。它犧牲部分總報酬，換到更低 MDD / active MDD、接近不變的 IR、較低 full-window top-3 concentration。
+- **Keep as high-return benchmark**：`top3 + breadth42/min3` 仍保留為最高報酬比較錨點，但不再是「穩健性」優先的首選。
+- **Compare-only / do not promote**：`top5 + breadth42/min3`。它降低 concentration，但 edge 衰退太多，不符合「不要只為了降低集中度而犧牲 active return」的方向。
+- **Next**：不要再只測更大的 `top_n`；下一步應測 sector / group cap、限制單檔連續入選、或擴大股票池，目標是處理 rolling concentration，而不是只降低 full-window concentration。

@@ -150,6 +150,6 @@ python -m signal_forge.cli fetch-data `
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
 - 針對 Absolute Momentum 的 benchmark-relative 問題做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可降低回撤但 2024-2026 OOS 是 `0/7` beat B&H；relative-momentum top-N 股票池也沒有改善 `Beat B&H`。下一步應測 re-entry 條件、weekly rebalance 或市場 regime，不要只靠降曝險或 top-N 過濾。
-- 針對 portfolio rotation，下一步不要直接宣稱穩定營利；14 檔 `breadth 42/min3` 雖讓 full-window IR 約 `1.417` 並讓 1x/2x/3x 成本與 6 個 rolling windows 都保持正 excess，但 concentration guard 顯示 `roll02` 高度依賴 `2603`、`roll06` 依賴 `2308`，且 TWSE STOCK_DAY 資料未還原權息。後續應先測 top-N、連續入選限制、sector cap 或更大股票池，再處理 adjusted price。
+- 針對 portfolio rotation，下一步不要直接宣稱穩定營利；14 檔 `breadth 42/min3` 雖讓 `top3` full-window IR 約 `1.417` 並讓 1x/2x/3x 成本與 6 個 rolling windows 都保持正 excess，但 concentration guard 顯示 `roll02` 高度依賴 `2603`、`roll06` 依賴 `2308`，且 TWSE STOCK_DAY 資料未還原權息。`top4` 已成為目前風險調整折衷候選，但 rolling concentration 仍未解；後續應測連續入選限制、sector cap 或更大股票池，再處理 adjusted price。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

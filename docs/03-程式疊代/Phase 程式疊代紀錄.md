@@ -200,7 +200,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 報表已新增 `annualized_active_return`、`tracking_error`、`information_ratio` 與 `active_max_drawdown`，用 relative equity 檢查主動風險報酬與相對 benchmark 回撤。
 - CLI 已新增自動 rolling windows：`--rolling-window-months`、`--rolling-step-months`、`--rolling-min-months`；它會產生 `roll01`、`roll02` 這類日期窗，避免每次手寫少數分段。
 - `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、共同日期對齊、top momentum 選股、benchmark 成本、market regime block、breadth block、volatility scaling、retention 與 symbol attribution regression。
-- 本輪結果：原始七檔 `monthly + 21 bars + top3` 在 full-window 與 2024-2026 OOS 很強，但 24 個月 rolling 顯示 `2021-2022` return 約 `-18.74%`、excess 約 `-24.62%`、IR 約 `-0.881`。七檔 `breadth 42/min2` 改善但仍未修好 `2021-2022`。14 檔 `breadth 42/min3` 讓 full-window IR 約 `1.417`、MDD 約 `-23.01%`，且 rolling `6/6` 正 excess，因此升級成 current best compare candidate；但 attribution 顯示 `roll02` 仍高度依賴 `2603`、`roll06` 依賴 `2308`，資料也未還原權息、股票池仍小，所以仍不能宣稱穩定營利。
+- 本輪結果：原始七檔 `monthly + 21 bars + top3` 在 full-window 與 2024-2026 OOS 很強，但 24 個月 rolling 顯示 `2021-2022` return 約 `-18.74%`、excess 約 `-24.62%`、IR 約 `-0.881`。七檔 `breadth 42/min2` 改善但仍未修好 `2021-2022`。14 檔 `breadth 42/min3 top3` 讓 full-window IR 約 `1.417`、MDD 約 `-23.01%`，且 rolling `6/6` 正 excess；`top4` 把 full-window MDD 改到約 `-18.61%`、active MDD 改到約 `-20.21%`、IR 仍約 `1.401`，因此成為目前風險調整折衷候選。但 concentration guard 顯示 `roll02` 仍高度依賴 `2603`、`roll06` 依賴 `2308`，資料也未還原權息、股票池仍小，所以仍不能宣稱穩定營利。
 
 ## 重要 commit 節點
 
@@ -219,7 +219,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；14 檔 `breadth 42/min3` 是目前最佳折衷，但 concentration guard 顯示部分 rolling window 仍有單檔集中風險。下一步應測 concentration-aware 約束，並用 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；14 檔 `breadth 42/min3 top4` 是目前風險調整折衷，但 concentration guard 顯示部分 rolling window 仍有單檔集中風險。下一步應測 top-N 以外的 concentration-aware 約束，並用 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

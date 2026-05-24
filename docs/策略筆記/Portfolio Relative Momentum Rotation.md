@@ -57,7 +57,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 
 - `rebalance_frequency`：預設研究候選使用 `monthly`。
 - `lookback_bars`：預設研究候選使用 `21`，約一個月交易日。
-- `top_n`：預設研究候選使用 `3`。
+- `top_n`：最高報酬錨點是 `3`；目前風險調整折衷候選改看 `4`，因為 full IR 幾乎不變但 MDD、active MDD 與 full-window top-3 concentration 較低。
 - `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
 - `breadth_filter`：七檔股票池最佳折衷是 `breadth_lookback_bars=42`、`breadth_min_positive_count=2`；擴大到 14 檔 TWSE 股票池後，目前最佳折衷改為 `breadth_min_positive_count=3`。
 - `cost_multipliers`：固定用 `1x` 與 `3x` 成本壓力檢查。
@@ -79,20 +79,22 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 可選 `--market-regime-filter --market-regime-sma-bars 84` 已測：它把 2021-2022 excess 從約 `-24.62%` 改到約 `-13.59%`，但 full-window IR 從約 `0.858` 降到約 `0.544`，所以只能作 compare-only 風控工具，不能當作目前主候選改善。
 - 可選 `--volatility-target --volatility-lookback-bars 42 --target-annual-volatility 0.20` 已測：full excess 只剩約 `43.00%`、IR 約 `0.065`，2021-2022 excess 仍約 `-22.85%`，所以也只能作 compare-only 風控工具，不能當作目前主候選改善。
 - 可選 `--breadth-filter --breadth-lookback-bars 42 --breadth-min-positive-count 2` 在七檔股票池是最佳折衷：full-window IR 約 `1.017`，但 2021-2022 仍輸 benchmark。
-- 擴大到 14 檔 TWSE 股票池後，`--breadth-min-positive-count 3` 是目前最佳折衷：full-window return 約 `1974.85%`、excess 約 `1638.67%`、MDD 約 `-23.01%`、IR 約 `1.417`，1x/2x/3x 成本與 6 個 rolling windows 都維持正 excess。
+- 擴大到 14 檔 TWSE 股票池後，`--breadth-min-positive-count 3` 是目前最佳 breadth gate。`top_n=3` 是最高報酬錨點：full-window return 約 `1974.85%`、excess 約 `1638.67%`、MDD 約 `-23.01%`、IR 約 `1.417`，1x/2x/3x 成本與 6 個 rolling windows 都維持正 excess。
+- 同條件下 `top_n=4` 是目前風險調整折衷候選：full-window return 約 `1546.66%`、excess 約 `1210.48%`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、IR 約 `1.401`；相對 `top_n=3` 犧牲總報酬，但明顯降低回撤且 IR 幾乎不變。
 - 選股歸因顯示 full-window 最大貢獻 `2603` 的絕對貢獻占比約 `23.77%`，不是單一股票完全壟斷；但 rolling window 仍有集中風險，`roll02` 的 `2603` 約 `68.75%`、`roll06` 的 `2308` 約 `48.75%`。
 - Concentration guard 進一步顯示 full-window top-3 絕對貢獻占比約 `55.04%`；rolling top-3 在 `roll01` 約 `73.33%`、`roll02` 約 `82.56%`、`roll03` 約 `72.39%`，代表部分分段仍過度集中。
+- `top_n=4` 可把 full-window top-3 絕對貢獻占比降到約 `48.32%`，但 max rolling top-3 share 仍約 `81.68%`，所以它改善 full-window 集中度，還沒有解決最關鍵的 rolling concentration。
 - 因為分段貢獻仍偏集中、資料未還原權息、股票池仍小，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
 ## 下一步
 
-- 下一步優先測 concentration-aware 約束，例如 `top_n=4/5`、限制單檔連續入選、sector cap 或擴大股票池，目標是降低 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`。
+- 下一步優先測 `top_n` 以外的 concentration-aware 約束，例如限制單檔連續入選、sector cap 或擴大股票池，目標是降低 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`。
 - 再檢查 adjusted price、流動性與容量；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
-- 目前主比較錨點改為 `TWSE14 monthly + 21 bars + top3 + breadth 42/min3`，但仍要和原始七檔版本與 baseline 一起保留，避免只看單一 overlay。
+- 目前主比較錨點分成兩個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是目前風險調整折衷錨點。兩者仍要和原始七檔版本與 baseline 一起保留，避免只看單一 overlay。
 
 ## 參考來源
 
