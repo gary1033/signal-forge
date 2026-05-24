@@ -8653,3 +8653,80 @@ Require adjusted 後仍 eligible 的股票：
 - **Compare-only strategy**：full-window excess 與 3x IR 仍有研究價值，但 full IR 未達 `1.0`、`roll02` rolling IR 轉負、min rolling excess 低於 `0`，且 rolling top3 group share 高達 `98.26%`，不能升級為主候選。
 - **Discard same-pool micro-tune**：36 組 top-N / breadth / max consecutive 小網格全數失敗；下一輪不要再只在同一 TWSE16 股票池微調這三個參數。
 - **Next**：改往 TWSE30+、更高品質股票池、re-entry 條件，或 realized group contribution concentration gate；每個方向都必須重新跑 universe audit、adjusted batch、raw/adjusted comparison、group validation 與 promotion gate。
+
+## 2026-05-24 Portfolio rotation ranking skip follow-up
+
+### 目的
+
+這輪把 momentum 文獻中的 skip-recent-period / intermediate momentum 概念轉成 deterministic 參數：在計算 relative momentum 排名時，先排除最近 N 根 bar，再用較早 formation window 排名。目標不是追求單一更高 full-window return，而是檢查 TWSE16 adjusted universe 的 `roll02` 失敗段是否只是短期反轉或過熱追價造成。
+
+研究假設：
+
+> 若最近幾根 bar 的過熱報酬造成輪動策略追高，`ranking_skip_bars` 應能改善 rolling IR、rolling excess、MDD 與 promotion gate；若只改善 full-window IR 但 rolling / group gate 仍失敗，就不能升級策略。
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增 `--ranking-skip-bars`。
+- `PortfolioRotationResult` 新增 `ranking_skip_bars`，Markdown full-window table 新增 `Ranking skip` 欄位。
+- `run_portfolio_rotation()`、sweep、walk-forward 與 target weight helper 都改用 `ranking_end = index - ranking_skip_bars` 計算排名報酬。
+- `tools\portfolio_rotation_promotion_gate.py` 把 `ranking_skip_bars` 納入 candidate parameters。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、Markdown 欄位與 ranking skip 排名視窗 regression。
+- `tests\test_portfolio_rotation_grid_search_tool.py`、`tests\test_portfolio_rotation_promotion_gate_tool.py` 補上 fixture 欄位，避免新 result schema 漂移。
+
+### 產生 artifact
+
+- Skip10 adjusted summary：`reports\generated\twse16-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Skip10 raw summary：`reports\generated\twse16-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Raw / adjusted comparison：`reports\generated\twse16-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-compare-20260524.json`
+- Group regime validation：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-regime-validation-20260524.json`
+- Group breadth validation：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-breadth-validation-20260524.json`
+- Promotion gate：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-promotion-gate-20260524.json`
+
+### Skip 掃描摘要
+
+固定參數為 TWSE16 adjusted `monthly + lookback 21 + top4 + breadth42/min3 + maxconsec5 + liq500M`。
+
+| Skip | Full IR | Stress 3x IR | Full MDD | Min rolling IR | Min rolling excess | Max rolling top3 group |
+|---:|---:|---:|---:|---:|---:|---:|
+| `0` | `0.863` | `0.832` | `-29.50%` | `-1.123` | `-29.26%` | `98.26%` |
+| `5` | `0.758` | `0.726` | `-35.30%` | `-1.159` | `-28.28%` | `98.79%` |
+| `10` | `1.186` | `1.158` | `-27.80%` | `-0.856` | `-22.55%` | `100.00%` |
+| `21` | `0.242` | `0.209` | `-37.82%` | `-1.413` | `-35.19%` | `99.45%` |
+
+### Skip10 promotion gate
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.186` |
+| Full 1x excess | `740.65%` |
+| Full 1x MDD | `-27.80%` |
+| Full 1x active MDD | `-26.60%` |
+| Stress 3x IR | `1.158` |
+| Stress 3x excess | `709.20%` |
+| Min rolling IR | `-0.856` |
+| Min rolling excess | `-22.55%` |
+| Weakest rolling window | `roll02 / 2021-01-01 to 2022-12-31` |
+| Full top3 symbol share | `42.11%` |
+| Full top3 group share | `93.16%` |
+| Max rolling top3 group share | `100.00%` |
+
+Failure reasons：
+
+```text
+rolling_ir_below_threshold
+rolling_excess_below_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+narrow_group_momentum
+```
+
+### Keep / Discard 判斷
+
+- **Keep code/process**：`--ranking-skip-bars` 是 deterministic、test-covered、預設為 `0` 的 ranking dimension；可用來檢查短期反轉或過熱追價，而不改既有策略預設語意。
+- **Keep compare-only anchor**：`ranking_skip_bars=10` 明顯改善 full-window IR、3x IR 與 MDD，且 raw / adjusted comparison gate 本身通過，因此可以作為後續比較錨點。
+- **Do not promote strategy**：`skip10` 的 min rolling IR 與 min rolling excess 仍為負，max rolling top3 group share 到 `100%`，group regime / breadth gate 仍失敗；這不是穩定營利證明。
+- **Discard skip21**：`ranking_skip_bars=21` 讓訊號太舊，full IR、MDD、rolling IR 與 rolling excess 全面惡化。
+- **Next**：不要再只在 TWSE16 小池微調 skip 長度；若要繼續測 `skip10`，應結合 TWSE30+ / 更高品質股票池、re-entry 條件或 realized group contribution concentration gate，並重新跑 universe audit、adjusted batch、raw/adjusted comparison、group validation 與 promotion gate。

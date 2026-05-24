@@ -566,6 +566,7 @@ def _candidate_parameters(result: dict[str, Any]) -> dict[str, Any]:
         "strategy",
         "rebalance_frequency",
         "lookback_bars",
+        "ranking_skip_bars",
         "top_n",
         "min_return",
         "breadth_filter",

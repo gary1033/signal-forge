@@ -47,6 +47,7 @@ class PortfolioRotationResult:
     cost_label: str
     rebalance_frequency: str
     lookback_bars: int
+    ranking_skip_bars: int
     top_n: int
     min_return: float
     market_regime_filter: bool
@@ -261,6 +262,7 @@ def run_portfolio_rotation(
     top_n: int,
     min_return: float,
     periods_per_year: int,
+    ranking_skip_bars: int = 0,
     market_regime_filter: bool = False,
     market_regime_sma_bars: int = 126,
     breadth_filter: bool = False,
@@ -280,12 +282,14 @@ def run_portfolio_rotation(
     volatility_max_scale: float = 1.0,
 ) -> PortfolioRotationResult:
     """
-    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 liquidity filter 會排除近期平均成交金額不足的股票，可選 group cap / group member gate / consecutive cap 會限制同組、單成員群組或同檔股票持續主導選股，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險；同時累積每檔股票的持倉天數、入選次數與實際權重報酬貢獻。
-    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；breadth_filter 相關參數定義市場寬度 crash-protection gate；liquidity_lookback_bars/min_average_traded_value 定義成交金額可交易性 gate；symbol_groups/max_selections_per_group 定義同組最多入選檔數；min_symbols_per_selected_group 定義入選股票所屬群組至少要有幾個成員，用來阻擋單成員群組依賴；max_consecutive_selections_per_symbol 定義單檔連續入選上限；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
+    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；ranking_skip_bars 可排除最近 N 根 bar 再計算排名，用來測試 skip-recent-period / intermediate momentum；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 liquidity filter 會排除近期平均成交金額不足的股票，可選 group cap / group member gate / consecutive cap 會限制同組、單成員群組或同檔股票持續主導選股，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險；同時累積每檔股票的持倉天數、入選次數與實際權重報酬貢獻。
+    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、ranking_skip_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；breadth_filter 相關參數定義市場寬度 crash-protection gate；liquidity_lookback_bars/min_average_traded_value 定義成交金額可交易性 gate；symbol_groups/max_selections_per_group 定義同組最多入選檔數；min_symbols_per_selected_group 定義入選股票所屬群組至少要有幾個成員，用來阻擋單成員群組依賴；max_consecutive_selections_per_symbol 定義單檔連續入選上限；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
     回傳與錯誤：回傳 PortfolioRotationResult；頻率、lookback、top_n 或資料矩陣不合法時拋出 ValueError。
     """
     if lookback_bars <= 0:
         raise ValueError("lookback bars must be positive")
+    if ranking_skip_bars < 0:
+        raise ValueError("ranking skip bars cannot be negative")
     if top_n <= 0:
         raise ValueError("top-n must be positive")
     if rebalance_frequency not in {"daily", "weekly", "monthly"}:
@@ -337,8 +341,10 @@ def run_portfolio_rotation(
         symbol_groups=symbol_groups,
     )
     group_member_counts = _group_member_counts(effective_symbol_groups)
-    if lookback_bars >= len(timestamps):
-        raise ValueError("lookback bars must be smaller than the common timestamp count")
+    if lookback_bars + ranking_skip_bars >= len(timestamps):
+        raise ValueError(
+            "lookback bars plus ranking skip bars must be smaller than the common timestamp count"
+        )
     if breadth_min_positive_count > len(symbols):
         raise ValueError("breadth min positive count cannot exceed symbol count")
 
@@ -404,7 +410,7 @@ def run_portfolio_rotation(
 
         equity *= 1.0 + period_return
 
-        if index >= lookback_bars and _is_rebalance_index(
+        if index >= lookback_bars + ranking_skip_bars and _is_rebalance_index(
             timestamps,
             index=index,
             frequency=rebalance_frequency,
@@ -473,6 +479,7 @@ def run_portfolio_rotation(
                             closes_by_symbol,
                             index=index,
                             lookback_bars=lookback_bars,
+                            ranking_skip_bars=ranking_skip_bars,
                             top_n=top_n,
                             min_return=min_return,
                             excluded_symbols=consecutive_exclusions,
@@ -500,6 +507,7 @@ def run_portfolio_rotation(
                     closes_by_symbol,
                     index=index,
                     lookback_bars=lookback_bars,
+                    ranking_skip_bars=ranking_skip_bars,
                     top_n=top_n,
                     min_return=min_return,
                     excluded_symbols=consecutive_exclusions | liquidity_exclusions,
@@ -638,6 +646,7 @@ def run_portfolio_rotation(
         cost_label=_format_cost_label(cost_multiplier),
         rebalance_frequency=rebalance_frequency,
         lookback_bars=lookback_bars,
+        ranking_skip_bars=ranking_skip_bars,
         top_n=top_n,
         min_return=min_return,
         market_regime_filter=market_regime_filter,
@@ -997,6 +1006,7 @@ def run_portfolio_rotation_sweep(
     top_n: int,
     min_return: float,
     periods_per_year: int,
+    ranking_skip_bars: int = 0,
     market_regime_filter: bool = False,
     market_regime_sma_bars: int = 126,
     breadth_filter: bool = False,
@@ -1017,7 +1027,7 @@ def run_portfolio_rotation_sweep(
 ) -> list[PortfolioRotationResult]:
     """
     用途與流程：對同一批股票資料在多個成本倍率下執行 portfolio rotation 回測。
-    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其餘參數傳給 run_portfolio_rotation。
+    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；ranking_skip_bars 定義排名時計算到幾根 bar 以前；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其餘參數傳給 run_portfolio_rotation。
     回傳與錯誤：回傳每個成本倍率一筆 PortfolioRotationResult；資料或參數不合法時由底層拋出 ValueError。
     """
     loaded = load_rotation_inputs(csv_paths, start=start, end=end)
@@ -1034,6 +1044,7 @@ def run_portfolio_rotation_sweep(
             cost_multiplier=cost_multiplier,
             rebalance_frequency=rebalance_frequency,
             lookback_bars=lookback_bars,
+            ranking_skip_bars=ranking_skip_bars,
             top_n=top_n,
             min_return=min_return,
             periods_per_year=periods_per_year,
@@ -1073,6 +1084,7 @@ def run_walk_forward_rotation(
     top_n: int,
     min_return: float,
     periods_per_year: int,
+    ranking_skip_bars: int = 0,
     market_regime_filter: bool = False,
     market_regime_sma_bars: int = 126,
     breadth_filter: bool = False,
@@ -1093,7 +1105,7 @@ def run_walk_forward_rotation(
 ) -> tuple[list[PortfolioWalkForwardResult], list[PortfolioRetentionRow]]:
     """
     用途與流程：依 walk-forward windows 重跑 portfolio rotation，並計算相鄰 window 的 OOS retention。
-    參數：windows 是分段日期；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
+    參數：windows 是分段日期；ranking_skip_bars 定義排名時計算到幾根 bar 以前；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
     回傳與錯誤：回傳 window 結果與 retention rows；若某 window 資料不足，底層會拋出 ValueError。
     """
     window_results: list[PortfolioWalkForwardResult] = []
@@ -1112,6 +1124,7 @@ def run_walk_forward_rotation(
                     transaction_tax_bps=transaction_tax_bps,
                     rebalance_frequency=rebalance_frequency,
                     lookback_bars=lookback_bars,
+                    ranking_skip_bars=ranking_skip_bars,
                     top_n=top_n,
                     min_return=min_return,
                     periods_per_year=periods_per_year,
@@ -1272,15 +1285,16 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Min group members | Group member blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
-        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Ranking skip | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Min group members | Group member blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
+        "|---|---:|---|---:|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
     ]
     for result in results:
         lines.append(
             "| "
             f"{result.strategy} | {result.cost_label} | "
             f"{result.rebalance_frequency} | {result.lookback_bars} | "
-            f"{result.top_n} | {_format_bool(result.market_regime_filter)} | "
+            f"{result.ranking_skip_bars} | {result.top_n} | "
+            f"{_format_bool(result.market_regime_filter)} | "
             f"{result.market_regime_sma_bars} | {_format_bool(result.breadth_filter)} | "
             f"{result.breadth_lookback_bars} | {result.breadth_min_positive_count} | "
             f"{_format_optional_ratio(result.average_breadth_positive_count)} | "
@@ -1659,6 +1673,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="weekly",
     )
     parser.add_argument("--lookback-bars", type=int, default=126)
+    parser.add_argument(
+        "--ranking-skip-bars",
+        type=int,
+        default=0,
+        help=(
+            "number of most recent bars to skip before calculating ranking momentum; "
+            "use positive values to test skip-recent-period momentum"
+        ),
+    )
     parser.add_argument("--top-n", type=int, default=3)
     parser.add_argument("--min-return", type=float, default=0.0)
     parser.add_argument("--periods-per-year", type=int, default=252)
@@ -1812,6 +1835,7 @@ def main(argv: list[str] | None = None) -> int:
         transaction_tax_bps=args.transaction_tax_bps,
         rebalance_frequency=args.rebalance_frequency,
         lookback_bars=args.lookback_bars,
+        ranking_skip_bars=args.ranking_skip_bars,
         top_n=args.top_n,
         min_return=args.min_return,
         periods_per_year=args.periods_per_year,
@@ -1866,6 +1890,7 @@ def main(argv: list[str] | None = None) -> int:
             transaction_tax_bps=args.transaction_tax_bps,
             rebalance_frequency=args.rebalance_frequency,
             lookback_bars=args.lookback_bars,
+            ranking_skip_bars=args.ranking_skip_bars,
             top_n=args.top_n,
             min_return=args.min_return,
             periods_per_year=args.periods_per_year,
@@ -1982,10 +2007,11 @@ def _target_rotation_weights(
     lookback_bars: int,
     top_n: int,
     min_return: float,
+    ranking_skip_bars: int = 0,
 ) -> dict[str, float]:
     """
     用途與流程：依指定日期的 lookback return 排名，產生 top-N 等權 portfolio target weights。
-    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index 是 rebalance 日期索引；lookback_bars 是回看期；top_n 是最多持有檔數；min_return 是最低動能門檻。
+    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index 是 rebalance 日期索引；lookback_bars 是回看期；ranking_skip_bars 是排名前要略過的最近 bar 數；top_n 是最多持有檔數；min_return 是最低動能門檻。
     回傳與錯誤：回傳 symbol 到權重的 dict；若沒有入選股票則全部為 0。
     """
     (
@@ -1998,6 +2024,7 @@ def _target_rotation_weights(
         closes_by_symbol,
         index=index,
         lookback_bars=lookback_bars,
+        ranking_skip_bars=ranking_skip_bars,
         top_n=top_n,
         min_return=min_return,
         excluded_symbols=set(),
@@ -2015,6 +2042,7 @@ def _target_rotation_weights_with_block_counts(
     *,
     index: int,
     lookback_bars: int,
+    ranking_skip_bars: int,
     top_n: int,
     min_return: float,
     excluded_symbols: set[str],
@@ -2025,15 +2053,16 @@ def _target_rotation_weights_with_block_counts(
 ) -> tuple[dict[str, float], int, int, int]:
     """
     用途與流程：依 lookback return 產生 top-N target weights，同時計算單檔連續入選、同組上限與群組成員數下限造成的 block 數。
-    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合；symbol_groups 將股票映射到產業或自訂群組；max_selections_per_group 是每組最多入選檔數，None 表示停用；group_member_counts 是每個 group 的成員數；min_symbols_per_selected_group 是可入選群組的最低成員數。
+    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/ranking_skip_bars/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合；symbol_groups 將股票映射到產業或自訂群組；max_selections_per_group 是每組最多入選檔數，None 表示停用；group_member_counts 是每個 group 的成員數；min_symbols_per_selected_group 是可入選群組的最低成員數。
     回傳與錯誤：回傳 `(target_weights, consecutive_blocked_count, group_blocked_count, group_member_blocked_count)`；沒有入選股票時權重全為 0；block count 只計算會影響 top-N 填補流程的候選排除。
     """
     ranked: list[tuple[str, float]] = []
     consecutive_blocked_count = 0
     group_member_blocked_count = 0
+    ranking_index = index - ranking_skip_bars
     for symbol in symbols:
-        previous_close = closes_by_symbol[symbol][index - lookback_bars]
-        current_close = closes_by_symbol[symbol][index]
+        previous_close = closes_by_symbol[symbol][ranking_index - lookback_bars]
+        current_close = closes_by_symbol[symbol][ranking_index]
         momentum_return = (current_close / previous_close) - 1.0
         if momentum_return > min_return:
             if symbol in excluded_symbols:
@@ -2083,11 +2112,12 @@ def _target_rotation_weights_with_block_count(
     lookback_bars: int,
     top_n: int,
     min_return: float,
+    ranking_skip_bars: int = 0,
     excluded_symbols: set[str],
 ) -> tuple[dict[str, float], int]:
     """
     用途與流程：保留舊 helper contract，供只需要單檔連續入選 block count 的內部測試或相容呼叫使用。
-    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合。
+    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/ranking_skip_bars/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合。
     回傳與錯誤：回傳 `(target_weights, blocked_count)`；若沒有入選股票則權重全為 0。
     """
     (
@@ -2100,6 +2130,7 @@ def _target_rotation_weights_with_block_count(
         closes_by_symbol,
         index=index,
         lookback_bars=lookback_bars,
+        ranking_skip_bars=ranking_skip_bars,
         top_n=top_n,
         min_return=min_return,
         excluded_symbols=excluded_symbols,

@@ -215,6 +215,7 @@ def _result(
         "strategy": "portfolio-relative-momentum-rotation",
         "rebalance_frequency": "monthly",
         "lookback_bars": 21,
+        "ranking_skip_bars": 0,
         "top_n": 3,
         "min_return": 0.0,
         "breadth_filter": True,

@@ -272,6 +272,7 @@ def _result(
         cost_label=cost_label,
         rebalance_frequency="monthly",
         lookback_bars=21,
+        ranking_skip_bars=0,
         top_n=top_n,
         min_return=0.0,
         market_regime_filter=False,

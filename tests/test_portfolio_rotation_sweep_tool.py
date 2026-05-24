@@ -35,6 +35,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "monthly",
                 "--lookback-bars",
                 "3",
+                "--ranking-skip-bars",
+                "1",
                 "--top-n",
                 "2",
                 "--min-return",
@@ -79,6 +81,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
 
         self.assertEqual(args.rebalance_frequency, "monthly")
         self.assertEqual(args.lookback_bars, 3)
+        self.assertEqual(args.ranking_skip_bars, 1)
         self.assertEqual(args.top_n, 2)
         self.assertEqual(args.min_return, 0.02)
         self.assertEqual(args.cost_multipliers_list, "1,3")
@@ -249,6 +252,59 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.max_group_abs_contribution_group, "2330")
         self.assertGreater(result.max_group_abs_contribution_share, 0.99)
         self.assertGreater(result.top3_group_abs_contribution_share, 0.99)
+
+    def test_ranking_skip_bars_excludes_recent_return_from_momentum_rank(self) -> None:
+        """
+        用途與流程：驗證 ranking skip bars 會把最近 N 根 bar 排除在相對動能排名之外，用較早形成期報酬決定入選股票。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 ranking skip 沒有改變排名視窗或 result 欄位漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "old_winner",
+                Path("old_winner.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 150.0),
+                    _bar("2026-01-03", 200.0),
+                    _bar("2026-01-04", 100.0),
+                ],
+            ),
+            (
+                "recent_winner",
+                Path("recent_winner.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 100.0),
+                    _bar("2026-01-03", 100.0),
+                    _bar("2026-01-04", 200.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=2,
+            ranking_skip_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+        )
+
+        old_winner = next(row for row in result.symbol_attribution if row.symbol == "old_winner")
+        recent_winner = next(
+            row for row in result.symbol_attribution if row.symbol == "recent_winner"
+        )
+        self.assertEqual(result.ranking_skip_bars, 1)
+        self.assertEqual(old_winner.rebalance_selected_count, 1)
+        self.assertEqual(recent_winner.rebalance_selected_count, 0)
 
     def test_liquidity_filter_excludes_low_traded_value_momentum_leader(self) -> None:
         """
@@ -581,6 +637,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("Max group", markdown)
         self.assertIn("Max exposure group", markdown)
         self.assertIn("Top3 group avg weight", markdown)
+        self.assertIn("Ranking skip", markdown)
         self.assertIn("Liquidity min", markdown)
         self.assertIn("Liquidity blocks", markdown)
         self.assertIn("Group cap", markdown)
@@ -853,6 +910,7 @@ def _rotation_result(
         cost_label="1x",
         rebalance_frequency="weekly",
         lookback_bars=1,
+        ranking_skip_bars=0,
         top_n=1,
         min_return=0.0,
         market_regime_filter=False,
