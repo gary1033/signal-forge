@@ -7762,3 +7762,71 @@ Top groups：
 - **Keep diagnostic**：本輪結果保留為 compare-only / diagnostic evidence。
 - **Do not promote**：不因為新增診斷欄位而升級策略；目前仍有 group regime dependency、未還原權息與小股票池限制。
 - **Next**：優先測 adjusted price、較慢批次 TWSE30+、canary universe 或 group regime validation。若要再做限制，應先確認限制能同時改善 `max_group_abs_contribution_share`、`top3_group_abs_contribution_share`、`max_group_average_weight` 與 min rolling IR，而不是只把曝險壓低。
+
+## 2026-05-24 Portfolio rotation dominant group exclusion 診斷
+
+### 目的
+
+上一輪 group exposure 顯示部分 window 的 concentration 來自群組 regime return，而不是單純長期高曝險。本輪不新增策略規則，只做固定 universe ablation：在同一組 portfolio rotation 參數下，分別移除 `shipping`、`electronics`、`semiconductor`，檢查最新 execution-aware compare candidate 是否真的依賴特定 dominant group。
+
+研究假設：
+
+> 若移除任一 dominant group 後 full-window / rolling edge 大幅失效，代表目前策略仍是 group-regime dependent；若某個移除組合仍保留 rolling edge，則該群組不是必要 edge 來源，但也要同步檢查回撤與 concentration 是否惡化。
+
+### 固定條件
+
+```text
+base universe = TWSE14
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_min_positive_count = 3
+max_consecutive_selections_per_symbol = 5
+liquidity_lookback_bars = 20
+min_average_traded_value = 500M
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+報表檔案：
+
+- `reports/generated/twse14-no-shipping-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-group-regime-rolling24m-20260524.json`
+- `reports/generated/twse14-no-electronics-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-group-regime-rolling24m-20260524.json`
+- `reports/generated/twse14-no-semiconductor-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-group-regime-rolling24m-20260524.json`
+
+### Full-window 與 rolling 摘要
+
+以下皆看 `1x` 成本倍率。
+
+| Case | Full return | Full excess | Full IR | MDD | Active MDD | Min rolling excess | Min rolling IR | Worst rolling active MDD | Max rolling top3 symbol share | Max rolling top3 group share | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `baseline` | `1745.89%` | `1409.71%` | `1.521` | `-18.61%` | `-19.81%` | `37.22%` | `0.814` | `-19.81%` | `82.62%` | `96.81%` | 最新 execution-aware compare candidate |
+| `no shipping` | `1026.02%` | `761.18%` | `1.255` | `-17.62%` | `-19.99%` | `-4.68%` | `-0.185` | `-19.99%` | `77.15%` | `98.63%` | 移除 shipping 後 rolling edge 失效 |
+| `no electronics` | `620.88%` | `331.37%` | `0.650` | `-27.31%` | `-29.03%` | `-10.16%` | `-0.204` | `-29.03%` | `75.48%` | `93.64%` | electronics 是主要 edge 來源 |
+| `no semiconductor` | `845.21%` | `613.36%` | `1.210` | `-25.31%` | `-26.64%` | `26.86%` | `0.708` | `-26.64%` | `87.25%` | `98.68%` | edge 尚存但風險與集中度惡化 |
+
+### 成本壓力摘要
+
+| Case | 1x IR | 2x IR | 3x IR | 3x return | 3x excess | 3x MDD |
+|---|---:|---:|---:|---:|---:|---:|
+| `baseline` | `1.521` | `1.505` | `1.490` | `1689.18%` | `1353.18%` | `-18.71%` |
+| `no shipping` | `1.255` | `1.239` | `1.222` | `992.08%` | `727.39%` | `-17.65%` |
+| `no electronics` | `0.650` | `0.635` | `0.620` | `599.06%` | `309.71%` | `-27.75%` |
+| `no semiconductor` | `1.210` | `1.195` | `1.181` | `820.21%` | `588.49%` | `-25.53%` |
+
+### 解讀
+
+1. **Shipping 是 2021-2022 rolling edge 的關鍵保護來源**：`no shipping` full-window 仍有 `1.255` IR，但 `roll02` excess 轉成 `-4.68%`、IR `-0.185`。這表示直接移除 `2603/shipping` 不是穩健解法。
+2. **Electronics 是最核心的 full-window edge 來源**：`no electronics` full IR 只剩 `0.650`，MDD 惡化到 `-27.31%`，min rolling excess 也轉負。這支持上一輪 observation：2024-2026 的強勢高度依賴 electronics。
+3. **Semiconductor 不是必要 edge 來源，但提供分散與風險緩衝**：`no semiconductor` 仍有正 min rolling excess `26.86%` 與 min rolling IR `0.708`，但 MDD / active MDD 惡化到 `-25.31%` / `-26.64%`，max rolling top3 symbol share 升到 `87.25%`，max rolling top3 group share 升到 `98.68%`。
+4. **群組排除不是升級方向**：三個 ablation 都沒有同時改善 edge、回撤與 concentration。baseline 仍是相對最平衡的 compare candidate，但 group regime dependency 被進一步確認。
+
+### Keep / Discard 判斷
+
+- **Keep diagnostic**：dominant group exclusion 作為 group regime validation evidence 保留。
+- **Do not promote**：`no shipping`、`no electronics`、`no semiconductor` 都不升級為主候選。
+- **Current compare candidate unchanged**：仍維持 `TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 作 execution-aware compare candidate。
+- **Next**：不要靠固定排除群組處理 concentration；下一步優先測 adjusted price、較慢批次 TWSE30+、canary universe 或更高品質股票池。若繼續做 group-aware 策略，應是 regime-aware sizing / validation，而不是硬刪 dominant sector。
