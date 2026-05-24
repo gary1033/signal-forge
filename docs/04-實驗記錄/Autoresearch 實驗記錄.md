@@ -8946,3 +8946,94 @@ narrow_group_momentum
 - **Do not promote strategy**：TWSE35 baseline 仍未通過 promotion gate；MDD、active MDD、group concentration、group regime 與 group breadth 都不足以支持穩定營利宣稱。
 - **Discard `mingrp2` as improvement**：硬擋單成員群組讓 min rolling IR 轉為 `-1.482`、min rolling excess 轉為 `-37.95%`，不能當主規則。
 - **Next**：不要直接把 TWSE35 baseline 升級；下一輪應測更具體的 realized group contribution concentration gate、re-entry 條件，或改用更嚴格的高品質股票池建構規則。若要繼續擴股票池，仍要完整重跑 universe audit、adjusted batch、raw/adjusted comparison、group validation 與 promotion gate。
+
+## 2026-05-24 TWSE35 realized group contribution gate follow-up
+
+### 目的
+
+這輪把「realized group contribution concentration gate」正式接進 `portfolio_rotation_sweep.py`。前一輪 TWSE35 baseline 的 full-window 與 rolling excess 明顯改善，但仍有 `max rolling top3 group share = 100%` 與 group regime / breadth gate 失敗；因此本輪測試一個線上限制：只用已完成持倉期間的群組貢獻，若某群組在 trailing window 的絕對貢獻占比過高，就在下一次 rebalance 暫時排除該群組。
+
+研究假設：
+
+> 若 TWSE35 baseline 的失敗主要來自追逐已經主導報酬的 group regime，trailing realized contribution gate 應能降低 rolling group concentration，同時保留正 min rolling excess；若它只改善 full-window 指標但讓 rolling edge 轉負，就不能升級。
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增：
+  - `--group-contribution-lookback-bars`
+  - `--max-group-contribution-share`
+  - `group_contribution_block_count`
+- Gate 預設關閉，不改既有 baseline。
+- Gate 啟用時必須提供 `--symbol-group`，避免把 symbol fallback 誤解成真正產業群組。
+- 每根 bar 先用既有持倉計算已實現 `weight * close-to-close return` group contribution，再在 rebalance 時計算 trailing absolute contribution share；這個流程只使用 rebalance 當下已知資料，不讀未來 window attribution。
+- `tools\portfolio_rotation_promotion_gate.py` 也把 `group_contribution_lookback_bars`、`max_group_contribution_share` 與 `group_contribution_block_count` 納入 candidate parameters。
+- `tests\test_portfolio_rotation_sweep_tool.py` 補上 parser、Markdown 與 no-lookahead regression。
+
+### 產生 artifact
+
+- 63-bar threshold scan：
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gcontrib63-share060-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gcontrib63-share070-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gcontrib63-share080-liq500m-rolling24m-20260524.json`
+- 21-bar threshold scan：
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gcontrib21-share080-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gcontrib21-share090-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gcontrib21-share095-liq500m-rolling24m-20260524.json`
+- 21-bar / 90% raw summary：`reports\generated\twse35-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gcontrib21-share090-liq500m-rolling24m-20260524.json`
+- Raw / adjusted comparison：`reports\generated\twse35-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gcontrib21-share090-liq500m-compare-20260524.json`
+- Group regime validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gcontrib21-share090-liq500m-group-regime-validation-20260524.json`
+- Group breadth validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gcontrib21-share090-liq500m-group-breadth-validation-20260524.json`
+- Promotion gate：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gcontrib21-share090-liq500m-promotion-gate-20260524.json`
+
+### Threshold scan
+
+固定設定：TWSE35 adjusted `monthly + lookback 21 + skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M/20 bars`。
+
+| Candidate | Full IR | Stress 3x IR | MDD | Active MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Contribution blocks |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Baseline | `1.685` | `1.668` | `-37.80%` | `-29.98%` | `0.429` | `11.33%` | `100.00%` | `0` |
+| `gcontrib63 share0.60` | `1.250` | `1.227` | `-32.91%` | `-35.65%` | `-1.335` | `-38.91%` | `97.87%` | `14` |
+| `gcontrib63 share0.70` | `1.303` | `1.282` | `-33.80%` | `-36.98%` | `-1.394` | `-40.61%` | `99.60%` | `10` |
+| `gcontrib63 share0.80` | `1.307` | `1.287` | `-37.80%` | `-36.98%` | `-1.394` | `-40.61%` | `99.60%` | `8` |
+| `gcontrib21 share0.80` | `1.596` | `1.572` | `-32.91%` | `-27.34%` | `-0.147` | `-10.25%` | `98.02%` | `17` |
+| `gcontrib21 share0.90` | `1.742` | `1.721` | `-32.91%` | `-25.13%` | `-0.022` | `-5.93%` | `98.08%` | `8` |
+| `gcontrib21 share0.95` | `1.519` | `1.498` | `-37.80%` | `-27.87%` | `-0.144` | `-10.18%` | `99.73%` | `4` |
+
+### 21-bar / 90% promotion gate
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.742` |
+| Full 1x excess | `2764.28%` |
+| Full 1x MDD | `-32.91%` |
+| Full 1x active MDD | `-25.13%` |
+| Stress 3x IR | `1.721` |
+| Min rolling IR | `-0.022` |
+| Min rolling excess | `-5.93%` |
+| Max rolling top3 group share | `98.08%` |
+| Group contribution blocks | `8` |
+
+Failure reasons：
+
+```text
+rolling_ir_below_threshold
+rolling_excess_below_threshold
+drawdown_above_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+single_member_dominant_group
+narrow_group_momentum
+```
+
+Group regime validation 仍失敗：`6` 個 high concentration windows。Group breadth validation 也仍失敗：`6` 個 high concentration windows，其中 `4` 個 broad group momentum、`1` 個 narrow group momentum、`2` 個 single-member dominant。這代表 contribution gate 沒有真正消除 group regime 依賴，只是把部分 full-window 風險挪到 rolling window。
+
+### Keep / Discard 判斷
+
+- **Keep code/tool**：`--group-contribution-lookback-bars` 與 `--max-group-contribution-share` 是 deterministic、test-covered、預設關閉的線上 gate；它把已實現 group contribution concentration 從事後診斷推進到可回測的事前限制。
+- **Compare-only artifact**：`gcontrib21 share0.90` 改善 full IR、3x IR、MDD 與 active MDD，值得保留為對照 artifact。
+- **Discard as current improvement**：所有 contribution gate 掃描都讓 min rolling IR 或 min rolling excess 轉負，且 max rolling top3 group share 仍接近或高於 `98%`；因此不能取代 TWSE35 baseline，更不能宣稱穩定營利。
+- **Do not promote strategy**：promotion gate 仍是 `compare-only`，主因是 rolling edge、drawdown 與 group regime / breadth gate 未通過。
+- **Next**：不要再只調 contribution share threshold 或 lookback。下一步應改測 re-entry 條件，或先重建更高品質股票池，讓 group contribution gate 有更合理的替代群組可選。

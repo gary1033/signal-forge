@@ -118,6 +118,9 @@ class PortfolioRotationResult:
     group_attribution: list["PortfolioGroupAttribution"]
     min_symbols_per_selected_group: int = 1
     group_member_block_count: int = 0
+    group_contribution_lookback_bars: int = 0
+    max_group_contribution_share: float | None = None
+    group_contribution_block_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -278,6 +281,8 @@ def run_portfolio_rotation(
     max_selections_per_group: int | None = None,
     min_symbols_per_selected_group: int = 1,
     max_consecutive_selections_per_symbol: int | None = None,
+    group_contribution_lookback_bars: int = 0,
+    max_group_contribution_share: float | None = None,
     volatility_target: bool = False,
     volatility_lookback_bars: int = 21,
     target_annual_volatility: float = 0.20,
@@ -285,8 +290,8 @@ def run_portfolio_rotation(
     volatility_max_scale: float = 1.0,
 ) -> PortfolioRotationResult:
     """
-    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；ranking_skip_bars 可排除最近 N 根 bar 再計算排名，用來測試 skip-recent-period / intermediate momentum；ranking_mode 可用總報酬排序，或改用個股報酬扣掉同組平均報酬的 group-residual 排序，以測試降低產業/群組動能曝險的假設；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 liquidity filter 會排除近期平均成交金額不足的股票，可選 group cap / group member gate / consecutive cap 會限制同組、單成員群組或同檔股票持續主導選股，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險；同時累積每檔股票的持倉天數、入選次數與實際權重報酬貢獻。
-    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、ranking_skip_bars、ranking_mode、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；breadth_filter 相關參數定義市場寬度 crash-protection gate；liquidity_lookback_bars/min_average_traded_value 定義成交金額可交易性 gate；symbol_groups/max_selections_per_group 定義同組最多入選檔數；min_symbols_per_selected_group 定義入選股票所屬群組至少要有幾個成員，用來阻擋單成員群組依賴；max_consecutive_selections_per_symbol 定義單檔連續入選上限；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
+    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；ranking_skip_bars 可排除最近 N 根 bar 再計算排名，用來測試 skip-recent-period / intermediate momentum；ranking_mode 可用總報酬排序，或改用個股報酬扣掉同組平均報酬的 group-residual 排序，以測試降低產業/群組動能曝險的假設；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 liquidity filter 會排除近期平均成交金額不足的股票，可選 group cap / group member gate / consecutive cap 會限制同組、單成員群組或同檔股票持續主導選股，可選 group contribution gate 會用最近已實現的 group 權重報酬貢獻暫時排除過度主導的群組；可選 volatility target 會在再平衡日依目標投組近期波動下修曝險；同時累積每檔股票的持倉天數、入選次數與實際權重報酬貢獻。
+    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、ranking_skip_bars、ranking_mode、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；breadth_filter 相關參數定義市場寬度 crash-protection gate；liquidity_lookback_bars/min_average_traded_value 定義成交金額可交易性 gate；symbol_groups/max_selections_per_group 定義同組最多入選檔數；min_symbols_per_selected_group 定義入選股票所屬群組至少要有幾個成員，用來阻擋單成員群組依賴；max_consecutive_selections_per_symbol 定義單檔連續入選上限；group_contribution_lookback_bars/max_group_contribution_share 定義以已實現 group 貢獻占比阻擋 dominant group 的線上 gate；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
     回傳與錯誤：回傳 PortfolioRotationResult；頻率、lookback、top_n 或資料矩陣不合法時拋出 ValueError。
     """
     if lookback_bars <= 0:
@@ -324,6 +329,17 @@ def run_portfolio_rotation(
         and max_consecutive_selections_per_symbol <= 0
     ):
         raise ValueError("max consecutive selections per symbol must be positive")
+    if group_contribution_lookback_bars < 0:
+        raise ValueError("group contribution lookback bars cannot be negative")
+    if max_group_contribution_share is not None:
+        if max_group_contribution_share <= 0 or max_group_contribution_share > 1:
+            raise ValueError("max group contribution share must be within (0, 1]")
+        if group_contribution_lookback_bars <= 0:
+            raise ValueError(
+                "group contribution lookback bars must be positive when the guard is enabled"
+            )
+        if not symbol_groups:
+            raise ValueError("group contribution guard requires symbol groups")
     volatility_required_observations = (
         volatility_min_observations
         if volatility_min_observations is not None
@@ -389,6 +405,7 @@ def run_portfolio_rotation(
     liquidity_warmup_count = 0
     group_selection_block_count = 0
     group_member_block_count = 0
+    group_contribution_block_count = 0
     consecutive_selection_block_count = 0
     volatility_scaled_rebalance_count = 0
     volatility_warmup_count = 0
@@ -399,16 +416,24 @@ def run_portfolio_rotation(
     selected_weight_sums = {symbol: 0.0 for symbol in symbols}
     return_contributions = {symbol: 0.0 for symbol in symbols}
     consecutive_selection_counts = {symbol: 0 for symbol in symbols}
+    group_contribution_history: list[dict[str, float]] = []
 
     for index in range(1, len(timestamps)):
         period_return = 0.0
+        period_group_contributions = {
+            group: 0.0 for group in sorted(set(effective_symbol_groups.values()))
+        }
         for symbol in symbols:
             weight = weights[symbol]
             symbol_return = (
                 closes_by_symbol[symbol][index] / closes_by_symbol[symbol][index - 1]
             ) - 1.0
             contribution = weight * symbol_return
+            group = effective_symbol_groups.get(symbol, symbol)
             period_return += contribution
+            period_group_contributions[group] = (
+                period_group_contributions.get(group, 0.0) + contribution
+            )
             total_weight_sums[symbol] += abs(weight)
             if abs(weight) > 1e-12:
                 selected_bar_counts[symbol] += 1
@@ -416,6 +441,7 @@ def run_portfolio_rotation(
                 return_contributions[symbol] += contribution
 
         equity *= 1.0 + period_return
+        group_contribution_history.append(period_group_contributions)
 
         if index >= lookback_bars + ranking_skip_bars and _is_rebalance_index(
             timestamps,
@@ -456,6 +482,11 @@ def run_portfolio_rotation(
                     consecutive_selection_counts,
                     max_consecutive_selections=max_consecutive_selections_per_symbol,
                 )
+                group_contribution_exclusions = _group_contribution_exclusions(
+                    group_contribution_history,
+                    lookback_bars=group_contribution_lookback_bars,
+                    max_contribution_share=max_group_contribution_share,
+                )
                 liquidity_exclusions: set[str] = set()
                 if min_average_traded_value is not None:
                     liquidity_eligible_symbols = _liquidity_eligible_symbols(
@@ -481,6 +512,7 @@ def run_portfolio_rotation(
                             _pre_consecutive,
                             _pre_group,
                             _pre_group_member,
+                            _pre_group_contribution,
                         ) = _target_rotation_weights_with_block_counts(
                             symbols,
                             closes_by_symbol,
@@ -491,6 +523,7 @@ def run_portfolio_rotation(
                             top_n=top_n,
                             min_return=min_return,
                             excluded_symbols=consecutive_exclusions,
+                            excluded_groups=group_contribution_exclusions,
                             symbol_groups=effective_symbol_groups,
                             max_selections_per_group=max_selections_per_group,
                             group_member_counts=group_member_counts,
@@ -510,6 +543,7 @@ def run_portfolio_rotation(
                     consecutive_blocked_symbol_count,
                     group_blocked_symbol_count,
                     group_member_blocked_symbol_count,
+                    group_contribution_blocked_symbol_count,
                 ) = _target_rotation_weights_with_block_counts(
                     symbols,
                     closes_by_symbol,
@@ -520,6 +554,7 @@ def run_portfolio_rotation(
                     top_n=top_n,
                     min_return=min_return,
                     excluded_symbols=consecutive_exclusions | liquidity_exclusions,
+                    excluded_groups=group_contribution_exclusions,
                     symbol_groups=effective_symbol_groups,
                     max_selections_per_group=max_selections_per_group,
                     group_member_counts=group_member_counts,
@@ -531,6 +566,8 @@ def run_portfolio_rotation(
                     group_selection_block_count += 1
                 if group_member_blocked_symbol_count > 0:
                     group_member_block_count += 1
+                if group_contribution_blocked_symbol_count > 0:
+                    group_contribution_block_count += 1
             if volatility_target and _has_exposure(target_weights):
                 volatility_scale = _volatility_target_scale(
                     symbols,
@@ -671,6 +708,9 @@ def run_portfolio_rotation(
         max_selections_per_group=max_selections_per_group,
         min_symbols_per_selected_group=min_symbols_per_selected_group,
         max_consecutive_selections_per_symbol=max_consecutive_selections_per_symbol,
+        group_contribution_lookback_bars=group_contribution_lookback_bars,
+        max_group_contribution_share=max_group_contribution_share,
+        group_contribution_block_count=group_contribution_block_count,
         volatility_target=volatility_target,
         volatility_lookback_bars=volatility_lookback_bars,
         target_annual_volatility=target_annual_volatility,
@@ -1030,6 +1070,8 @@ def run_portfolio_rotation_sweep(
     max_selections_per_group: int | None = None,
     min_symbols_per_selected_group: int = 1,
     max_consecutive_selections_per_symbol: int | None = None,
+    group_contribution_lookback_bars: int = 0,
+    max_group_contribution_share: float | None = None,
     volatility_target: bool = False,
     volatility_lookback_bars: int = 21,
     target_annual_volatility: float = 0.20,
@@ -1038,7 +1080,7 @@ def run_portfolio_rotation_sweep(
 ) -> list[PortfolioRotationResult]:
     """
     用途與流程：對同一批股票資料在多個成本倍率下執行 portfolio rotation 回測。
-    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；ranking_skip_bars 定義排名時計算到幾根 bar 以前；ranking_mode 定義總報酬或 group residual 排序；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其餘參數傳給 run_portfolio_rotation。
+    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；ranking_skip_bars 定義排名時計算到幾根 bar 以前；ranking_mode 定義總報酬或 group residual 排序；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；group_contribution_lookback_bars/max_group_contribution_share 是已實現群組貢獻集中度 gate；volatility_target 相關參數是可選波動降曝險 overlay；其餘參數傳給 run_portfolio_rotation。
     回傳與錯誤：回傳每個成本倍率一筆 PortfolioRotationResult；資料或參數不合法時由底層拋出 ValueError。
     """
     loaded = load_rotation_inputs(csv_paths, start=start, end=end)
@@ -1072,6 +1114,8 @@ def run_portfolio_rotation_sweep(
             max_selections_per_group=max_selections_per_group,
             min_symbols_per_selected_group=min_symbols_per_selected_group,
             max_consecutive_selections_per_symbol=max_consecutive_selections_per_symbol,
+            group_contribution_lookback_bars=group_contribution_lookback_bars,
+            max_group_contribution_share=max_group_contribution_share,
             volatility_target=volatility_target,
             volatility_lookback_bars=volatility_lookback_bars,
             target_annual_volatility=target_annual_volatility,
@@ -1110,6 +1154,8 @@ def run_walk_forward_rotation(
     max_selections_per_group: int | None = None,
     min_symbols_per_selected_group: int = 1,
     max_consecutive_selections_per_symbol: int | None = None,
+    group_contribution_lookback_bars: int = 0,
+    max_group_contribution_share: float | None = None,
     volatility_target: bool = False,
     volatility_lookback_bars: int = 21,
     target_annual_volatility: float = 0.20,
@@ -1118,7 +1164,7 @@ def run_walk_forward_rotation(
 ) -> tuple[list[PortfolioWalkForwardResult], list[PortfolioRetentionRow]]:
     """
     用途與流程：依 walk-forward windows 重跑 portfolio rotation，並計算相鄰 window 的 OOS retention。
-    參數：windows 是分段日期；ranking_skip_bars 定義排名時計算到幾根 bar 以前；ranking_mode 定義總報酬或 group residual 排序；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
+    參數：windows 是分段日期；ranking_skip_bars 定義排名時計算到幾根 bar 以前；ranking_mode 定義總報酬或 group residual 排序；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；liquidity_lookback_bars/min_average_traded_value 是可選成交金額 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；min_symbols_per_selected_group 是可選群組成員數下限；max_consecutive_selections_per_symbol 是單檔連續入選上限；group_contribution_lookback_bars/max_group_contribution_share 是已實現群組貢獻集中度 gate；volatility_target 相關參數是可選波動降曝險 overlay；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
     回傳與錯誤：回傳 window 結果與 retention rows；若某 window 資料不足，底層會拋出 ValueError。
     """
     window_results: list[PortfolioWalkForwardResult] = []
@@ -1154,6 +1200,8 @@ def run_walk_forward_rotation(
                     max_selections_per_group=max_selections_per_group,
                     min_symbols_per_selected_group=min_symbols_per_selected_group,
                     max_consecutive_selections_per_symbol=max_consecutive_selections_per_symbol,
+                    group_contribution_lookback_bars=group_contribution_lookback_bars,
+                    max_group_contribution_share=max_group_contribution_share,
                     volatility_target=volatility_target,
                     volatility_lookback_bars=volatility_lookback_bars,
                     target_annual_volatility=target_annual_volatility,
@@ -1299,8 +1347,8 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Ranking skip | Ranking mode | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Min group members | Group member blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
-        "|---|---:|---|---:|---:|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Ranking skip | Ranking mode | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Liquidity min | Liquidity lookback | Avg liquid | Liquidity blocks | Liquidity warmup | Group cap | Group blocks | Min group members | Group member blocks | Group contrib lookback | Max group contrib | Group contrib blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
+        "|---|---:|---|---:|---:|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
     ]
     for result in results:
         lines.append(
@@ -1322,6 +1370,9 @@ def format_markdown(
             f"{result.group_selection_block_count} | "
             f"{result.min_symbols_per_selected_group} | "
             f"{result.group_member_block_count} | "
+            f"{result.group_contribution_lookback_bars} | "
+            f"{_format_optional_ratio(result.max_group_contribution_share)} | "
+            f"{result.group_contribution_block_count} | "
             f"{_format_optional_int(result.max_consecutive_selections_per_symbol)} | "
             f"{result.consecutive_selection_block_count} | "
             f"{_format_bool(result.volatility_target)} | "
@@ -1379,8 +1430,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Liquidity blocks | Group cap | Group blocks | Min group members | Group member blocks | Consec cap | Consec blocks | Avg breadth | Avg liquid | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Liquidity blocks | Group cap | Group blocks | Min group members | Group member blocks | Group contrib lookback | Max group contrib | Group contrib blocks | Consec cap | Consec blocks | Avg breadth | Avg liquid | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share | Max group | Max group share | Top3 group share | Max exposure group | Max group avg weight | Top3 group avg weight |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|---:|---:|---|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -1406,6 +1457,9 @@ def format_walk_forward_markdown(
                 f"{result.group_selection_block_count} | "
                 f"{result.min_symbols_per_selected_group} | "
                 f"{result.group_member_block_count} | "
+                f"{result.group_contribution_lookback_bars} | "
+                f"{_format_optional_ratio(result.max_group_contribution_share)} | "
+                f"{result.group_contribution_block_count} | "
                 f"{_format_optional_int(result.max_consecutive_selections_per_symbol)} | "
                 f"{result.consecutive_selection_block_count} | "
                 f"{_format_optional_ratio(result.average_breadth_positive_count)} | "
@@ -1782,6 +1836,23 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--group-contribution-lookback-bars",
+        type=int,
+        default=0,
+        help=(
+            "trailing realized contribution bars used by the group contribution "
+            "concentration guard; 0 disables the guard unless a max share is set"
+        ),
+    )
+    parser.add_argument(
+        "--max-group-contribution-share",
+        type=float,
+        help=(
+            "maximum trailing absolute contribution share allowed for one group "
+            "before that group is excluded on the next rebalance"
+        ),
+    )
+    parser.add_argument(
         "--volatility-target",
         action="store_true",
         help="scale selected portfolio weights down when realized basket volatility is above target",
@@ -1876,6 +1947,8 @@ def main(argv: list[str] | None = None) -> int:
         max_selections_per_group=args.max_selections_per_group,
         min_symbols_per_selected_group=args.min_symbols_per_selected_group,
         max_consecutive_selections_per_symbol=args.max_consecutive_selections_per_symbol,
+        group_contribution_lookback_bars=args.group_contribution_lookback_bars,
+        max_group_contribution_share=args.max_group_contribution_share,
         volatility_target=args.volatility_target,
         volatility_lookback_bars=args.volatility_lookback_bars,
         target_annual_volatility=args.target_annual_volatility,
@@ -1932,6 +2005,8 @@ def main(argv: list[str] | None = None) -> int:
             max_selections_per_group=args.max_selections_per_group,
             min_symbols_per_selected_group=args.min_symbols_per_selected_group,
             max_consecutive_selections_per_symbol=args.max_consecutive_selections_per_symbol,
+            group_contribution_lookback_bars=args.group_contribution_lookback_bars,
+            max_group_contribution_share=args.max_group_contribution_share,
             volatility_target=args.volatility_target,
             volatility_lookback_bars=args.volatility_lookback_bars,
             target_annual_volatility=args.target_annual_volatility,
@@ -2046,6 +2121,7 @@ def _target_rotation_weights(
         _consecutive_blocked_count,
         _group_blocked_count,
         _group_member_blocked_count,
+        _group_contribution_blocked_count,
     ) = _target_rotation_weights_with_block_counts(
         symbols,
         closes_by_symbol,
@@ -2056,6 +2132,7 @@ def _target_rotation_weights(
         top_n=top_n,
         min_return=min_return,
         excluded_symbols=set(),
+        excluded_groups=set(),
         symbol_groups={symbol: symbol for symbol in symbols},
         max_selections_per_group=None,
         group_member_counts={symbol: 1 for symbol in symbols},
@@ -2075,21 +2152,23 @@ def _target_rotation_weights_with_block_counts(
     top_n: int,
     min_return: float,
     excluded_symbols: set[str],
+    excluded_groups: set[str],
     symbol_groups: dict[str, str],
     max_selections_per_group: int | None,
     group_member_counts: dict[str, int],
     min_symbols_per_selected_group: int,
-) -> tuple[dict[str, float], int, int, int]:
+) -> tuple[dict[str, float], int, int, int, int]:
     """
-    用途與流程：依 lookback return 產生 top-N target weights，同時計算單檔連續入選、同組上限與群組成員數下限造成的 block 數。
-    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/ranking_skip_bars/ranking_mode/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合；symbol_groups 將股票映射到產業或自訂群組；max_selections_per_group 是每組最多入選檔數，None 表示停用；group_member_counts 是每個 group 的成員數；min_symbols_per_selected_group 是可入選群組的最低成員數。
-    回傳與錯誤：回傳 `(target_weights, consecutive_blocked_count, group_blocked_count, group_member_blocked_count)`；沒有入選股票時權重全為 0；block count 只計算會影響 top-N 填補流程的候選排除。
+    用途與流程：依 lookback return 產生 top-N target weights，同時計算單檔連續入選、同組上限、群組成員數下限與 realized contribution group gate 造成的 block 數。
+    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/ranking_skip_bars/ranking_mode/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合；excluded_groups 是因 trailing realized contribution 過度集中而暫時不可入選的群組；symbol_groups 將股票映射到產業或自訂群組；max_selections_per_group 是每組最多入選檔數，None 表示停用；group_member_counts 是每個 group 的成員數；min_symbols_per_selected_group 是可入選群組的最低成員數。
+    回傳與錯誤：回傳 `(target_weights, consecutive_blocked_count, group_blocked_count, group_member_blocked_count, group_contribution_blocked_count)`；沒有入選股票時權重全為 0；block count 只計算正動能候選被各 gate 排除的次數。
     """
     if ranking_mode not in RANKING_MODES:
         raise ValueError("ranking mode must be one of: " + ", ".join(RANKING_MODES))
     ranked: list[tuple[str, float]] = []
     consecutive_blocked_count = 0
     group_member_blocked_count = 0
+    group_contribution_blocked_count = 0
     ranking_index = index - ranking_skip_bars
     momentum_returns: dict[str, float] = {}
     for symbol in symbols:
@@ -2112,6 +2191,9 @@ def _target_rotation_weights_with_block_counts(
                 continue
             if group_member_counts.get(group, 1) < min_symbols_per_selected_group:
                 group_member_blocked_count += 1
+                continue
+            if group in excluded_groups:
+                group_contribution_blocked_count += 1
                 continue
             ranked.append((symbol, ranking_score))
 
@@ -2138,11 +2220,18 @@ def _target_rotation_weights_with_block_counts(
             consecutive_blocked_count,
             group_blocked_count,
             group_member_blocked_count,
+            group_contribution_blocked_count,
         )
     weight = 1.0 / len(selected)
     for symbol in selected:
         target[symbol] = weight
-    return target, consecutive_blocked_count, group_blocked_count, group_member_blocked_count
+    return (
+        target,
+        consecutive_blocked_count,
+        group_blocked_count,
+        group_member_blocked_count,
+        group_contribution_blocked_count,
+    )
 
 
 def _target_rotation_weights_with_block_count(
@@ -2167,6 +2256,7 @@ def _target_rotation_weights_with_block_count(
         consecutive_blocked_count,
         _group_blocked_count,
         _group_member_blocked_count,
+        _group_contribution_blocked_count,
     ) = _target_rotation_weights_with_block_counts(
         symbols,
         closes_by_symbol,
@@ -2177,6 +2267,7 @@ def _target_rotation_weights_with_block_count(
         top_n=top_n,
         min_return=min_return,
         excluded_symbols=excluded_symbols,
+        excluded_groups=set(),
         symbol_groups={symbol: symbol for symbol in symbols},
         max_selections_per_group=None,
         group_member_counts={symbol: 1 for symbol in symbols},
@@ -2203,6 +2294,40 @@ def _group_average_returns(
         group: sum(values) / len(values)
         for group, values in grouped_returns.items()
         if values
+    }
+
+
+def _group_contribution_exclusions(
+    group_contribution_history: list[dict[str, float]],
+    *,
+    lookback_bars: int,
+    max_contribution_share: float | None,
+) -> set[str]:
+    """
+    用途與流程：用已實現的 trailing group 權重報酬貢獻，找出絕對貢獻占比超過門檻的 dominant groups。
+    參數：group_contribution_history 是每根已完成 bar 的 group contribution dict；lookback_bars 是只回看最近幾根已完成 bar；max_contribution_share 是允許單一 group 佔總絕對貢獻的上限，None 表示停用。
+    回傳與錯誤：回傳本次 rebalance 應排除的 group set；樣本不足、總貢獻為 0 或 guard 停用時回傳空集合，不主動拋錯。
+    """
+    if max_contribution_share is None or lookback_bars <= 0:
+        return set()
+    if len(group_contribution_history) < lookback_bars:
+        return set()
+
+    trailing = group_contribution_history[-lookback_bars:]
+    group_totals: dict[str, float] = {}
+    for row in trailing:
+        for group, contribution in row.items():
+            group_totals[group] = group_totals.get(group, 0.0) + contribution
+
+    absolute_total_contribution = sum(
+        abs(contribution) for contribution in group_totals.values()
+    )
+    if absolute_total_contribution <= 0:
+        return set()
+    return {
+        group
+        for group, contribution in group_totals.items()
+        if abs(contribution) / absolute_total_contribution > max_contribution_share
     }
 
 

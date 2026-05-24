@@ -115,6 +115,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 擴到 TWSE23 後，concentration 明顯下降但 edge 變弱：`top4/min3/maxconsec5` 的 max rolling top-3 share 降到約 `65.32%`，但 full IR 降到約 `1.179`、MDD 惡化到約 `-36.64%`、min rolling excess 約 `-17.99%`。`top5/min5` 的 max rolling top-3 share 進一步降到約 `56.62%`，但 min rolling IR 約 `-0.265`，所以只能作 concentration diagnostic。
 - 擴到 TWSE35 後，`skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M` adjusted baseline 變成目前最強 compare-only anchor：full IR 約 `1.685`、3x IR 約 `1.668`、min rolling IR 約 `0.429`、min rolling excess 約 `11.33%`。但 full MDD 約 `-37.80%`、active MDD 約 `-29.98%`、full top3 group share 約 `93.49%`、max rolling top3 group share 仍到 `100%`，promotion gate 仍失敗。
 - TWSE35 `min_symbols_per_selected_group=2` 已正式測過：full IR 降到約 `1.431`，min rolling IR 轉為約 `-1.482`、min rolling excess 約 `-37.95%`，雖移除 single-member dominant failure，但把 `roll02` 打回負值，因此 discard as improvement。
+- Realized group contribution gate 已正式接進工具並測過。`gcontrib21/share0.90` 用過去 21 根已完成 bar 的群組絕對貢獻占比排除超過 `90%` 的群組；它把 TWSE35 adjusted full IR 提到約 `1.742`、3x IR 約 `1.721`，MDD 改到約 `-32.91%`、active MDD 改到約 `-25.13%`，但 min rolling IR 轉為約 `-0.022`、min rolling excess 約 `-5.93%`，max rolling top3 group share 仍約 `98.08%`，promotion gate 仍是 `compare-only`。因此功能 keep as diagnostic / compare tool，當前設定 discard as strategy upgrade；後續不要只微調 contribution threshold 或 lookback。
 - 因為分段貢獻仍偏集中、調整價版本明顯降級、股票池與資料邊界仍有限，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
@@ -134,6 +135,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `min_symbols_per_selected_group=2` 已在 TWSE14 / TWSE35 都 discard；後續只有在擴大股票池、讓原本單成員群組有足夠同群組代表，且不犧牲 `roll02` edge 後，才值得重新打開這個 gate。
 - `ranking_skip_bars=10` 已保留為 compare-only 錨點，但不要把 skip 當成 concentration 修復；下一步若要繼續用它，應和 TWSE30+ / 更高品質股票池或 realized contribution gate 一起測，而不是繼續在 TWSE16 小池微調 skip 長度。
 - `ranking_mode=group-residual` 已在 TWSE16 小池失敗；後續只有在 TWSE30+ 或更完整產業成員數下才值得重測，不要把它和目前小股票池結果包裝成 residual momentum 有效。
+- `group_contribution_lookback_bars` / `max_group_contribution_share` 已測第一輪。21-bar / 90% 雖改善 full-window IR 與 drawdown，但 rolling excess 轉負；63-bar variants 更差。下一步若要處理 group concentration，應先做 re-entry 條件或改善股票池替代性，而不是繼續掃 contribution gate 門檻。
 - 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。

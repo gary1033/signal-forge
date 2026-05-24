@@ -69,6 +69,10 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "2",
                 "--max-consecutive-selections-per-symbol",
                 "2",
+                "--group-contribution-lookback-bars",
+                "3",
+                "--max-group-contribution-share",
+                "0.65",
                 "--volatility-target",
                 "--volatility-lookback-bars",
                 "3",
@@ -100,6 +104,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.max_selections_per_group, 1)
         self.assertEqual(args.min_symbols_per_selected_group, 2)
         self.assertEqual(args.max_consecutive_selections_per_symbol, 2)
+        self.assertEqual(args.group_contribution_lookback_bars, 3)
+        self.assertEqual(args.max_group_contribution_share, 0.65)
         self.assertTrue(args.volatility_target)
         self.assertEqual(args.volatility_lookback_bars, 3)
         self.assertEqual(args.target_annual_volatility, 0.15)
@@ -680,6 +686,64 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertAlmostEqual(result.max_group_average_weight, 0.50)
         self.assertAlmostEqual(result.top3_group_average_weight, 0.50)
 
+    def test_group_contribution_guard_blocks_recent_dominant_group(self) -> None:
+        """
+        用途與流程：驗證 realized group contribution gate 只用已完成持倉貢獻，會在下一次 rebalance 暫時排除過度主導的群組。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 gate 提前偷看未來貢獻或沒有排除 dominant group，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 121.0),
+                    _bar("2026-01-04", 133.1),
+                ],
+            ),
+            (
+                "2881",
+                Path("2881.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 105.0),
+                    _bar("2026-01-03", 110.25),
+                    _bar("2026-01-04", 115.7625),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+                transaction_tax_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            symbol_groups={"2330": "semiconductor", "2881": "financial"},
+            group_contribution_lookback_bars=1,
+            max_group_contribution_share=0.60,
+        )
+
+        selected_by_symbol = {
+            row.symbol: row.rebalance_selected_count
+            for row in result.symbol_attribution
+        }
+        self.assertEqual(result.group_contribution_lookback_bars, 1)
+        self.assertEqual(result.max_group_contribution_share, 0.60)
+        self.assertEqual(result.group_contribution_block_count, 2)
+        self.assertEqual(selected_by_symbol["2330"], 2)
+        self.assertEqual(selected_by_symbol["2881"], 1)
+
     def test_format_markdown_includes_symbol_attribution(self) -> None:
         """
         用途與流程：驗證 portfolio rotation Markdown 會輸出逐股 attribution 區段，讓策略候選能檢查報酬是否集中於少數股票。
@@ -708,6 +772,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("Group cap", markdown)
         self.assertIn("Min group members", markdown)
         self.assertIn("Group member blocks", markdown)
+        self.assertIn("Group contrib lookback", markdown)
+        self.assertIn("Group contrib blocks", markdown)
         self.assertIn("Consec cap", markdown)
         self.assertIn("2330 | 75.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)
