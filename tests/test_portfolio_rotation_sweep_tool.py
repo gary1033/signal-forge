@@ -11,6 +11,7 @@ from tools.portfolio_rotation_sweep import (
     align_close_table,
     PortfolioRotationResult,
     PortfolioSymbolAttribution,
+    parse_symbol_group_assignments,
     run_portfolio_rotation,
     run_equal_weight_benchmark,
     PortfolioWalkForwardResult,
@@ -49,6 +50,12 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "2",
                 "--breadth-positive-threshold",
                 "0.01",
+                "--symbol-group",
+                "2330:semiconductor",
+                "--symbol-group",
+                "2317:electronics",
+                "--max-selections-per-group",
+                "1",
                 "--max-consecutive-selections-per-symbol",
                 "2",
                 "--volatility-target",
@@ -74,6 +81,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.breadth_lookback_bars, 4)
         self.assertEqual(args.breadth_min_positive_count, 2)
         self.assertEqual(args.breadth_positive_threshold, 0.01)
+        self.assertEqual(args.symbol_group, ["2330:semiconductor", "2317:electronics"])
+        self.assertEqual(args.max_selections_per_group, 1)
         self.assertEqual(args.max_consecutive_selections_per_symbol, 2)
         self.assertTrue(args.volatility_target)
         self.assertEqual(args.volatility_lookback_bars, 3)
@@ -103,6 +112,15 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.rolling_window_months, 24)
         self.assertEqual(args.rolling_step_months, 12)
         self.assertEqual(args.rolling_min_months, 12)
+
+    def test_parse_symbol_group_assignments_rejects_conflicting_groups(self) -> None:
+        """
+        用途與流程：驗證 portfolio rotation 的 symbol group parser 能拒絕同一股票被指定到不同群組，避免 sector cap 因輸入衝突而失真。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 parser 未拒絕衝突群組，assertion 會失敗。
+        """
+        with self.assertRaisesRegex(ValueError, "multiple groups"):
+            parse_symbol_group_assignments(["2330:semiconductor", "2330:electronics"])
 
     def test_build_rolling_windows_keeps_final_partial_window(self) -> None:
         """
@@ -273,6 +291,71 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.consecutive_selection_block_count, 1)
         self.assertEqual(alternative.rebalance_selected_count, 1)
 
+    def test_group_cap_limits_same_group_selection(self) -> None:
+        """
+        用途與流程：驗證同組入選上限會阻擋同一產業或自訂群組過度集中，讓較低排名但不同組的股票能補上配置。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 group cap 沒有阻擋同組股票或 block count 漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 110.0),
+                    _bar("2026-01-03", 121.0),
+                ],
+            ),
+            (
+                "2454",
+                Path("2454.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 108.0),
+                    _bar("2026-01-03", 116.64),
+                ],
+            ),
+            (
+                "2881",
+                Path("2881.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 102.0),
+                    _bar("2026-01-03", 104.04),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=2,
+            min_return=0.0,
+            periods_per_year=252,
+            symbol_groups={
+                "2330": "semiconductor",
+                "2454": "semiconductor",
+                "2881": "financial",
+            },
+            max_selections_per_group=1,
+        )
+
+        selected_financial = next(row for row in result.symbol_attribution if row.symbol == "2881")
+        blocked_semiconductor = next(row for row in result.symbol_attribution if row.symbol == "2454")
+        self.assertEqual(result.max_selections_per_group, 1)
+        self.assertEqual(result.group_selection_block_count, 2)
+        self.assertEqual(result.symbol_groups["2330"], "semiconductor")
+        self.assertEqual(selected_financial.rebalance_selected_count, 2)
+        self.assertEqual(blocked_semiconductor.rebalance_selected_count, 0)
+
     def test_format_markdown_includes_symbol_attribution(self) -> None:
         """
         用途與流程：驗證 portfolio rotation Markdown 會輸出逐股 attribution 區段，讓策略候選能檢查報酬是否集中於少數股票。
@@ -290,6 +373,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
 
         self.assertIn("## Top Symbol Attribution", markdown)
         self.assertIn("Max contrib symbol", markdown)
+        self.assertIn("Group cap", markdown)
         self.assertIn("Consec cap", markdown)
         self.assertIn("2330 | 75.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)
@@ -564,6 +648,8 @@ def _rotation_result(
         breadth_lookback_bars=21,
         breadth_min_positive_count=1,
         breadth_positive_threshold=0.0,
+        symbol_groups={},
+        max_selections_per_group=None,
         max_consecutive_selections_per_symbol=None,
         volatility_target=False,
         volatility_lookback_bars=21,
@@ -593,6 +679,7 @@ def _rotation_result(
         regime_block_count=0,
         breadth_block_count=0,
         breadth_warmup_count=0,
+        group_selection_block_count=0,
         consecutive_selection_block_count=0,
         volatility_scaled_rebalance_count=0,
         volatility_warmup_count=0,

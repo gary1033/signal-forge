@@ -91,11 +91,12 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 ## 下一步
 
 - 已測 `top4 + breadth 42/min3` 的單檔連續入選上限。`max consecutive 5` 讓 full-window IR 約 `1.515`、min rolling IR 約 `0.814`，比無上限 `top4` 更強；但 max rolling top-3 share 仍約 `82.62%`，沒有真正壓低 rolling concentration。
-- 下一步優先測 `top_n` 與連續入選以外的 concentration-aware 約束，例如 sector cap、擴大股票池或 canary universe，目標是降低 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`。
+- 已測 sector/group cap。`groupcap2` full IR 約 `1.449`，但 min rolling IR 降到約 `0.610`，max rolling top-3 share 仍約 `81.68%`；`groupcap1` 傷害 edge。因此 group cap 只保留為可測工具，不作目前主候選。
+- 下一步優先測更大股票池、canary universe、adjusted price 或流動性/容量條件，目標是降低 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`。
 - 再檢查 adjusted price、流動性與容量；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
-- 目前主比較錨點分成三個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是最新績效 compare candidate。三者仍要和原始七檔版本與 baseline 一起保留，避免只看單一 overlay。
+- 目前主比較錨點分成三個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是最新績效 compare candidate。`groupcap1/2` 保留為 discard / compare-only 對照，不取代這三個錨點。
 
 ## 參考來源
 
@@ -105,3 +106,4 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Keller and Keuning, Protective Asset Allocation (PAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2759734
 - Keller and Keuning, Breadth Momentum and Vigilant Asset Allocation (VAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3002624
 - Keller and Keuning, Defensive Asset Allocation (DAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3212862
+- Moskowitz and Grinblatt, Do Industries Explain Momentum?: https://doi.org/10.1111/0022-1082.00146

@@ -55,6 +55,8 @@ class PortfolioRotationResult:
     breadth_lookback_bars: int
     breadth_min_positive_count: int
     breadth_positive_threshold: float
+    symbol_groups: dict[str, str]
+    max_selections_per_group: int | None
     max_consecutive_selections_per_symbol: int | None
     volatility_target: bool
     volatility_lookback_bars: int
@@ -84,6 +86,7 @@ class PortfolioRotationResult:
     regime_block_count: int
     breadth_block_count: int
     breadth_warmup_count: int
+    group_selection_block_count: int
     consecutive_selection_block_count: int
     volatility_scaled_rebalance_count: int
     volatility_warmup_count: int
@@ -213,6 +216,8 @@ def run_portfolio_rotation(
     breadth_lookback_bars: int = 21,
     breadth_min_positive_count: int = 1,
     breadth_positive_threshold: float = 0.0,
+    symbol_groups: dict[str, str] | None = None,
+    max_selections_per_group: int | None = None,
     max_consecutive_selections_per_symbol: int | None = None,
     volatility_target: bool = False,
     volatility_lookback_bars: int = 21,
@@ -221,8 +226,8 @@ def run_portfolio_rotation(
     volatility_max_scale: float = 1.0,
 ) -> PortfolioRotationResult:
     """
-    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險；同時累積每檔股票的持倉天數、入選次數與實際權重報酬貢獻。
-    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；breadth_filter 相關參數定義市場寬度 crash-protection gate；max_consecutive_selections_per_symbol 定義單檔連續入選上限；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
+    用途與流程：執行 long-only 相對動能投組輪動，依 rebalance 頻率選出 lookback return top-N 且報酬大於門檻的股票等權持有；可選 market regime filter 會在市場等權指數跌破 SMA 時改持現金，可選 breadth filter 會在正動能股票數不足時改持現金，可選 group cap / consecutive cap 會限制同組或同檔股票持續主導選股，可選 volatility target 會在再平衡日依目標投組近期波動下修曝險；同時累積每檔股票的持倉天數、入選次數與實際權重報酬貢獻。
+    參數：loaded 是多檔資料；config 提供初始資金與交易成本；cost_multiplier 放大成本壓力；rebalance_frequency 可為 daily/weekly/monthly；lookback_bars、top_n、min_return 定義排序規則；periods_per_year 用於風險年化；market_regime_filter/market_regime_sma_bars 定義是否使用市場趨勢濾網；breadth_filter 相關參數定義市場寬度 crash-protection gate；symbol_groups/max_selections_per_group 定義同組最多入選檔數；max_consecutive_selections_per_symbol 定義單檔連續入選上限；volatility_target 相關參數定義是否只降曝險、不加槓桿的 realized-volatility scaling。
     回傳與錯誤：回傳 PortfolioRotationResult；頻率、lookback、top_n 或資料矩陣不合法時拋出 ValueError。
     """
     if lookback_bars <= 0:
@@ -237,6 +242,8 @@ def run_portfolio_rotation(
         raise ValueError("breadth lookback bars must be positive")
     if breadth_min_positive_count <= 0:
         raise ValueError("breadth min positive count must be positive")
+    if max_selections_per_group is not None and max_selections_per_group <= 0:
+        raise ValueError("max selections per group must be positive")
     if (
         max_consecutive_selections_per_symbol is not None
         and max_consecutive_selections_per_symbol <= 0
@@ -260,6 +267,10 @@ def run_portfolio_rotation(
 
     timestamps, closes_by_symbol = align_close_table(loaded)
     symbols = sorted(closes_by_symbol)
+    effective_symbol_groups = _normalize_symbol_groups(
+        symbols,
+        symbol_groups=symbol_groups,
+    )
     if lookback_bars >= len(timestamps):
         raise ValueError("lookback bars must be smaller than the common timestamp count")
     if breadth_min_positive_count > len(symbols):
@@ -294,6 +305,7 @@ def run_portfolio_rotation(
     regime_block_count = 0
     breadth_block_count = 0
     breadth_warmup_count = 0
+    group_selection_block_count = 0
     consecutive_selection_block_count = 0
     volatility_scaled_rebalance_count = 0
     volatility_warmup_count = 0
@@ -353,8 +365,9 @@ def run_portfolio_rotation(
                     breadth_count_values.append(breadth_count)
                     (
                         target_weights,
-                        blocked_symbol_count,
-                    ) = _target_rotation_weights_with_block_count(
+                        consecutive_blocked_symbol_count,
+                        group_blocked_symbol_count,
+                    ) = _target_rotation_weights_with_block_counts(
                         symbols,
                         closes_by_symbol,
                         index=index,
@@ -365,14 +378,19 @@ def run_portfolio_rotation(
                             consecutive_selection_counts,
                             max_consecutive_selections=max_consecutive_selections_per_symbol,
                         ),
+                        symbol_groups=effective_symbol_groups,
+                        max_selections_per_group=max_selections_per_group,
                     )
-                    if blocked_symbol_count > 0:
+                    if consecutive_blocked_symbol_count > 0:
                         consecutive_selection_block_count += 1
+                    if group_blocked_symbol_count > 0:
+                        group_selection_block_count += 1
             else:
                 (
                     target_weights,
-                    blocked_symbol_count,
-                ) = _target_rotation_weights_with_block_count(
+                    consecutive_blocked_symbol_count,
+                    group_blocked_symbol_count,
+                ) = _target_rotation_weights_with_block_counts(
                     symbols,
                     closes_by_symbol,
                     index=index,
@@ -383,9 +401,13 @@ def run_portfolio_rotation(
                         consecutive_selection_counts,
                         max_consecutive_selections=max_consecutive_selections_per_symbol,
                     ),
+                    symbol_groups=effective_symbol_groups,
+                    max_selections_per_group=max_selections_per_group,
                 )
-                if blocked_symbol_count > 0:
+                if consecutive_blocked_symbol_count > 0:
                     consecutive_selection_block_count += 1
+                if group_blocked_symbol_count > 0:
+                    group_selection_block_count += 1
             if volatility_target and _has_exposure(target_weights):
                 volatility_scale = _volatility_target_scale(
                     symbols,
@@ -501,6 +523,8 @@ def run_portfolio_rotation(
         breadth_lookback_bars=breadth_lookback_bars,
         breadth_min_positive_count=breadth_min_positive_count,
         breadth_positive_threshold=breadth_positive_threshold,
+        symbol_groups=effective_symbol_groups,
+        max_selections_per_group=max_selections_per_group,
         max_consecutive_selections_per_symbol=max_consecutive_selections_per_symbol,
         volatility_target=volatility_target,
         volatility_lookback_bars=volatility_lookback_bars,
@@ -538,6 +562,7 @@ def run_portfolio_rotation(
         regime_block_count=regime_block_count,
         breadth_block_count=breadth_block_count,
         breadth_warmup_count=breadth_warmup_count,
+        group_selection_block_count=group_selection_block_count,
         consecutive_selection_block_count=consecutive_selection_block_count,
         volatility_scaled_rebalance_count=volatility_scaled_rebalance_count,
         volatility_warmup_count=volatility_warmup_count,
@@ -734,6 +759,8 @@ def run_portfolio_rotation_sweep(
     breadth_lookback_bars: int = 21,
     breadth_min_positive_count: int = 1,
     breadth_positive_threshold: float = 0.0,
+    symbol_groups: dict[str, str] | None = None,
+    max_selections_per_group: int | None = None,
     max_consecutive_selections_per_symbol: int | None = None,
     volatility_target: bool = False,
     volatility_lookback_bars: int = 21,
@@ -743,7 +770,7 @@ def run_portfolio_rotation_sweep(
 ) -> list[PortfolioRotationResult]:
     """
     用途與流程：對同一批股票資料在多個成本倍率下執行 portfolio rotation 回測。
-    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其餘參數傳給 run_portfolio_rotation。
+    參數：csv_paths、start/end 定義資料；cost_multipliers 定義成本壓力；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其餘參數傳給 run_portfolio_rotation。
     回傳與錯誤：回傳每個成本倍率一筆 PortfolioRotationResult；資料或參數不合法時由底層拋出 ValueError。
     """
     loaded = load_rotation_inputs(csv_paths, start=start, end=end)
@@ -769,6 +796,8 @@ def run_portfolio_rotation_sweep(
             breadth_lookback_bars=breadth_lookback_bars,
             breadth_min_positive_count=breadth_min_positive_count,
             breadth_positive_threshold=breadth_positive_threshold,
+            symbol_groups=symbol_groups,
+            max_selections_per_group=max_selections_per_group,
             max_consecutive_selections_per_symbol=max_consecutive_selections_per_symbol,
             volatility_target=volatility_target,
             volatility_lookback_bars=volatility_lookback_bars,
@@ -800,6 +829,8 @@ def run_walk_forward_rotation(
     breadth_lookback_bars: int = 21,
     breadth_min_positive_count: int = 1,
     breadth_positive_threshold: float = 0.0,
+    symbol_groups: dict[str, str] | None = None,
+    max_selections_per_group: int | None = None,
     max_consecutive_selections_per_symbol: int | None = None,
     volatility_target: bool = False,
     volatility_lookback_bars: int = 21,
@@ -809,7 +840,7 @@ def run_walk_forward_rotation(
 ) -> tuple[list[PortfolioWalkForwardResult], list[PortfolioRetentionRow]]:
     """
     用途與流程：依 walk-forward windows 重跑 portfolio rotation，並計算相鄰 window 的 OOS retention。
-    參數：windows 是分段日期；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
+    參數：windows 是分段日期；market_regime_filter/market_regime_sma_bars 是可選市場趨勢濾網；breadth_filter 相關參數是可選市場寬度 gate；symbol_groups/max_selections_per_group 是可選同組持股數限制；max_consecutive_selections_per_symbol 是單檔連續入選上限；volatility_target 相關參數是可選波動降曝險 overlay；其他參數與 run_portfolio_rotation_sweep 相同，只改每個 window 的 start/end。
     回傳與錯誤：回傳 window 結果與 retention rows；若某 window 資料不足，底層會拋出 ValueError。
     """
     window_results: list[PortfolioWalkForwardResult] = []
@@ -837,6 +868,8 @@ def run_walk_forward_rotation(
                     breadth_lookback_bars=breadth_lookback_bars,
                     breadth_min_positive_count=breadth_min_positive_count,
                     breadth_positive_threshold=breadth_positive_threshold,
+                    symbol_groups=symbol_groups,
+                    max_selections_per_group=max_selections_per_group,
                     max_consecutive_selections_per_symbol=max_consecutive_selections_per_symbol,
                     volatility_target=volatility_target,
                     volatility_lookback_bars=volatility_lookback_bars,
@@ -983,8 +1016,8 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share |",
-        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Group cap | Group blocks | Consec cap | Consec blocks | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share |",
+        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
     ]
     for result in results:
         lines.append(
@@ -995,6 +1028,8 @@ def format_markdown(
             f"{result.market_regime_sma_bars} | {_format_bool(result.breadth_filter)} | "
             f"{result.breadth_lookback_bars} | {result.breadth_min_positive_count} | "
             f"{_format_optional_ratio(result.average_breadth_positive_count)} | "
+            f"{_format_optional_int(result.max_selections_per_group)} | "
+            f"{result.group_selection_block_count} | "
             f"{_format_optional_int(result.max_consecutive_selections_per_symbol)} | "
             f"{result.consecutive_selection_block_count} | "
             f"{_format_bool(result.volatility_target)} | "
@@ -1045,8 +1080,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Consec cap | Consec blocks | Avg breadth | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Group cap | Group blocks | Consec cap | Consec blocks | Avg breadth | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -1067,6 +1102,8 @@ def format_walk_forward_markdown(
                 f"{_format_optional_ratio(result.sharpe_ratio)} | "
                 f"{result.trade_count} | {result.regime_block_count} | "
                 f"{result.breadth_block_count} | "
+                f"{_format_optional_int(result.max_selections_per_group)} | "
+                f"{result.group_selection_block_count} | "
                 f"{_format_optional_int(result.max_consecutive_selections_per_symbol)} | "
                 f"{result.consecutive_selection_block_count} | "
                 f"{_format_optional_ratio(result.average_breadth_positive_count)} | "
@@ -1200,6 +1237,28 @@ def _format_symbol_attribution_row(
     )
 
 
+def parse_symbol_group_assignments(assignments: list[str] | None) -> dict[str, str]:
+    """
+    用途與流程：解析 CLI 傳入的 `symbol:group` 清單，轉成 portfolio rotation group cap 使用的股票分組表。
+    參數：assignments 是可選字串清單，每筆格式必須是 `股票代號:群組名稱`；None 或空清單表示不提供分組。
+    回傳與錯誤：回傳依 symbol 排序的 dict；格式缺少冒號、symbol/group 空白或同一 symbol 重複指定不同 group 時拋出 ValueError。
+    """
+    if not assignments:
+        return {}
+    mapping: dict[str, str] = {}
+    for raw_assignment in assignments:
+        if ":" not in raw_assignment:
+            raise ValueError("symbol group assignments must use SYMBOL:GROUP")
+        symbol, group = (part.strip() for part in raw_assignment.split(":", 1))
+        if not symbol or not group:
+            raise ValueError("symbol group assignments require non-empty symbol and group")
+        previous_group = mapping.get(symbol)
+        if previous_group is not None and previous_group != group:
+            raise ValueError(f"symbol {symbol} assigned to multiple groups")
+        mapping[symbol] = group
+    return dict(sorted(mapping.items()))
+
+
 def build_parser() -> argparse.ArgumentParser:
     """
     用途與流程：建立 portfolio rotation sweep 的 CLI parser，支援多 CSV、多成本倍率與 walk-forward/OOS。
@@ -1263,6 +1322,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.0,
         help="minimum lookback return for a symbol to count as positive breadth momentum",
+    )
+    parser.add_argument(
+        "--symbol-group",
+        action="append",
+        help="symbol-to-group mapping for group caps, for example 2330:semiconductor",
+    )
+    parser.add_argument(
+        "--max-selections-per-group",
+        type=int,
+        help="maximum selected symbols per group on each rebalance date",
     )
     parser.add_argument(
         "--max-consecutive-selections-per-symbol",
@@ -1338,6 +1407,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     csv_paths = [Path(path) for path in args.csv]
     cost_multipliers = parse_cost_multipliers_list(args.cost_multipliers_list)
+    symbol_groups = parse_symbol_group_assignments(args.symbol_group)
     results = run_portfolio_rotation_sweep(
         csv_paths=csv_paths,
         start=args.start,
@@ -1358,6 +1428,8 @@ def main(argv: list[str] | None = None) -> int:
         breadth_lookback_bars=args.breadth_lookback_bars,
         breadth_min_positive_count=args.breadth_min_positive_count,
         breadth_positive_threshold=args.breadth_positive_threshold,
+        symbol_groups=symbol_groups,
+        max_selections_per_group=args.max_selections_per_group,
         max_consecutive_selections_per_symbol=args.max_consecutive_selections_per_symbol,
         volatility_target=args.volatility_target,
         volatility_lookback_bars=args.volatility_lookback_bars,
@@ -1407,6 +1479,8 @@ def main(argv: list[str] | None = None) -> int:
             breadth_lookback_bars=args.breadth_lookback_bars,
             breadth_min_positive_count=args.breadth_min_positive_count,
             breadth_positive_threshold=args.breadth_positive_threshold,
+            symbol_groups=symbol_groups,
+            max_selections_per_group=args.max_selections_per_group,
             max_consecutive_selections_per_symbol=args.max_consecutive_selections_per_symbol,
             volatility_target=args.volatility_target,
             volatility_lookback_bars=args.volatility_lookback_bars,
@@ -1470,6 +1544,25 @@ def _portfolio_price_return(
     )
 
 
+def _normalize_symbol_groups(
+    symbols: list[str],
+    *,
+    symbol_groups: dict[str, str] | None,
+) -> dict[str, str]:
+    """
+    用途與流程：把外部提供的部分股票分組補齊成每檔股票都有 group 的完整映射，未指定者以自身 symbol 作為獨立 group。
+    參數：symbols 是本次回測實際使用的股票代號；symbol_groups 是可選外部分組設定。
+    回傳與錯誤：回傳 symbol 到 group 的 dict；若外部分組包含本次資料不存在的 symbol，拋出 ValueError 以避免拼字錯誤讓 group cap 失效。
+    """
+    provided_groups = symbol_groups or {}
+    unknown_symbols = sorted(set(provided_groups) - set(symbols))
+    if unknown_symbols:
+        raise ValueError(
+            "symbol groups contain unknown symbols: " + ", ".join(unknown_symbols)
+        )
+    return {symbol: provided_groups.get(symbol, symbol) for symbol in symbols}
+
+
 def _target_rotation_weights(
     symbols: list[str],
     closes_by_symbol: dict[str, list[float]],
@@ -1484,16 +1577,74 @@ def _target_rotation_weights(
     參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index 是 rebalance 日期索引；lookback_bars 是回看期；top_n 是最多持有檔數；min_return 是最低動能門檻。
     回傳與錯誤：回傳 symbol 到權重的 dict；若沒有入選股票則全部為 0。
     """
-    weights, _blocked_count = _target_rotation_weights_with_block_count(
-        symbols,
-        closes_by_symbol,
-        index=index,
-        lookback_bars=lookback_bars,
-        top_n=top_n,
-        min_return=min_return,
-        excluded_symbols=set(),
+    weights, _consecutive_blocked_count, _group_blocked_count = (
+        _target_rotation_weights_with_block_counts(
+            symbols,
+            closes_by_symbol,
+            index=index,
+            lookback_bars=lookback_bars,
+            top_n=top_n,
+            min_return=min_return,
+            excluded_symbols=set(),
+            symbol_groups={symbol: symbol for symbol in symbols},
+            max_selections_per_group=None,
+        )
     )
     return weights
+
+
+def _target_rotation_weights_with_block_counts(
+    symbols: list[str],
+    closes_by_symbol: dict[str, list[float]],
+    *,
+    index: int,
+    lookback_bars: int,
+    top_n: int,
+    min_return: float,
+    excluded_symbols: set[str],
+    symbol_groups: dict[str, str],
+    max_selections_per_group: int | None,
+) -> tuple[dict[str, float], int, int]:
+    """
+    用途與流程：依 lookback return 產生 top-N target weights，同時計算單檔連續入選與同組上限造成的 block 數。
+    參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合；symbol_groups 將股票映射到產業或自訂群組；max_selections_per_group 是每組最多入選檔數，None 表示停用。
+    回傳與錯誤：回傳 `(target_weights, consecutive_blocked_count, group_blocked_count)`；沒有入選股票時權重全為 0；group_blocked_count 只計算會影響 top-N 填補流程的同組排除。
+    """
+    ranked: list[tuple[str, float]] = []
+    consecutive_blocked_count = 0
+    for symbol in symbols:
+        previous_close = closes_by_symbol[symbol][index - lookback_bars]
+        current_close = closes_by_symbol[symbol][index]
+        momentum_return = (current_close / previous_close) - 1.0
+        if momentum_return > min_return:
+            if symbol in excluded_symbols:
+                consecutive_blocked_count += 1
+                continue
+            ranked.append((symbol, momentum_return))
+
+    selected: list[str] = []
+    selected_group_counts: dict[str, int] = {}
+    group_blocked_count = 0
+    for symbol, _momentum_return in sorted(ranked, key=lambda item: (-item[1], item[0])):
+        group = symbol_groups.get(symbol, symbol)
+        if (
+            max_selections_per_group is not None
+            and selected_group_counts.get(group, 0) >= max_selections_per_group
+        ):
+            group_blocked_count += 1
+            continue
+        selected.append(symbol)
+        selected_group_counts[group] = selected_group_counts.get(group, 0) + 1
+        if len(selected) >= top_n:
+            break
+
+    target = {symbol: 0.0 for symbol in symbols}
+    if not selected:
+        return target, consecutive_blocked_count, group_blocked_count
+    weight = 1.0 / len(selected)
+    for symbol in selected:
+        target[symbol] = weight
+    return target, consecutive_blocked_count, group_blocked_count
 
 
 def _target_rotation_weights_with_block_count(
@@ -1507,32 +1658,24 @@ def _target_rotation_weights_with_block_count(
     excluded_symbols: set[str],
 ) -> tuple[dict[str, float], int]:
     """
-    用途與流程：依 lookback return 產生 top-N target weights，同時統計因 concentration-aware 排除名單而被擋下的正動能股票數。
+    用途與流程：保留舊 helper contract，供只需要單檔連續入選 block count 的內部測試或相容呼叫使用。
     參數：symbols 是股票代號；closes_by_symbol 是 close matrix；index/lookback_bars/top_n/min_return 定義相對動能排序；excluded_symbols 是本次 rebalance 暫時不可入選的股票集合。
-    回傳與錯誤：回傳 `(target_weights, blocked_count)`；若沒有入選股票則權重全為 0，blocked_count 只計算原本通過 min_return 但被排除的股票。
+    回傳與錯誤：回傳 `(target_weights, blocked_count)`；若沒有入選股票則權重全為 0。
     """
-    ranked: list[tuple[str, float]] = []
-    blocked_count = 0
-    for symbol in symbols:
-        previous_close = closes_by_symbol[symbol][index - lookback_bars]
-        current_close = closes_by_symbol[symbol][index]
-        momentum_return = (current_close / previous_close) - 1.0
-        if momentum_return > min_return:
-            if symbol in excluded_symbols:
-                blocked_count += 1
-                continue
-            ranked.append((symbol, momentum_return))
-    selected = [
-        symbol
-        for symbol, _ in sorted(ranked, key=lambda item: (-item[1], item[0]))[:top_n]
-    ]
-    target = {symbol: 0.0 for symbol in symbols}
-    if not selected:
-        return target, blocked_count
-    weight = 1.0 / len(selected)
-    for symbol in selected:
-        target[symbol] = weight
-    return target, blocked_count
+    weights, consecutive_blocked_count, _group_blocked_count = (
+        _target_rotation_weights_with_block_counts(
+            symbols,
+            closes_by_symbol,
+            index=index,
+            lookback_bars=lookback_bars,
+            top_n=top_n,
+            min_return=min_return,
+            excluded_symbols=excluded_symbols,
+            symbol_groups={symbol: symbol for symbol in symbols},
+            max_selections_per_group=None,
+        )
+    )
+    return weights, consecutive_blocked_count
 
 
 def _consecutive_selection_exclusions(

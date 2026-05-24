@@ -197,11 +197,12 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - `PortfolioRotationResult` 新增 `max_symbol_abs_contribution_symbol`、`max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`，讓 full-window 與 rolling window 都能直接檢查是否過度依賴少數股票。
 - Markdown 報表新增 `Top Symbol Attribution` 與 `Walk-forward Top Symbol Attribution`，讓 full-window 與 rolling window 都能檢查報酬是否集中在少數股票。
 - `PortfolioRotationResult` 新增 `max_consecutive_selections_per_symbol` 與 `consecutive_selection_block_count`；CLI 新增 `--max-consecutive-selections-per-symbol`，可讓單檔股票連續入選達上限後暫停一次 rebalance，並在 full-window / rolling Markdown 中輸出設定值與觸發次數。
+- `PortfolioRotationResult` 新增 `symbol_groups`、`max_selections_per_group` 與 `group_selection_block_count`；CLI 新增 `--symbol-group SYMBOL:GROUP` 與 `--max-selections-per-group`，可測 sector / group cap 是否降低同產業或自訂群組的選股集中。
 - CLI 支援 `--rebalance-frequency daily|weekly|monthly`、`--lookback-bars`、`--top-n`、`--min-return`、`--cost-multipliers-list`、`--walk-forward-windows` 與 JSON/Markdown 摘要輸出。
 - 報表已新增 `annualized_active_return`、`tracking_error`、`information_ratio` 與 `active_max_drawdown`，用 relative equity 檢查主動風險報酬與相對 benchmark 回撤。
 - CLI 已新增自動 rolling windows：`--rolling-window-months`、`--rolling-step-months`、`--rolling-min-months`；它會產生 `roll01`、`roll02` 這類日期窗，避免每次手寫少數分段。
-- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、共同日期對齊、top momentum 選股、benchmark 成本、market regime block、breadth block、volatility scaling、retention、symbol attribution 與連續入選上限 regression。
-- 本輪結果：原始七檔 `monthly + 21 bars + top3` 在 full-window 與 2024-2026 OOS 很強，但 24 個月 rolling 顯示 `2021-2022` return 約 `-18.74%`、excess 約 `-24.62%`、IR 約 `-0.881`。七檔 `breadth 42/min2` 改善但仍未修好 `2021-2022`。14 檔 `breadth 42/min3 top3` 讓 full-window IR 約 `1.417`、MDD 約 `-23.01%`，且 rolling `6/6` 正 excess；`top4` 把 full-window MDD 改到約 `-18.61%`、active MDD 改到約 `-20.21%`、IR 仍約 `1.401`，因此成為風險調整折衷候選。新增單檔連續入選上限後，`top4 + max consecutive 5` 的 full-window IR 約 `1.515`、min rolling IR 約 `0.814`，但 max rolling top-3 share 仍約 `82.62%`，所以只能視為最新 compare candidate，不能宣稱 rolling concentration 已解。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、共同日期對齊、top momentum 選股、benchmark 成本、market regime block、breadth block、volatility scaling、retention、symbol attribution、連續入選上限與 group cap regression。
+- 本輪結果：原始七檔 `monthly + 21 bars + top3` 在 full-window 與 2024-2026 OOS 很強，但 24 個月 rolling 顯示 `2021-2022` return 約 `-18.74%`、excess 約 `-24.62%`、IR 約 `-0.881`。七檔 `breadth 42/min2` 改善但仍未修好 `2021-2022`。14 檔 `breadth 42/min3 top3` 讓 full-window IR 約 `1.417`、MDD 約 `-23.01%`，且 rolling `6/6` 正 excess；`top4` 把 full-window MDD 改到約 `-18.61%`、active MDD 改到約 `-20.21%`、IR 仍約 `1.401`，因此成為風險調整折衷候選。新增單檔連續入選上限後，`top4 + max consecutive 5` 的 full-window IR 約 `1.515`、min rolling IR 約 `0.814`，但 max rolling top-3 share 仍約 `82.62%`。新增 group cap 後，`groupcap2` full IR 約 `1.449`、MDD 約 `-18.48%`，但 min rolling IR 約 `0.610` 且 max rolling top-3 share 仍約 `81.68%`；`groupcap1` 則明顯傷害 edge。因此 group cap 只保留為可測工具，不升級目前主候選。
 
 ## 重要 commit 節點
 
@@ -220,7 +221,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；14 檔 `breadth 42/min3 top4 max consecutive 5` 是最新 compare candidate，但 concentration guard 顯示部分 rolling window 仍有單檔集中風險。下一步應測 sector cap、更大股票池或 canary universe，並用 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；14 檔 `breadth 42/min3 top4 max consecutive 5` 是最新 compare candidate，但 concentration guard 顯示部分 rolling window 仍有單檔集中風險。sector/group cap 已測但未解；下一步應測更大股票池、canary universe、adjusted price 或流動性/容量條件，並用 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

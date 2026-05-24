@@ -7350,3 +7350,88 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Promote compare candidate**：`TWSE14 monthly + 21 bars + top4 + breadth42/min3 + max consecutive 5`。它是目前 IR / rolling IR 較強的比較候選，但不是穩定營利證明。
 - **Discard as primary fix**：`max consecutive 3` 與 `4` 不適合作為 concentration 修復；前者傷害 edge，後者讓 concentration 變差。
 - **Next**：改測 sector / group cap、更大股票池或 canary universe。若下一輪仍要留在同一批 TWSE14，應把目標明確放在降低 rolling max share / rolling top-3 share，而不是只提高 full-window IR。
+
+## 2026-05-24 Portfolio rotation sector/group cap 比較
+
+### 目的
+
+單檔連續入選上限改善了部分 IR，但沒有解 rolling concentration。本輪改測 sector / group cap，原因是 momentum 文獻中有一條 industry momentum 線索：Moskowitz and Grinblatt 的 *Do Industries Explain Momentum?* 指出產業成分可解釋相當多個股 momentum；近年綜述也把 industry momentum 視為 momentum 共移動的重要方向。因此這輪不直接換新策略，而是把同一個 portfolio rotation 轉成可檢查「同組股票是否過度集中」的研究假設。
+
+研究假設：
+
+> 若 rolling concentration 來自同產業股票一起主導，則限制每個 sector / group 的入選檔數，應可降低 rolling `max_symbol_abs_contribution_share` 或 `top3_symbol_abs_contribution_share`，且不能大幅犧牲 IR、active drawdown 與 min rolling excess。
+
+### 程式改動
+
+- `tools/portfolio_rotation_sweep.py`
+  - CLI 新增 `--symbol-group SYMBOL:GROUP`，可重複指定股票到自訂群組。
+  - CLI 新增 `--max-selections-per-group`，限制每次 rebalance 同組最多入選檔數。
+  - `PortfolioRotationResult` 新增 `symbol_groups`、`max_selections_per_group`、`group_selection_block_count`。
+  - Full-window 與 walk-forward Markdown 新增 `Group cap` / `Group blocks` 欄位。
+- `tests/test_portfolio_rotation_sweep_tool.py`
+  - 新增 symbol group parser conflict regression。
+  - 新增三檔股票情境，確認同組上限會阻擋第二檔 semiconductor，讓不同組股票補上。
+
+### 固定條件
+
+```text
+universe = TWSE14
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_min_positive_count = 3
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+本輪手動群組：
+
+```text
+petrochemical = 1301, 1303
+semiconductor = 2303, 2330, 2454, 3711
+electronics = 2308, 2317, 2382
+telecom = 2412
+shipping = 2603
+financial = 2881, 2882, 2891
+```
+
+報表檔案：
+
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-groupcap1-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-groupcap2-rolling24m-20260524.json`
+- `reports/generated/twse14-portfolio-rotation-monthly-lb21-top4-breadth42-min3-groupcap2-maxconsec5-rolling24m-20260524.json`
+
+### Full-window 與 rolling 摘要
+
+以下皆看 `1x` 成本倍率；`none` 與 `maxconsec5` 為前輪基準。
+
+| Case | Group cap | Consec cap | Full return | Full excess | Full IR | Full MDD | Active MDD | Full top-3 share | Group blocks | Consec blocks | Min rolling excess | Min rolling IR | Max rolling max share | Max rolling top-3 share | Rolling group blocks | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `none` | `none` | `none` | `1546.66%` | `1210.48%` | `1.401` | `-18.61%` | `-20.21%` | `48.32%` | `0` | `0` | `28.52%` | `0.724` | `67.39%` | `81.68%` | `0` | 原 top4 風險調整折衷 |
+| `maxconsec5` | `none` | `5` | `1738.80%` | `1402.62%` | `1.515` | `-18.61%` | `-20.21%` | `46.31%` | `0` | `2` | `37.22%` | `0.814` | `65.37%` | `82.62%` | `0` | 目前最佳 compare candidate，但 concentration 未解 |
+| `groupcap1` | `1` | `none` | `1090.65%` | `754.47%` | `1.096` | `-21.73%` | `-26.04%` | `49.02%` | `49` | `0` | `14.82%` | `0.433` | `66.08%` | `83.77%` | `75` | 過度限制，discard |
+| `groupcap2` | `2` | `none` | `1620.42%` | `1284.24%` | `1.449` | `-18.48%` | `-19.81%` | `51.29%` | `15` | `0` | `29.69%` | `0.610` | `67.39%` | `81.68%` | `22` | full 指標可看，但 rolling IR 變弱、concentration 不降 |
+| `groupcap2 + maxconsec5` | `2` | `5` | `1582.66%` | `1246.48%` | `1.430` | `-18.48%` | `-20.20%` | `51.23%` | `15` | `2` | `27.37%` | `0.565` | `65.37%` | `82.62%` | `22` | 比 maxconsec5 弱，不升級 |
+
+### 解讀
+
+1. **group cap 不是 TWSE14 目前問題的主解法**：`groupcap2` 的 max rolling top-3 share 仍是 `81.68%`，`groupcap2 + maxconsec5` 仍是 `82.62%`，沒有把 concentration 問題往下壓。
+2. **`groupcap1` 太硬**：full IR 降到 `1.096`、active MDD 惡化到 `-26.04%`，且 max rolling top-3 share 變成 `83.77%`，應 discard。
+3. **`groupcap2` 只改善部分 full-window 風險**：MDD / active MDD 略優於原 top4，但 min rolling IR 從 `0.724` 掉到 `0.610`，不符合穩健性優先。
+4. **與 `maxconsec5` 疊加反而變弱**：full IR 從 `1.515` 降到 `1.430`，min rolling IR 從 `0.814` 降到 `0.565`，不應取代目前 compare candidate。
+5. **結論仍不是穩定營利**：rolling concentration 主要不是單純 sector group 過量可解，可能需要更大股票池、canary universe、adjusted price、或流動性/容量條件重新定義可交易股票池。
+
+### Keep / Discard 判斷
+
+- **Keep code**：group cap、group block count 與 Markdown/JSON 欄位。它讓 sector-aware 或自訂群組限制可以被 deterministic 測試與後續更大股票池重用。
+- **Do not promote**：`groupcap1`、`groupcap2`、`groupcap2 + maxconsec5` 都不升級為主候選。
+- **Keep current compare candidate**：`top4 + breadth42/min3 + max consecutive 5` 仍是目前 IR / min rolling IR 較佳的候選，但 concentration 未解。
+- **Next**：優先測更大股票池或 canary universe；若繼續做 group-aware 方法，應同時輸出 group-level attribution，確認報酬是否從單檔集中轉成 group 集中。
+
+### 來源
+
+- Moskowitz and Grinblatt, *Do Industries Explain Momentum?*, Journal of Finance, 1999, DOI: https://doi.org/10.1111/0022-1082.00146
+- *Momentum: what do we know 30 years after Jegadeesh and Titman’s seminal paper?*, Financial Markets and Portfolio Management, 2022: https://link.springer.com/article/10.1007/s11408-022-00417-8
