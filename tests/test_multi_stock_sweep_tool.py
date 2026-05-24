@@ -9,10 +9,14 @@ from tools.multi_stock_entry_edge_sweep import (
 )
 from tools.multi_stock_target_state_sweep import (
     TargetStateRow,
+    WalkForwardWindow,
+    WalkForwardWindowResult,
     _drawdown_attribution,
+    build_walk_forward_retention,
     build_aggregates as build_target_state_aggregates,
     build_parser as build_target_state_parser,
     parse_cost_multipliers_list,
+    parse_walk_forward_windows,
 )
 from signal_forge.backtesting.backtester import BacktestResult, EquityPoint
 
@@ -62,6 +66,27 @@ class MultiStockSweepToolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_cost_multipliers_list("1,,3")
 
+    def test_parse_walk_forward_windows_requires_labeled_date_ranges(self) -> None:
+        """
+        用途與流程：驗證 target-state walk-forward parser 可解析樣本內/OOS 分段，並拒絕缺欄位或過少 window。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；parser 行為或錯誤邊界漂移時 assertion 會失敗。
+        """
+        windows = parse_walk_forward_windows(
+            "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20"
+        )
+
+        self.assertEqual(len(windows), 2)
+        self.assertEqual(windows[0].label, "is")
+        self.assertEqual(windows[0].start, "2020-01-01")
+        self.assertEqual(windows[0].end, "2023-12-31")
+        self.assertEqual(windows[1].label, "oos")
+
+        with self.assertRaises(ValueError):
+            parse_walk_forward_windows("is:2020-01-01:2023-12-31")
+        with self.assertRaises(ValueError):
+            parse_walk_forward_windows("is:2020/01/01:2023-12-31,oos:2024-01-01:2026-05-20")
+
     def test_target_state_aggregates_track_benchmark_and_drawdown_counts(self) -> None:
         """
         用途與流程：驗證 target-state aggregate 會同時計算正報酬、勝過 benchmark 與低於 benchmark 回撤的股票數，避免只看平均報酬。
@@ -96,6 +121,70 @@ class MultiStockSweepToolTests(unittest.TestCase):
         self.assertAlmostEqual(aggregates[0].average_benchmark_excess_return, -0.025)
         self.assertEqual(aggregates[0].worst_drawdown_symbol, "2317")
         self.assertEqual(aggregates[0].worst_drawdown_trough_timestamp, "2026-01-03")
+
+    def test_walk_forward_retention_compares_adjacent_aggregate_windows(self) -> None:
+        """
+        用途與流程：驗證 walk-forward retention 會用相鄰 window 的同一 strategy/cost aggregate 計算 OOS 保留率與回撤變化。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；retention 對齊 key 或公式漂移時 assertion 會失敗。
+        """
+        train_result = WalkForwardWindowResult(
+            window=WalkForwardWindow("is", "2020-01-01", "2023-12-31"),
+            rows=[],
+            aggregates=[
+                build_target_state_aggregates(
+                    [
+                        _target_state_row(
+                            "2330",
+                            total_return=0.30,
+                            benchmark_total_return=0.10,
+                            max_drawdown=-0.20,
+                            benchmark_max_drawdown=-0.30,
+                        ),
+                        _target_state_row(
+                            "2317",
+                            total_return=0.10,
+                            benchmark_total_return=0.05,
+                            max_drawdown=-0.10,
+                            benchmark_max_drawdown=-0.20,
+                        ),
+                    ]
+                )[0]
+            ],
+        )
+        test_result = WalkForwardWindowResult(
+            window=WalkForwardWindow("oos", "2024-01-01", "2026-05-20"),
+            rows=[],
+            aggregates=[
+                build_target_state_aggregates(
+                    [
+                        _target_state_row(
+                            "2330",
+                            total_return=0.15,
+                            benchmark_total_return=0.05,
+                            max_drawdown=-0.25,
+                            benchmark_max_drawdown=-0.30,
+                        ),
+                        _target_state_row(
+                            "2317",
+                            total_return=0.05,
+                            benchmark_total_return=0.05,
+                            max_drawdown=-0.15,
+                            benchmark_max_drawdown=-0.20,
+                        ),
+                    ]
+                )[0]
+            ],
+        )
+
+        retention = build_walk_forward_retention([train_result, test_result])
+
+        self.assertEqual(len(retention), 1)
+        self.assertEqual(retention[0].train_label, "is")
+        self.assertEqual(retention[0].test_label, "oos")
+        self.assertAlmostEqual(retention[0].average_total_return_retention or 0.0, 0.5)
+        self.assertAlmostEqual(retention[0].benchmark_excess_retention or 0.0, 0.4)
+        self.assertAlmostEqual(retention[0].drawdown_change, -0.05)
 
     def test_target_state_drawdown_attribution_tracks_peak_trough_and_recovery(self) -> None:
         """
@@ -179,6 +268,26 @@ class MultiStockSweepToolTests(unittest.TestCase):
         self.assertTrue(args.drawdown_risk_off)
         self.assertEqual(args.drawdown_risk_off_threshold, 0.15)
         self.assertEqual(args.drawdown_risk_off_bars, 40)
+
+    def test_target_state_parser_accepts_walk_forward_windows(self) -> None:
+        """
+        用途與流程：驗證 target-state CLI 接受 walk-forward windows 參數，讓 OOS 報表可從命令列重現。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；parser 參數名稱或儲存欄位漂移時 assertion 失敗。
+        """
+        args = build_target_state_parser().parse_args(
+            [
+                "--csv",
+                "data.csv",
+                "--walk-forward-windows",
+                "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20",
+            ]
+        )
+
+        self.assertEqual(
+            args.walk_forward_windows,
+            "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20",
+        )
 
 
 def _row(symbol: str, *, gross_profit: float, gross_loss: float) -> SweepRow:

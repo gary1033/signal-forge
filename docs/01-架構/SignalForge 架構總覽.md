@@ -5,7 +5,7 @@ tags:
   - architecture
   - trading/backtest
 status: active
-updated: 2026-05-21
+updated: 2026-05-24
 aliases:
   - SignalForge 架構
   - SignalForge Architecture
@@ -115,6 +115,7 @@ flowchart TD
 - Drawdown attribution：定位 worst MDD 的股票、peak / trough / recovery 日期、duration / recovery bars，以及 peak-to-trough 平均曝險。
 - 可選 `--volatility-target` 風控 overlay，用同一套 target-state 報表檢查「降低曝險」是否真的改善 worst MDD、成本壓力與 benchmark-relative tradeoff。
 - 可選 `--drawdown-risk-off` 風控 overlay，用同一套 target-state 報表檢查「單檔回撤狀態下暫時降曝險」是否真的改善 MDD、風險調整與 benchmark-relative tradeoff。
+- 可選 `--walk-forward-windows` 分段驗證，用 `label:start:end` 視窗重跑同一批策略 / 成本 / wrapper，並計算相鄰 window 的樣本外報酬、Sharpe 與 benchmark-relative 保留率。
 
 這個工具不接 broker、不產生 order intent，也不改變 `live` dry-run 邊界。它只用於研究完整持倉候選是否值得進一步加入風控、volatility scaling 或 walk-forward 驗證。
 

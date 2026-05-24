@@ -6167,3 +6167,128 @@ python tools\multi_stock_target_state_sweep.py `
 1. 不再只擴大 drawdown threshold / risk-off bars grid；下一輪若做風控，應測 re-entry 條件或 weekly rebalance。
 2. 補 walk-forward / OOS split，確認 `25%/120` 的 tradeoff 不是 2020-2026 樣本內折衷。
 3. 針對 `2412` 與 `2454` 建立失敗案例檢查：一個是負報酬弱標的，一個是長回撤集中標的。
+
+## 2026-05-24 研究與執行：Target-state walk-forward / OOS 分段驗證
+
+這輪接續策略評估準則中的 anti-overfitting 要求，不新增交易邏輯，而是讓 `multi_stock_target_state_sweep.py` 能對同一批策略 / 成本 / wrapper 做 walk-forward / OOS 分段。目的不是把參數調得更漂亮，而是確認前面看到的 drawdown-control tradeoff 是否能離開 full-window 樣本仍站得住。
+
+### 本輪程式改動
+
+- `tools\multi_stock_target_state_sweep.py` 新增：
+  - `WalkForwardWindow`
+  - `WalkForwardWindowResult`
+  - `WalkForwardRetentionRow`
+  - `parse_walk_forward_windows(...)`
+  - `run_walk_forward_sweep(...)`
+  - `build_walk_forward_retention(...)`
+  - `format_walk_forward_markdown(...)`
+- CLI 新增 `--walk-forward-windows`，格式為 `label:start:end,label:start:end`。
+- JSON 摘要在既有 `rows` / `aggregates` 外，額外輸出：
+  - `walk_forward_windows`
+  - `walk_forward_results`
+  - `walk_forward_retention`
+- Markdown 摘要新增：
+  - `Walk-forward Windows`
+  - `Walk-forward Retention`
+- `tests\test_multi_stock_sweep_tool.py` 新增 parser、retention 公式與 CLI regression。
+
+### Target-state OOS 報表命令
+
+原始 Absolute Momentum：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --walk-forward-windows "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20" `
+  --summary-json reports\generated\twse-target-state-absolute-momentum-oos-20260524.json `
+  --summary-md reports\generated\twse-target-state-absolute-momentum-oos-20260524.md
+```
+
+疊加 `vol-target 0.40 + dd-risk-off 25%/120`：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --volatility-target `
+  --volatility-lookback-bars 20 `
+  --target-annual-volatility 0.40 `
+  --volatility-min-observations 20 `
+  --volatility-max-scale 1.0 `
+  --drawdown-risk-off `
+  --drawdown-risk-off-threshold 0.25 `
+  --drawdown-risk-off-bars 120 `
+  --walk-forward-windows "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20" `
+  --summary-json reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-oos-20260524.json `
+  --summary-md reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-oos-20260524.md
+```
+
+Confluence cooldown target-state 對照：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy confluence-score `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --signal-cooldown-bars 10 `
+  --walk-forward-windows "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20" `
+  --summary-json reports\generated\twse-target-state-confluence-cooldown10-oos-20260524.json `
+  --summary-md reports\generated\twse-target-state-confluence-cooldown10-oos-20260524.md
+```
+
+### OOS 結果摘要
+
+| Candidate | Cost | IS positive | IS beat B&H | IS avg return | IS avg excess | IS worst MDD | OOS positive | OOS beat B&H | OOS avg return | OOS avg excess | OOS worst MDD | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `absolute-momentum` | `1x` | `6/7` | `2/7` | `36.76%` | `-43.54%` | `-40.50%` | `5/7` | `1/7` | `84.58%` | `-105.25%` | `-36.32%` | compare-only：OOS 報酬保留，但 active return 仍負 |
+| `absolute-momentum` | `3x` | `6/7` | `2/7` | `35.49%` | `-44.67%` | `-41.17%` | `5/7` | `1/7` | `83.31%` | `-106.29%` | `-36.93%` | compare-only：成本壓力後仍未崩，但 benchmark-relative 不合格 |
+| `vol-target 0.40 + dd-risk-off 25%/120` | `1x` | `6/7` | `2/7` | `41.12%` | `-39.18%` | `-27.81%` | `5/7` | `0/7` | `62.17%` | `-127.67%` | `-27.20%` | compare-only：MDD 較穩，但 OOS 完全沒 beat B&H |
+| `vol-target 0.40 + dd-risk-off 25%/120` | `3x` | `6/7` | `2/7` | `39.83%` | `-40.32%` | `-28.21%` | `5/7` | `0/7` | `61.05%` | `-128.55%` | `-27.54%` | compare-only：成本後仍穩，但 active return 更弱 |
+| `confluence-score + cooldown10` | `1x` | `7/7` | `2/7` | `37.71%` | `-42.59%` | `-38.11%` | `5/7` | `0/7` | `45.93%` | `-143.90%` | `-26.09%` | discard as target-state main：OOS active return 最弱 |
+| `confluence-score + cooldown10` | `3x` | `7/7` | `0/7` | `33.70%` | `-46.46%` | `-39.18%` | `5/7` | `0/7` | `43.26%` | `-146.34%` | `-26.74%` | discard as target-state main：成本壓力後仍沒有 benchmark edge |
+
+### 解讀
+
+1. **樣本外總報酬沒有崩潰，但 benchmark-relative 全部不合格**：三個候選 OOS 都保持平均正報酬，但 `Beat B&H` 最好只有原始 Absolute Momentum 的 `1/7`；兩個風控 / cooldown 版本都是 `0/7`。
+2. **風控 overlay 的價值是降低回撤，不是提升 active return**：`vol-target 0.40 + dd-risk-off 25%/120` 把 OOS worst MDD 壓到約 `-27%`，比原始 Absolute Momentum 的約 `-36%` 好，但 avg return 也從 `84.58%` 降到 `62.17%`，avg excess 從 `-105.25%` 惡化到 `-127.67%`。
+3. **Confluence cooldown 仍不適合 target-state 主線**：OOS worst MDD 約 `-26.09%` 看似較穩，但 OOS avg excess 約 `-143.90%`，且 `0/7` beat buy-and-hold。
+4. **OOS retention 不能只看 return retention**：三個候選 OOS return retention 都超過 `100%`，但這是因為 OOS benchmark 更強；真正的問題是 active return 全部為負，因此不能升級。
+
+### Keep / Discard 判斷
+
+- **Keep**：walk-forward / OOS 報表功能與 tests。它補上策略評估準則的 anti-overfitting gate，讓之後找新策略或調參必須通過同一個樣本外檢查。
+- **Compare-only**：原始 `absolute-momentum` 與 `vol-target 0.40 + dd-risk-off 25%/120`。前者 OOS 報酬較強但回撤較深；後者 OOS 回撤較低但完全輸給 B&H。
+- **Discard as target-state main**：`confluence-score + cooldown10`。它在 target-state/OOS 下沒有 benchmark edge，只能保留為 Phase 1 entry-edge 研究線索。
+
+### 下一步
+
+1. 不再把「降低 worst MDD」當成唯一優化方向；下一輪必須同時看 OOS active return。
+2. 若繼續 Absolute Momentum，優先做 re-entry / weekly rebalance / stock-pool 或 regime filter，目標是改善 `Beat B&H`，不是只壓低 MDD。
+3. 若上網找新策略，第一版就要用這個 OOS split 和 1x/3x cost stress 檢查，不接受只有 full-window equity curve 的策略。

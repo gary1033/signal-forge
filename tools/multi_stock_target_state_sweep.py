@@ -111,6 +111,50 @@ class DrawdownAttribution:
     average_abs_position: float
 
 
+@dataclass(frozen=True)
+class WalkForwardWindow:
+    """Walk-forward / OOS 分段設定，用於把同一策略放到不同時間窗檢查穩健性。"""
+
+    label: str
+    start: str | None
+    end: str | None
+
+
+@dataclass(frozen=True)
+class WalkForwardWindowResult:
+    """單一 walk-forward window 的 target-state rows 與 aggregate 結果。"""
+
+    window: WalkForwardWindow
+    rows: list[TargetStateRow]
+    aggregates: list[TargetStateAggregate]
+
+
+@dataclass(frozen=True)
+class WalkForwardRetentionRow:
+    """相鄰 walk-forward windows 的 OOS retention 摘要，用於檢查樣本外保留率。"""
+
+    strategy: str
+    cost_multiplier: float
+    cost_label: str
+    train_label: str
+    test_label: str
+    train_average_total_return: float
+    test_average_total_return: float
+    average_total_return_retention: float | None
+    train_average_benchmark_excess_return: float
+    test_average_benchmark_excess_return: float
+    benchmark_excess_retention: float | None
+    train_average_sharpe_ratio: float | None
+    test_average_sharpe_ratio: float | None
+    sharpe_retention: float | None
+    train_worst_max_drawdown: float
+    test_worst_max_drawdown: float
+    drawdown_change: float
+    train_outperform_benchmark_count: int
+    test_outperform_benchmark_count: int
+    stock_count: int
+
+
 def parse_cost_multipliers_list(value: str) -> tuple[float, ...]:
     """
     用途與流程：解析 CLI 的成本壓力倍率清單，讓同一批策略可同時跑 1x、2x、3x 成本情境。
@@ -131,6 +175,39 @@ def parse_cost_multipliers_list(value: str) -> tuple[float, ...]:
     if any(multiplier <= 0 for multiplier in multipliers):
         raise ValueError("--cost-multipliers-list values must be positive")
     return multipliers
+
+
+def parse_walk_forward_windows(value: str) -> tuple[WalkForwardWindow, ...]:
+    """
+    用途與流程：解析 CLI 的 walk-forward / OOS 視窗設定，讓同一策略可在樣本內與樣本外期間分段驗證。
+    參數：value 是逗號分隔的 `label:start:end` 字串；label 不可空白，start/end 可空白但若提供需為 `YYYY-MM-DD`。
+    回傳與錯誤：回傳至少兩個 WalkForwardWindow；格式錯誤、日期錯誤或視窗少於兩個時拋出 ValueError。
+    """
+    windows: list[WalkForwardWindow] = []
+    for raw_part in value.split(","):
+        part = raw_part.strip()
+        if not part:
+            raise ValueError(
+                "--walk-forward-windows must use label:start:end entries"
+            )
+        fields = [field.strip() for field in part.split(":")]
+        if len(fields) != 3:
+            raise ValueError(
+                "--walk-forward-windows entries must use label:start:end"
+            )
+        label, start, end = fields
+        if not label:
+            raise ValueError("--walk-forward-windows labels must not be empty")
+        windows.append(
+            WalkForwardWindow(
+                label=label,
+                start=_validate_window_date(start),
+                end=_validate_window_date(end),
+            )
+        )
+    if len(windows) < 2:
+        raise ValueError("--walk-forward-windows requires at least two windows")
+    return tuple(windows)
 
 
 def infer_symbol_from_path(path: Path) -> str:
@@ -237,6 +314,126 @@ def run_sweep(
                 )
 
     return rows, build_aggregates(rows)
+
+
+def run_walk_forward_sweep(
+    *,
+    windows: tuple[WalkForwardWindow, ...],
+    csv_paths: list[Path],
+    strategies: tuple[str, ...],
+    cost_multipliers: tuple[float, ...],
+    initial_equity: float,
+    commission_bps: float,
+    slippage_bps: float,
+    transaction_tax_bps: float,
+    periods_per_year: int,
+    signal_cooldown_bars: int | None = None,
+    volatility_target: bool = False,
+    volatility_lookback_bars: int | None = None,
+    target_annual_volatility: float | None = None,
+    volatility_min_observations: int | None = None,
+    volatility_max_scale: float | None = None,
+    drawdown_risk_off: bool = False,
+    drawdown_risk_off_threshold: float | None = None,
+    drawdown_risk_off_bars: int | None = None,
+) -> tuple[list[WalkForwardWindowResult], list[WalkForwardRetentionRow]]:
+    """
+    用途與流程：依指定 walk-forward windows 重跑同一批 target-state sweep，並計算相鄰 window 的樣本外保留率。
+    參數：windows 是 parse_walk_forward_windows 的結果；csv_paths、strategies、cost_multipliers 與成本/風控參數和 run_sweep 相同，確保每個 window 只改日期邊界。
+    回傳與錯誤：回傳每個 window 的 rows/aggregates 與 retention rows；資料視窗無 bar 或策略參數不合法時由 run_sweep 拋出 ValueError。
+    """
+    results: list[WalkForwardWindowResult] = []
+    for window in windows:
+        rows, aggregates = run_sweep(
+            csv_paths=csv_paths,
+            strategies=strategies,
+            cost_multipliers=cost_multipliers,
+            start=window.start,
+            end=window.end,
+            initial_equity=initial_equity,
+            commission_bps=commission_bps,
+            slippage_bps=slippage_bps,
+            transaction_tax_bps=transaction_tax_bps,
+            periods_per_year=periods_per_year,
+            signal_cooldown_bars=signal_cooldown_bars,
+            volatility_target=volatility_target,
+            volatility_lookback_bars=volatility_lookback_bars,
+            target_annual_volatility=target_annual_volatility,
+            volatility_min_observations=volatility_min_observations,
+            volatility_max_scale=volatility_max_scale,
+            drawdown_risk_off=drawdown_risk_off,
+            drawdown_risk_off_threshold=drawdown_risk_off_threshold,
+            drawdown_risk_off_bars=drawdown_risk_off_bars,
+        )
+        results.append(
+            WalkForwardWindowResult(
+                window=window,
+                rows=rows,
+                aggregates=aggregates,
+            )
+        )
+    return results, build_walk_forward_retention(results)
+
+
+def build_walk_forward_retention(
+    window_results: list[WalkForwardWindowResult],
+) -> list[WalkForwardRetentionRow]:
+    """
+    用途與流程：比較相鄰 walk-forward windows 的 aggregate 表現，計算 OOS 對 IS 的報酬、excess 與 Sharpe 保留率。
+    參數：window_results 是 run_walk_forward_sweep 回傳的分段結果；每個 result 需含 strategy/cost aggregate。
+    回傳與錯誤：回傳排序後 retention rows；若相鄰 window 缺少同一 strategy/cost 組合，該組合略過不報錯。
+    """
+    rows: list[WalkForwardRetentionRow] = []
+    for train_result, test_result in zip(window_results, window_results[1:]):
+        test_by_key = {
+            _aggregate_key(item): item for item in test_result.aggregates
+        }
+        for train in train_result.aggregates:
+            test = test_by_key.get(_aggregate_key(train))
+            if test is None:
+                continue
+            rows.append(
+                WalkForwardRetentionRow(
+                    strategy=train.strategy,
+                    cost_multiplier=train.cost_multiplier,
+                    cost_label=train.cost_label,
+                    train_label=train_result.window.label,
+                    test_label=test_result.window.label,
+                    train_average_total_return=train.average_total_return,
+                    test_average_total_return=test.average_total_return,
+                    average_total_return_retention=_retention_ratio(
+                        test.average_total_return,
+                        train.average_total_return,
+                    ),
+                    train_average_benchmark_excess_return=train.average_benchmark_excess_return,
+                    test_average_benchmark_excess_return=test.average_benchmark_excess_return,
+                    benchmark_excess_retention=_retention_ratio(
+                        test.average_benchmark_excess_return,
+                        train.average_benchmark_excess_return,
+                    ),
+                    train_average_sharpe_ratio=train.average_sharpe_ratio,
+                    test_average_sharpe_ratio=test.average_sharpe_ratio,
+                    sharpe_retention=_retention_ratio(
+                        test.average_sharpe_ratio,
+                        train.average_sharpe_ratio,
+                    ),
+                    train_worst_max_drawdown=train.worst_max_drawdown,
+                    test_worst_max_drawdown=test.worst_max_drawdown,
+                    drawdown_change=test.worst_max_drawdown - train.worst_max_drawdown,
+                    train_outperform_benchmark_count=train.outperform_benchmark_count,
+                    test_outperform_benchmark_count=test.outperform_benchmark_count,
+                    stock_count=min(train.stock_count, test.stock_count),
+                )
+            )
+    return sorted(
+        rows,
+        key=lambda item: (
+            item.train_label,
+            item.test_label,
+            item.strategy,
+            item.cost_multiplier,
+        ),
+    )
 
 
 def build_aggregates(rows: list[TargetStateRow]) -> list[TargetStateAggregate]:
@@ -499,9 +696,72 @@ def format_markdown(
     return "\n".join(lines) + "\n"
 
 
+def format_walk_forward_markdown(
+    window_results: list[WalkForwardWindowResult],
+    retention_rows: list[WalkForwardRetentionRow],
+) -> str:
+    """
+    用途與流程：把 walk-forward / OOS 分段結果格式化成 Markdown 附加章節，方便直接檢查樣本外保留率。
+    參數：window_results 是每個時間窗的 aggregate；retention_rows 是相鄰時間窗的保留率比較。
+    回傳與錯誤：回傳 Markdown 字串；沒有 window 結果時回傳空字串，不做 I/O。
+    """
+    if not window_results:
+        return ""
+    lines = [
+        "",
+        "## Walk-forward Windows",
+        "",
+        "| Window | Range | Strategy | Cost | Stocks | Positive | Beat B&H | Avg return | Avg excess | Worst MDD | Avg Sharpe | Trades |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for result in window_results:
+        window_range = f"{result.window.start or 'earliest'} to {result.window.end or 'latest'}"
+        for item in result.aggregates:
+            lines.append(
+                "| "
+                f"{result.window.label} | {window_range} | {item.strategy} | "
+                f"{item.cost_label} | {item.stock_count} | "
+                f"{item.positive_return_count}/{item.stock_count} | "
+                f"{item.outperform_benchmark_count}/{item.stock_count} | "
+                f"{item.average_total_return:.2%} | "
+                f"{item.average_benchmark_excess_return:.2%} | "
+                f"{item.worst_max_drawdown:.2%} | "
+                f"{_format_optional_ratio(item.average_sharpe_ratio)} | "
+                f"{item.total_trades} |"
+            )
+    lines.extend(
+        [
+            "",
+            "## Walk-forward Retention",
+            "",
+            "| Train | Test | Strategy | Cost | Return retention | Excess retention | Sharpe retention | Train return | Test return | Train excess | Test excess | Train MDD | Test MDD | MDD change | Train beat B&H | Test beat B&H |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for item in retention_rows:
+        lines.append(
+            "| "
+            f"{item.train_label} | {item.test_label} | {item.strategy} | "
+            f"{item.cost_label} | "
+            f"{_format_optional_percent(item.average_total_return_retention)} | "
+            f"{_format_optional_percent(item.benchmark_excess_retention)} | "
+            f"{_format_optional_percent(item.sharpe_retention)} | "
+            f"{item.train_average_total_return:.2%} | "
+            f"{item.test_average_total_return:.2%} | "
+            f"{item.train_average_benchmark_excess_return:.2%} | "
+            f"{item.test_average_benchmark_excess_return:.2%} | "
+            f"{item.train_worst_max_drawdown:.2%} | "
+            f"{item.test_worst_max_drawdown:.2%} | "
+            f"{item.drawdown_change:.2%} | "
+            f"{item.train_outperform_benchmark_count}/{item.stock_count} | "
+            f"{item.test_outperform_benchmark_count}/{item.stock_count} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def build_parser() -> argparse.ArgumentParser:
     """
-    用途與流程：建立 target-state 多股票 sweep 的命令列 parser，支援多 CSV、多策略、多成本壓力、可選 volatility target 與 drawdown risk-off 風控 overlay。
+    用途與流程：建立 target-state 多股票 sweep 的命令列 parser，支援多 CSV、多策略、多成本壓力、風控 overlay 與 walk-forward/OOS 分段。
     參數：無。
     回傳與錯誤：回傳 argparse.ArgumentParser；解析錯誤由 argparse 處理。
     """
@@ -587,6 +847,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=60,
         help="number of bars to keep risk-off active after a drawdown breach",
     )
+    parser.add_argument(
+        "--walk-forward-windows",
+        help=(
+            "comma-separated label:start:end windows, for example "
+            "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20"
+        ),
+    )
     parser.add_argument("--summary-json")
     parser.add_argument("--summary-md")
     return parser
@@ -594,15 +861,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """
-    用途與流程：CLI 入口，解析 target-state sweep、成本壓力、volatility target 與 drawdown risk-off 參數，執行回測、列印 Markdown，並可寫出 JSON/Markdown 摘要。
-    參數：argv 是可選命令列參數清單；None 時使用 sys.argv；volatility target 與 drawdown risk-off 相關選項會透過 run_sweep 傳給 strategy factory。
+    用途與流程：CLI 入口，解析 target-state sweep、成本壓力、風控 overlay 與 walk-forward/OOS 參數，執行回測、列印 Markdown，並可寫出 JSON/Markdown 摘要。
+    參數：argv 是可選命令列參數清單；None 時使用 sys.argv；策略 wrapper 與 walk-forward 相關選項會透過 run_sweep 或 run_walk_forward_sweep 傳給報表流程。
     回傳與錯誤：成功回傳 0；參數、資料或回測錯誤會由 argparse 或底層函式拋出。
     """
     args = build_parser().parse_args(argv)
     strategies = tuple(args.strategy or DEFAULT_TARGET_STATE_STRATEGIES)
     cost_multipliers = parse_cost_multipliers_list(args.cost_multipliers_list)
+    csv_paths = [Path(path) for path in args.csv]
     rows, aggregates = run_sweep(
-        csv_paths=[Path(path) for path in args.csv],
+        csv_paths=csv_paths,
         strategies=strategies,
         cost_multipliers=cost_multipliers,
         start=args.start,
@@ -629,14 +897,58 @@ def main(argv: list[str] | None = None) -> int:
         end=args.end,
         periods_per_year=args.periods_per_year,
     )
+    walk_forward_windows: tuple[WalkForwardWindow, ...] = ()
+    walk_forward_results: list[WalkForwardWindowResult] = []
+    walk_forward_retention: list[WalkForwardRetentionRow] = []
+    if args.walk_forward_windows:
+        walk_forward_windows = parse_walk_forward_windows(args.walk_forward_windows)
+        walk_forward_results, walk_forward_retention = run_walk_forward_sweep(
+            windows=walk_forward_windows,
+            csv_paths=csv_paths,
+            strategies=strategies,
+            cost_multipliers=cost_multipliers,
+            initial_equity=args.initial_equity,
+            commission_bps=args.commission_bps,
+            slippage_bps=args.slippage_bps,
+            transaction_tax_bps=args.transaction_tax_bps,
+            periods_per_year=args.periods_per_year,
+            signal_cooldown_bars=args.signal_cooldown_bars,
+            volatility_target=args.volatility_target,
+            volatility_lookback_bars=args.volatility_lookback_bars,
+            target_annual_volatility=args.target_annual_volatility,
+            volatility_min_observations=args.volatility_min_observations,
+            volatility_max_scale=args.volatility_max_scale,
+            drawdown_risk_off=args.drawdown_risk_off,
+            drawdown_risk_off_threshold=args.drawdown_risk_off_threshold,
+            drawdown_risk_off_bars=args.drawdown_risk_off_bars,
+        )
+        markdown += format_walk_forward_markdown(
+            walk_forward_results,
+            walk_forward_retention,
+        )
     if args.summary_json:
         Path(args.summary_json).parent.mkdir(parents=True, exist_ok=True)
+        summary_payload = {
+            "rows": [asdict(row) for row in rows],
+            "aggregates": [asdict(item) for item in aggregates],
+        }
+        if walk_forward_results:
+            summary_payload.update(
+                {
+                    "walk_forward_windows": [
+                        asdict(window) for window in walk_forward_windows
+                    ],
+                    "walk_forward_results": [
+                        asdict(result) for result in walk_forward_results
+                    ],
+                    "walk_forward_retention": [
+                        asdict(item) for item in walk_forward_retention
+                    ],
+                }
+            )
         Path(args.summary_json).write_text(
             json.dumps(
-                {
-                    "rows": [asdict(row) for row in rows],
-                    "aggregates": [asdict(item) for item in aggregates],
-                },
+                summary_payload,
                 ensure_ascii=False,
                 indent=2,
                 sort_keys=True,
@@ -935,6 +1247,46 @@ def _parse_timestamp(timestamp: str) -> datetime:
     回傳與錯誤：回傳 datetime；格式不合法時拋出 ValueError。
     """
     return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+
+def _validate_window_date(value: str) -> str | None:
+    """
+    用途與流程：驗證 walk-forward window 的日期邊界，統一把空字串轉成 None。
+    參數：value 是 parser 解析出的 start 或 end 欄位，預期為空字串或 `YYYY-MM-DD`。
+    回傳與錯誤：空字串回傳 None；合法日期回傳原字串；格式錯誤時拋出 ValueError。
+    """
+    if value == "":
+        return None
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError(
+            "--walk-forward-windows dates must use YYYY-MM-DD"
+        ) from exc
+    return value
+
+
+def _aggregate_key(item: TargetStateAggregate) -> tuple[str, float, str]:
+    """
+    用途與流程：建立 strategy/cost aggregate 的穩定比較 key，供 walk-forward windows 對齊相同設定。
+    參數：item 是 TargetStateAggregate。
+    回傳與錯誤：回傳 `(strategy, cost_multiplier, cost_label)`；不會主動拋錯。
+    """
+    return (item.strategy, item.cost_multiplier, item.cost_label)
+
+
+def _retention_ratio(
+    test_value: float | None,
+    train_value: float | None,
+) -> float | None:
+    """
+    用途與流程：計算 OOS 指標相對 IS 指標的保留率，只在樣本內指標為正時才給出有意義比值。
+    參數：test_value 是樣本外指標；train_value 是樣本內指標；兩者可為 None。
+    回傳與錯誤：若 train_value 為 None 或小於等於 0 則回傳 None；否則回傳 test/train。
+    """
+    if test_value is None or train_value is None or train_value <= 0:
+        return None
+    return test_value / train_value
 
 
 def _max_drawdown(equity_values: list[float]) -> float:

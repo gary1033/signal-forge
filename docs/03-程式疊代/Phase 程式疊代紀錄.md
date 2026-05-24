@@ -167,6 +167,14 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 新增 `tests\test_drawdown_risk_off.py`、factory regression 與 target-state parser regression，鎖住回撤觸發、standdown rearm、flat reason 保留與參數解析。
 - 本輪策略結果屬 compare-only / discard 分流：`dd-risk-off 20%/60` 讓 worst MDD 惡化，discard；`dd-risk-off 25%/120` 與 `vol-target 0.40 + dd-risk-off 25%/120` 能降低 MDD，但仍只有 `1/7` beat buy-and-hold，不能升級主候選。
 
+### 14. Target-state walk-forward / OOS 分段驗證
+
+- `tools\multi_stock_target_state_sweep.py` 新增 `WalkForwardWindow`、`WalkForwardWindowResult` 與 `WalkForwardRetentionRow`，保留既有 full-window `rows` / `aggregates` schema，將 OOS 結果放在額外 JSON 欄位。
+- CLI 新增 `--walk-forward-windows`，格式是 `label:start:end,label:start:end`，例如 `is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20`。
+- Markdown 報表新增 `Walk-forward Windows` 與 `Walk-forward Retention`，用相鄰 window 比較 return retention、Sharpe retention、benchmark excess 與 MDD change。
+- `tests\test_multi_stock_sweep_tool.py` 新增 parser、retention 對齊與 OOS CLI regression，確保分段驗證是 deterministic、test-covered 的報表功能。
+- 本輪用同一批七檔 TWSE common window 驗證 `absolute-momentum`、`absolute-momentum + vol-target 0.40 + dd-risk-off 25%/120`、`confluence-score + cooldown10`。三者樣本外平均報酬沒有崩潰，但 OOS benchmark-relative 仍不合格，不能升級成穩定營利主候選。
+
 ## 重要 commit 節點
 
 | Commit | 類型 | 摘要 |
@@ -184,7 +192,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；drawdown risk-off 已有第一版，下一步應測 re-entry 條件、weekly rebalance、股票池 / regime 過濾或 walk-forward / OOS，而不是只調整動能 / 均線視窗或 risk-off bars。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；walk-forward / OOS 已證明 benchmark-relative 問題仍存在，下一步應測 re-entry 條件、weekly rebalance、股票池 / regime 過濾，而不是只調整動能 / 均線視窗或 risk-off bars。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

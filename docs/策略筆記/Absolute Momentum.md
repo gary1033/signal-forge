@@ -93,6 +93,7 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - drawdown attribution 顯示 worst MDD 集中在 `2454`，且 vol target `0.40` 在 trough 當天仍是滿倉 `1.000`，代表單純波動縮放沒有完全處理長回撤狀態。
 - 單獨 drawdown risk-off 可以降低部分版本的 worst MDD，但容易錯過後續趨勢或把最差回撤轉移到其他股票；`20%/60 bars` 甚至讓 worst MDD 惡化，因此不可直接升級。
 - `vol-target 0.40 + drawdown-risk-off 25%/120 bars` 是目前較好的 drawdown-control compare-only 組合，但 `Beat B&H` 仍只有 `1/7`，且 `2454` trough 當天仍是滿倉 `1.000`。
+- walk-forward / OOS 顯示 2024-2026 樣本外總報酬仍為正，但 benchmark-relative 沒有改善；原始 Absolute Momentum OOS 只有 `1/7` beat B&H，疊加 `vol-target 0.40 + drawdown-risk-off 25%/120` 後變成 `0/7` beat B&H。
 
 ## 回測解讀
 
@@ -121,11 +122,24 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 
 這代表 vol target 與 drawdown risk-off 都能降低 peak-to-trough 的平均曝險，但在最大回撤 trough 當天仍可能是滿倉。下一步若要改善穩定性，方向應該是更明確的 exit / re-entry state、再平衡門檻、股票池過濾或 OOS 檢查，而不是只調 `target_annual_volatility` 或 risk-off bars。
 
+### Walk-forward / OOS 補充
+
+同一批七檔 TWSE common window 切成 `is:2020-01-01:2023-12-31` 與 `oos:2024-01-01:2026-05-20` 後，結果顯示策略沒有樣本外報酬崩潰，但仍沒有形成穩定 benchmark edge。
+
+| 版本 | Cost | IS avg return | IS avg excess | IS beat B&H | IS worst MDD | OOS avg return | OOS avg excess | OOS beat B&H | OOS worst MDD | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 原始 target-state | `1x` | `36.76%` | `-43.54%` | `2/7` | `-40.50%` | `84.58%` | `-105.25%` | `1/7` | `-36.32%` | compare-only：OOS 報酬較強，但 active return 仍負 |
+| 原始 target-state | `3x` | `35.49%` | `-44.67%` | `2/7` | `-41.17%` | `83.31%` | `-106.29%` | `1/7` | `-36.93%` | compare-only：成本壓力後仍未形成 benchmark edge |
+| Vol target `0.40` + DD risk-off `25%/120` | `1x` | `41.12%` | `-39.18%` | `2/7` | `-27.81%` | `62.17%` | `-127.67%` | `0/7` | `-27.20%` | compare-only：回撤較低，但 OOS 完全沒有 beat B&H |
+| Vol target `0.40` + DD risk-off `25%/120` | `3x` | `39.83%` | `-40.32%` | `2/7` | `-28.21%` | `61.05%` | `-128.55%` | `0/7` | `-27.54%` | compare-only：成本後仍穩，但 active return 更弱 |
+
+這輪結論是：風控 overlay 讓 OOS worst MDD 從原始版本約 `-36%` 降到約 `-27%`，但代價是 OOS avg return 降低，且 `Beat B&H` 從 `1/7` 變成 `0/7`。因此它只能作為 drawdown-control 對照，不能升級為穩定營利候選。
+
 ## 下一步
 
 - 不先擴大 `momentum_window` / `trend_window` 搜尋；避免把 2020-2026 強趨勢樣本擬合成漂亮回測。
 - 不把 `DD risk-off 20%/60` 作為候選；它已經被 1x/3x cost stress 證明會惡化 worst MDD。
-- 保留 `DD risk-off 25%/120` 與 `vol-target 0.40 + DD risk-off 25%/120` 為 compare-only，後續要先做 OOS / walk-forward，再決定是否值得深化。
-- 做 walk-forward / OOS，確認 vol target 不是只在單一 regime 中降低回撤。
+- 保留 `DD risk-off 25%/120` 與 `vol-target 0.40 + DD risk-off 25%/120` 為 compare-only；OOS 已證明它們主要改善回撤，不改善 benchmark-relative edge。
+- 後續若要深化，優先改善 OOS `Beat B&H` 與 active return，而不是只降低 MDD。
 - 若繼續做風控，優先測 re-entry 條件、weekly rebalance 或股票池 / regime 過濾，不要只擴大參數 grid。
 - 與 `confluence-score + hold=10 + signal_cooldown_bars=10` 固定在同一批七檔股票與同一期間比較。

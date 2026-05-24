@@ -50,7 +50,7 @@ SignalForge 的大方向是把交易想法整理成可驗證研究流程，而�
 - 停損、停利、成本敏感度與最大回撤檢查。
 - regime filter，例如趨勢、波動或成交量環境。
 - 風險調整與穩健性指標，例如 Sharpe、Sortino、Calmar、Information Ratio、walk-forward / OOS 與 drawdown attribution。
-- 目前 Phase 2 研究工具是 `tools\multi_stock_target_state_sweep.py`，用完整 target exposure 評估多股票、多策略與 1x / 2x / 3x 成本壓力。
+- 目前 Phase 2 研究工具是 `tools\multi_stock_target_state_sweep.py`，用完整 target exposure 評估多股票、多策略、1x / 2x / 3x 成本壓力與 walk-forward / OOS 分段。
 
 ### Phase 3：Live intent schema
 
@@ -130,6 +130,7 @@ python -m signal_forge.cli fetch-data `
 - `multi_stock_target_state_sweep.py` 支援完整持倉 target-state 多股票報表，輸出 benchmark-relative return、MDD、Sharpe、Sortino、Calmar、turnover、time in market、成本壓力與 worst drawdown attribution。
 - `VolatilityTargetStrategy` 支援只降曝險、不加槓桿的 realized-volatility target overlay，並已接入 target-state sweep 的 `--volatility-target`。
 - `DrawdownRiskOffStrategy` 支援單檔 proxy equity drawdown-state risk-off overlay，並已接入 target-state sweep 的 `--drawdown-risk-off`。
+- `multi_stock_target_state_sweep.py` 支援 `--walk-forward-windows`，可用 `label:start:end` 指定樣本內 / 樣本外分段，並輸出 OOS retention 報表。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
@@ -142,9 +143,9 @@ python -m signal_forge.cli fetch-data `
 
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
-- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics：Information Ratio、drawdown attribution 與 walk-forward / OOS。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics：Information Ratio、active drawdown tradeoff 與更多 rolling / OOS 檢查。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
-- 針對 Absolute Momentum 的 drawdown control 結果做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可把 worst MDD 降到約 `-44.93%`，但仍只有 `1/7` beat B&H，且 `2454` trough 當天仍是滿倉 `1.000`；下一步應測 re-entry 條件、weekly rebalance、股票池 / regime 過濾或 walk-forward / OOS，而不是直接升級。
+- 針對 Absolute Momentum 的 drawdown control 結果做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可把 full-window worst MDD 降到約 `-44.93%`，但 2024-2026 OOS 只有 `0/7` beat B&H；下一步應測 re-entry 條件、weekly rebalance、股票池 / regime 過濾，而不是直接升級。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。
