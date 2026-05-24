@@ -30,6 +30,7 @@ from signal_forge.phase import (
 from signal_forge.strategy import BarByBarStrategy, Signal, Strategy, StrategyDecision
 from signal_forge.strategies import (
     SUPPORTED_STRATEGY_NAMES,
+    DrawdownRiskOffStrategy,
     SignalCooldownStrategy,
     VolatilityTargetStrategy,
     VolumeFilteredStrategy,
@@ -50,6 +51,7 @@ __all__ = [
     "EntryEdgeEvaluator",
     "EntryEdgeResult",
     "FetchDataResult",
+    "DrawdownRiskOffStrategy",
     "LiveExecutionAdapter",
     "MarketDataValidationError",
     "OrderIntent",

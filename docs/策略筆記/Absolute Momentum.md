@@ -21,6 +21,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\absolute_momentu
 - **Long-only / 只做多**：策略只輸出 `1.0` 或 `0.0`，不做放空。
 - **Warmup / 暖機期**：資料不足以計算動能或 SMA 時，策略保持空手。
 - **Volatility target / 波動目標**：用最近一段 close-to-close 報酬估算 realized volatility；若當下波動高於目標年化波動，就把 `target_position` 從 `1.0` 縮小到較低曝險。SignalForge 第一版只降曝險，不加槓桿。
+- **Drawdown risk-off / 回撤風控**：用策略自己的 proxy equity 追蹤單檔高點回撤；若回撤超過門檻，就暫時把非零部位改成空手，等待固定 bar 數後再重新允許底層策略進場。
 
 ## 策略假設
 
@@ -50,6 +51,8 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - 若 realized volatility 樣本不足，overlay 保持空手，reason 是 `vol_target_warmup`。
 - 若 realized volatility 低於目標，曝險最多維持原本的 `1.0`；不把 `target_position` 放大到超過原策略。
 - 若 realized volatility 高於目標，`target_position = 原始 target_position * target_annual_volatility / realized_annual_volatility`，並受到 `max_scale` 上限限制。
+- `DrawdownRiskOffStrategy` 不改變底層動能進場條件；它只在 wrapper 追蹤到 proxy equity 從本地高點回撤超過門檻時，把非零 target 改成 `0.0`，reason 是 `drawdown_risk_off`。
+- Drawdown risk-off 期間結束後，wrapper 會用當下 proxy equity 重設本地 high-water mark，避免因舊高點造成永久空手；這是可回測的研究假設，不代表真實停損保證。
 
 ## 小例子
 
@@ -71,6 +74,7 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - entry-edge 評估：仍使用 SignalForge Phase 1 的 close signal、next open entry、固定 hold bars。
 - 完整持倉檢查：使用 `tools\multi_stock_target_state_sweep.py` 做 close-to-close target exposure、cost stress 與 benchmark-relative 檢查。
 - `volatility-target` overlay：目前研究設定使用 `lookback_bars=20`、`min_observations=20`，比較 `target_annual_volatility=0.25/0.30/0.35/0.40`，`max_scale=1.0`。
+- `drawdown-risk-off` overlay：目前研究設定比較 `drawdown_threshold=0.10/0.15/0.20/0.25/0.30` 與 `risk_off_bars=20/40/60/120`；較可追蹤的版本是 `0.25/120`，但仍只屬 compare-only。
 
 ## 股價走勢解說圖
 
@@ -87,6 +91,8 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - target-state 持有的 worst MDD 可接近 buy-and-hold，不能直接升級為穩定營利候選。
 - volatility target 能降低 worst MDD，但也會犧牲 upside，且目前 Sharpe / Calmar 沒有明顯勝過原始 target-state；因此仍是 compare-only。
 - drawdown attribution 顯示 worst MDD 集中在 `2454`，且 vol target `0.40` 在 trough 當天仍是滿倉 `1.000`，代表單純波動縮放沒有完全處理長回撤狀態。
+- 單獨 drawdown risk-off 可以降低部分版本的 worst MDD，但容易錯過後續趨勢或把最差回撤轉移到其他股票；`20%/60 bars` 甚至讓 worst MDD 惡化，因此不可直接升級。
+- `vol-target 0.40 + drawdown-risk-off 25%/120 bars` 是目前較好的 drawdown-control compare-only 組合，但 `Beat B&H` 仍只有 `1/7`，且 `2454` trough 當天仍是滿倉 `1.000`。
 
 ## 回測解讀
 
@@ -98,6 +104,9 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 | Vol target `0.25` | `1x` | `132.44%` | `-320.29%` | `-35.14%` | `0.704` | `1.113` | `0.555` | compare-only：回撤改善最大，但 upside 犧牲太多 |
 | Vol target `0.35` | `1x` | `169.42%` | `-283.31%` | `-43.95%` | `0.705` | `1.115` | `0.591` | compare-only：風險/報酬較平衡 |
 | Vol target `0.40` | `1x` | `180.83%` | `-271.90%` | `-47.45%` | `0.706` | `1.116` | `0.598` | compare-only：保留最多 upside，但回撤改善有限 |
+| DD risk-off `20%/60` | `1x` | `142.47%` | `-310.26%` | `-59.40%` | `0.535` | `0.852` | `0.386` | discard：回撤惡化且 2454 trough 仍滿倉 |
+| DD risk-off `25%/120` | `1x` | `207.18%` | `-245.55%` | `-46.95%` | `0.682` | `1.093` | `0.599` | compare-only：MDD 低於 raw / vol-target 0.40，但風險調整仍降 |
+| Vol target `0.40` + DD risk-off `25%/120` | `1x` | `188.37%` | `-264.36%` | `-44.93%` | `0.738` | `1.176` | `0.620` | compare-only：本輪較佳風控組合，但仍只有 `1/7` beat B&H |
 
 目前較值得後續追蹤的是 `target_annual_volatility=0.35` 到 `0.40`，因為它們比 Confluence cooldown target-state 的 avg excess 好，且 worst MDD 低於原始 Absolute Momentum；但它們尚未解決只有 `1/7` beat buy-and-hold 的問題。
 
@@ -107,12 +116,16 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 |---|---:|---|---:|---|---|---|---:|---:|
 | 原始 target-state | `1x` | `2454` | `-50.74%` | `2024-06-20` | `2025-12-24` | `2026-05-04` | `1.000` | `0.574` |
 | Vol target `0.40` | `1x` | `2454` | `-47.45%` | `2024-06-20` | `2025-12-24` | `2026-05-05` | `1.000` | `0.515` |
+| DD risk-off `25%/120` | `1x` | `2303` | `-46.95%` | `2021-04-26` | `2025-09-23` | unrecovered | `1.000` | `0.244` |
+| Vol target `0.40` + DD risk-off `25%/120` | `1x` | `2454` | `-44.93%` | `2024-06-20` | `2025-12-24` | `2026-05-04` | `1.000` | `0.248` |
 
-這代表 vol target 確實降低 peak-to-trough 的平均曝險，但在最大回撤 trough 當天沒有降到低曝險。下一步若要改善穩定性，方向應該是 drawdown-state / per-symbol risk-off、再平衡門檻或 OOS 檢查，而不是只調 `target_annual_volatility`。
+這代表 vol target 與 drawdown risk-off 都能降低 peak-to-trough 的平均曝險，但在最大回撤 trough 當天仍可能是滿倉。下一步若要改善穩定性，方向應該是更明確的 exit / re-entry state、再平衡門檻、股票池過濾或 OOS 檢查，而不是只調 `target_annual_volatility` 或 risk-off bars。
 
 ## 下一步
 
 - 不先擴大 `momentum_window` / `trend_window` 搜尋；避免把 2020-2026 強趨勢樣本擬合成漂亮回測。
-- 優先測最小 drawdown-state / per-symbol risk-off，確認能否壓低 `2454` 長回撤，同時保留多股票平均報酬與 1x / 3x 成本壓力。
+- 不把 `DD risk-off 20%/60` 作為候選；它已經被 1x/3x cost stress 證明會惡化 worst MDD。
+- 保留 `DD risk-off 25%/120` 與 `vol-target 0.40 + DD risk-off 25%/120` 為 compare-only，後續要先做 OOS / walk-forward，再決定是否值得深化。
 - 做 walk-forward / OOS，確認 vol target 不是只在單一 regime 中降低回撤。
+- 若繼續做風控，優先測 re-entry 條件、weekly rebalance 或股票池 / regime 過濾，不要只擴大參數 grid。
 - 與 `confluence-score + hold=10 + signal_cooldown_bars=10` 固定在同一批七檔股票與同一期間比較。

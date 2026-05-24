@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from signal_forge.strategies.absolute_momentum import AbsoluteMomentumStrategy
 from signal_forge.strategies.confluence_score import ConfluenceScoreStrategy
+from signal_forge.strategies.drawdown_risk_off import DrawdownRiskOffStrategy
 from signal_forge.strategies.orb_volume_vwap import OrbVolumeVwapStrategy
 from signal_forge.strategies.signal_cooldown import SignalCooldownStrategy
 from signal_forge.strategies.sma_crossover import SmaCrossoverStrategy
@@ -322,10 +323,13 @@ def build_phase1_strategy(
     volatility_min_observations: int | None = None,
     volatility_max_scale: float | None = None,
     volatility_periods_per_year: int = 252,
+    drawdown_risk_off: bool = False,
+    drawdown_risk_off_threshold: float | None = None,
+    drawdown_risk_off_bars: int | None = None,
 ) -> Strategy:
     """
-    用途與流程：建立 Phase 1 long-only 策略，必要時依序包上成交量濾網與進場冷卻 wrapper。
-    參數：strategy_name 是 registry key；策略參數為 None 時使用該策略 default，Phase 1 只強制 allow_short=False；absolute-momentum 使用 fast_window / slow_window 對應動能回看期與趨勢 SMA；orb_opening_range_minutes、orb_session_start_hour/minute、orb_session_end_hour/minute、orb_session_timezone、orb_vwap_slope_confirmation、orb_ema_window、orb_ema_trend_confirmation、orb_reject_ema_inside_opening_range、orb_signal_window_minutes、orb_min/max_range_pct、orb_min_breakout_pct、orb_full_bar_above_range、orb_min_breakout_body_pct、orb_fresh_breakout_from_or 與 orb_use_opening_range_volume_baseline 只對 ORB 策略生效；其中 session end / timezone 目前先作為 regular-session contract metadata；volume_filter 控制是否套用成交量 wrapper，volume_window 與 volume_multiplier 為 None 時使用 wrapper default；signal_cooldown_bars 為正整數時會封鎖接受 long entry 後指定 bar 數內的新 long entry；volatility_target 啟用後會依最近 realized volatility 將目標曝險縮到 target_annual_volatility，不會放大超過 volatility_max_scale。
+    用途與流程：建立 Phase 1 long-only 策略，必要時依序包上成交量濾網、進場冷卻、volatility target 與 drawdown risk-off wrapper。
+    參數：strategy_name 是 registry key；策略參數為 None 時使用該策略 default，Phase 1 只強制 allow_short=False；absolute-momentum 使用 fast_window / slow_window 對應動能回看期與趨勢 SMA；orb_opening_range_minutes、orb_session_start_hour/minute、orb_session_end_hour/minute、orb_session_timezone、orb_vwap_slope_confirmation、orb_ema_window、orb_ema_trend_confirmation、orb_reject_ema_inside_opening_range、orb_signal_window_minutes、orb_min/max_range_pct、orb_min_breakout_pct、orb_full_bar_above_range、orb_min_breakout_body_pct、orb_fresh_breakout_from_or 與 orb_use_opening_range_volume_baseline 只對 ORB 策略生效；其中 session end / timezone 目前先作為 regular-session contract metadata；volume_filter 控制是否套用成交量 wrapper，volume_window 與 volume_multiplier 為 None 時使用 wrapper default；signal_cooldown_bars 為正整數時會封鎖接受 long entry 後指定 bar 數內的新 long entry；volatility_target 啟用後會依最近 realized volatility 將目標曝險縮到 target_annual_volatility，不會放大超過 volatility_max_scale；drawdown_risk_off 啟用後會用策略層 proxy equity 在單檔回撤超過門檻時暫時降到 flat。
     回傳與錯誤：回傳 Strategy；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     strategy = build_strategy(
@@ -386,6 +390,16 @@ def build_phase1_strategy(
             max_scale=VolatilityTargetStrategy.max_scale
             if volatility_max_scale is None
             else volatility_max_scale,
+        )
+    if drawdown_risk_off:
+        strategy = DrawdownRiskOffStrategy(
+            strategy,
+            drawdown_threshold=DrawdownRiskOffStrategy.drawdown_threshold
+            if drawdown_risk_off_threshold is None
+            else drawdown_risk_off_threshold,
+            risk_off_bars=DrawdownRiskOffStrategy.risk_off_bars
+            if drawdown_risk_off_bars is None
+            else drawdown_risk_off_bars,
         )
 
     return strategy

@@ -6064,3 +6064,106 @@ python tools\multi_stock_target_state_sweep.py `
 1. 優先做 `absolute-momentum` 的 drawdown-state / per-symbol risk-off 最小版本，例如當單檔 equity 從高點回撤超過門檻時暫時降曝險，並用同一套七檔、1x / 3x 成本壓力比較。
 2. 若不先改策略，先補 walk-forward / OOS split，確認 `2454` 的 2024-2025 回撤不是樣本內特例。
 3. 若繼續 volatility target，先測 rebalance threshold / weekly rebalance，目標是降低交易數，而不是期待它單獨解決最大回撤。
+
+## 2026-05-24 研究與執行：Absolute Momentum drawdown risk-off overlay
+
+這輪接續 target-state drawdown attribution 結論：`absolute-momentum` 與 `vol-target 0.40` 的 worst MDD 都集中在 `2454` 的 `2024-06-20` 到 `2025-12-24`，且 trough 當天仍是滿倉 `1.000`。因此本輪不再調動能窗或目標波動，而是新增一個可驗證的 `DrawdownRiskOffStrategy` wrapper，用策略層 proxy equity 測試單檔回撤狀態下先降曝險是否有效。
+
+### 本輪程式改動
+
+- 新增 `src\signal_forge\strategies\drawdown_risk_off.py`。
+- `DrawdownRiskOffStrategy` 包裝既有策略，流程是：
+  1. 底層策略先輸出逐 bar `Signal`。
+  2. wrapper 用與 `Backtester` 對齊的 close-to-close target exposure 語意維護 proxy equity。
+  3. proxy equity 從本地 high-water mark 回撤超過 `drawdown_threshold` 時，後續 `risk_off_bars` 內將非零 target 改成 `0.0`，reason 為 `drawdown_risk_off`。
+  4. risk-off 結束後以當下 proxy equity 重設本地 high-water mark，避免 flat 期間因舊高點造成永久空手。
+- `build_phase1_strategy(...)` 新增：
+  - `drawdown_risk_off`
+  - `drawdown_risk_off_threshold`
+  - `drawdown_risk_off_bars`
+- `tools\multi_stock_target_state_sweep.py` 新增：
+  - `--drawdown-risk-off`
+  - `--drawdown-risk-off-threshold`
+  - `--drawdown-risk-off-bars`
+- 新增 `tests\test_drawdown_risk_off.py`，並補 strategy factory / target-state parser regression。
+
+### Target-state 報表命令
+
+單獨 drawdown risk-off：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --drawdown-risk-off `
+  --drawdown-risk-off-threshold 0.25 `
+  --drawdown-risk-off-bars 120 `
+  --summary-json reports\generated\twse-target-state-absolute-momentum-ddriskoff25b120-20260524.json `
+  --summary-md reports\generated\twse-target-state-absolute-momentum-ddriskoff25b120-20260524.md
+```
+
+疊加 volatility target：
+
+```powershell
+python tools\multi_stock_target_state_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --strategy absolute-momentum `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --volatility-target `
+  --volatility-lookback-bars 20 `
+  --target-annual-volatility 0.40 `
+  --volatility-min-observations 20 `
+  --volatility-max-scale 1.0 `
+  --drawdown-risk-off `
+  --drawdown-risk-off-threshold 0.25 `
+  --drawdown-risk-off-bars 120 `
+  --summary-json reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-20260524.json `
+  --summary-md reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-20260524.md
+```
+
+### Aggregate 結果
+
+| Candidate | Cost | Positive | Beat B&H | Lower MDD | Avg return | Avg excess | Worst MDD | Avg Sharpe | Avg Sortino | Avg Calmar | Trades | Avg time in market | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `absolute-momentum` 原始 target-state | `1x` | `6/7` | `1/7` | `6/7` | `225.78%` | `-226.95%` | `-50.74%` | `0.727` | `1.160` | `0.653` | `350` | `54.05%` | compare-only：報酬最好，但回撤太大 |
+| `vol-target 0.40` | `1x` | `6/7` | `1/7` | `6/7` | `180.83%` | `-271.90%` | `-47.45%` | `0.706` | `1.116` | `0.598` | `1558` | `51.86%` | compare-only：回撤降低但風險調整未勝原始 |
+| `dd-risk-off 20%/60` | `1x` | `5/7` | `1/7` | `5/7` | `142.47%` | `-310.26%` | `-59.40%` | `0.535` | `0.852` | `0.386` | `313` | `46.48%` | discard：worst MDD 惡化且 2454 trough 仍滿倉 |
+| `dd-risk-off 25%/120` | `1x` | `6/7` | `1/7` | `6/7` | `207.18%` | `-245.55%` | `-46.95%` | `0.682` | `1.093` | `0.599` | `301` | `47.20%` | compare-only：比 raw 降回撤，但 Sharpe / Calmar 下降 |
+| `vol-target 0.40 + dd-risk-off 25%/120` | `1x` | `6/7` | `1/7` | `6/7` | `188.37%` | `-264.36%` | `-44.93%` | `0.738` | `1.176` | `0.620` | `1416` | `48.25%` | compare-only：本輪較佳風控組合，但仍未解 benchmark-relative |
+| `vol-target 0.40 + dd-risk-off 25%/120` | `3x` | `6/7` | `1/7` | `6/7` | `183.14%` | `-269.15%` | `-45.16%` | `0.719` | `1.148` | `0.595` | `1416` | `48.25%` | compare-only：成本壓力後仍未失效，但不能升級 |
+
+### 解讀
+
+1. **單純 `20%/60 bars` 是錯的方向**：它把 worst MDD 從原始 `-50.74%` 惡化到 `-59.40%`，而且 positive count 降到 `5/7`，所以 discard。
+2. **`25%/120 bars` 有降低 MDD，但不是主候選**：1x worst MDD 降到 `-46.95%`，平均報酬仍有 `207.18%`，但 Sharpe / Calmar 低於原始 target-state。
+3. **疊加 `vol-target 0.40` 後，本輪風控 tradeoff 較好**：1x worst MDD 降到 `-44.93%`，平均 Sharpe `0.738` 略高於原始 target-state `0.727`，但 avg return 低於原始，且仍只有 `1/7` beat B&H。
+4. **trough position 問題仍未完全解**：`vol-target 0.40 + dd-risk-off 25%/120` 的 worst drawdown 仍來自 `2454`，peak `2024-06-20`、trough `2025-12-24`，trough position 仍是 `1.000`，只是 peak-to-trough 平均曝險降到 `0.248`。
+
+### Keep / Discard 判斷
+
+- **Keep**：`DrawdownRiskOffStrategy` wrapper 與 target-state CLI 參數。它把 drawdown-state 風控變成可重現、可測試、可成本壓力檢查的研究假設。
+- **Discard**：`dd-risk-off 20%/60 bars`。它明確惡化 worst MDD。
+- **Compare-only**：`dd-risk-off 25%/120` 與 `vol-target 0.40 + dd-risk-off 25%/120`。它們有降低回撤的價值，但 benchmark-relative 與 trough 滿倉問題仍未解。
+
+### 下一步
+
+1. 不再只擴大 drawdown threshold / risk-off bars grid；下一輪若做風控，應測 re-entry 條件或 weekly rebalance。
+2. 補 walk-forward / OOS split，確認 `25%/120` 的 tradeoff 不是 2020-2026 樣本內折衷。
+3. 針對 `2412` 與 `2454` 建立失敗案例檢查：一個是負報酬弱標的，一個是長回撤集中標的。

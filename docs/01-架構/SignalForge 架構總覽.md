@@ -54,6 +54,7 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 - 具體策略只實作 `prepare_context(...)` 與 `decide_bar(...)`，例如 SMA context 放 fast / slow SMA，VWAP context 放 rolling VWAP / rolling std，Confluence context 放 SMA / VWAP / RSI / volume，Absolute Momentum context 放 close 與長期 trend SMA。
 - `strategies.registry` 提供 Phase 1 strategy factory；CLI 可用 `sma-crossover`、`vwap-reversion`、`confluence-score`、`absolute-momentum` 建構 long-only 日線策略。
 - `VolatilityTargetStrategy` 是風控 wrapper，不改底層策略的 entry reason，只在 realized volatility 高於目標年化波動時把非零 `target_position` 縮小；`max_scale=1.0` 的預設語意是只降曝險、不加槓桿。
+- `DrawdownRiskOffStrategy` 是風控 wrapper，用與 target-state backtester 對齊的 proxy equity 追蹤單檔回撤；當本地高點回撤超過門檻時，暫時把非零 target 改成 flat，等待固定 bar 數後重設 high-water mark 再允許進場。
 
 這個模板是工程結構重構，不改變既有策略的交易語意。`VolumeFilteredStrategy` 仍是外層 wrapper，只在 CLI 啟用 `--volume-filter` 時套用。
 
@@ -113,6 +114,7 @@ flowchart TD
 - Aggregate 層級的 positive return count、beat benchmark count、lower drawdown count。
 - Drawdown attribution：定位 worst MDD 的股票、peak / trough / recovery 日期、duration / recovery bars，以及 peak-to-trough 平均曝險。
 - 可選 `--volatility-target` 風控 overlay，用同一套 target-state 報表檢查「降低曝險」是否真的改善 worst MDD、成本壓力與 benchmark-relative tradeoff。
+- 可選 `--drawdown-risk-off` 風控 overlay，用同一套 target-state 報表檢查「單檔回撤狀態下暫時降曝險」是否真的改善 MDD、風險調整與 benchmark-relative tradeoff。
 
 這個工具不接 broker、不產生 order intent，也不改變 `live` dry-run 邊界。它只用於研究完整持倉候選是否值得進一步加入風控、volatility scaling 或 walk-forward 驗證。
 

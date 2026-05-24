@@ -7,6 +7,7 @@ from signal_forge.strategies import (
     SUPPORTED_STRATEGY_NAMES,
     AbsoluteMomentumStrategy,
     ConfluenceScoreStrategy,
+    DrawdownRiskOffStrategy,
     OrbVolumeVwapStrategy,
     SignalCooldownStrategy,
     SmaCrossoverStrategy,
@@ -368,6 +369,26 @@ class StrategyFactoryTests(unittest.TestCase):
         self.assertEqual(
             strategy.name,
             "vol_target_l20_t0.25_max1__absolute_momentum_m126_sma200_long_only",
+        )
+
+    def test_phase1_factory_can_wrap_drawdown_risk_off(self) -> None:
+        """
+        用途與流程：驗證 Phase 1 factory 可選擇性套用 drawdown risk-off wrapper，
+        讓 target-state 工具能用同一個 strategy factory 建立單檔回撤風控候選。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；wrapper 型別、名稱或底層策略順序漂移時 assertion 失敗。
+        """
+        strategy = build_phase1_strategy(
+            "absolute-momentum",
+            drawdown_risk_off=True,
+            drawdown_risk_off_threshold=0.20,
+            drawdown_risk_off_bars=60,
+        )
+
+        self.assertIsInstance(strategy, DrawdownRiskOffStrategy)
+        self.assertEqual(
+            strategy.name,
+            "drawdown_risk_off_d20_b60__absolute_momentum_m126_sma200_long_only",
         )
 
     def test_rejects_unsupported_strategy_name(self) -> None:

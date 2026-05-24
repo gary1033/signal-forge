@@ -180,10 +180,13 @@ def run_sweep(
     target_annual_volatility: float | None = None,
     volatility_min_observations: int | None = None,
     volatility_max_scale: float | None = None,
+    drawdown_risk_off: bool = False,
+    drawdown_risk_off_threshold: float | None = None,
+    drawdown_risk_off_bars: int | None = None,
 ) -> tuple[list[TargetStateRow], list[TargetStateAggregate]]:
     """
     用途與流程：對多個股票、策略與成本倍率執行完整 target-state 回測，並彙總跨股票風險指標。
-    參數：csv_paths 是股票 CSV；strategies 是 strategy registry 名稱；cost_multipliers 會等比例放大 commission/slippage/tax；start/end 控制 common window；initial_equity 與成本欄位傳給 Backtester；periods_per_year 用於日線風險年化；signal_cooldown_bars 可沿用 Phase 1 進場冷卻 wrapper；volatility_target 及其參數會套用只降曝險的波動目標 wrapper。
+    參數：csv_paths 是股票 CSV；strategies 是 strategy registry 名稱；cost_multipliers 會等比例放大 commission/slippage/tax；start/end 控制 common window；initial_equity 與成本欄位傳給 Backtester；periods_per_year 用於日線風險年化；signal_cooldown_bars 可沿用 Phase 1 進場冷卻 wrapper；volatility_target 及其參數會套用只降曝險的波動目標 wrapper；drawdown_risk_off 及其參數會套用單檔 proxy equity 回撤風控 wrapper。
     回傳與錯誤：回傳逐檔 TargetStateRow 與 aggregate；策略名稱、資料或成本不合法時由底層拋出 ValueError。
     """
     rows: list[TargetStateRow] = []
@@ -211,6 +214,9 @@ def run_sweep(
                     volatility_min_observations=volatility_min_observations,
                     volatility_max_scale=volatility_max_scale,
                     volatility_periods_per_year=periods_per_year,
+                    drawdown_risk_off=drawdown_risk_off,
+                    drawdown_risk_off_threshold=drawdown_risk_off_threshold,
+                    drawdown_risk_off_bars=drawdown_risk_off_bars,
                 )
                 result = backtester.run(strategy, bars)
                 rows.append(
@@ -220,6 +226,7 @@ def run_sweep(
                         strategy=_strategy_label(
                             strategy_name,
                             volatility_target=volatility_target,
+                            drawdown_risk_off=drawdown_risk_off,
                         ),
                         result=result,
                         bars=bars,
@@ -494,7 +501,7 @@ def format_markdown(
 
 def build_parser() -> argparse.ArgumentParser:
     """
-    用途與流程：建立 target-state 多股票 sweep 的命令列 parser，支援多 CSV、多策略、多成本壓力與可選 volatility target 風控 overlay。
+    用途與流程：建立 target-state 多股票 sweep 的命令列 parser，支援多 CSV、多策略、多成本壓力、可選 volatility target 與 drawdown risk-off 風控 overlay。
     參數：無。
     回傳與錯誤：回傳 argparse.ArgumentParser；解析錯誤由 argparse 處理。
     """
@@ -563,6 +570,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="maximum exposure multiplier; default 1.0 means no leverage",
     )
+    parser.add_argument(
+        "--drawdown-risk-off",
+        action="store_true",
+        help="force nonzero targets flat after a per-symbol proxy-equity drawdown breach",
+    )
+    parser.add_argument(
+        "--drawdown-risk-off-threshold",
+        type=float,
+        default=0.20,
+        help="proxy-equity drawdown threshold as a decimal, for example 0.20",
+    )
+    parser.add_argument(
+        "--drawdown-risk-off-bars",
+        type=int,
+        default=60,
+        help="number of bars to keep risk-off active after a drawdown breach",
+    )
     parser.add_argument("--summary-json")
     parser.add_argument("--summary-md")
     return parser
@@ -570,8 +594,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """
-    用途與流程：CLI 入口，解析 target-state sweep、成本壓力與 volatility target 參數，執行回測、列印 Markdown，並可寫出 JSON/Markdown 摘要。
-    參數：argv 是可選命令列參數清單；None 時使用 sys.argv；volatility target 相關選項會透過 run_sweep 傳給 strategy factory。
+    用途與流程：CLI 入口，解析 target-state sweep、成本壓力、volatility target 與 drawdown risk-off 參數，執行回測、列印 Markdown，並可寫出 JSON/Markdown 摘要。
+    參數：argv 是可選命令列參數清單；None 時使用 sys.argv；volatility target 與 drawdown risk-off 相關選項會透過 run_sweep 傳給 strategy factory。
     回傳與錯誤：成功回傳 0；參數、資料或回測錯誤會由 argparse 或底層函式拋出。
     """
     args = build_parser().parse_args(argv)
@@ -594,6 +618,9 @@ def main(argv: list[str] | None = None) -> int:
         target_annual_volatility=args.target_annual_volatility,
         volatility_min_observations=args.volatility_min_observations,
         volatility_max_scale=args.volatility_max_scale,
+        drawdown_risk_off=args.drawdown_risk_off,
+        drawdown_risk_off_threshold=args.drawdown_risk_off_threshold,
+        drawdown_risk_off_bars=args.drawdown_risk_off_bars,
     )
     markdown = format_markdown(
         rows,
@@ -688,15 +715,23 @@ def _build_row(
     )
 
 
-def _strategy_label(strategy: str, *, volatility_target: bool) -> str:
+def _strategy_label(
+    strategy: str,
+    *,
+    volatility_target: bool,
+    drawdown_risk_off: bool,
+) -> str:
     """
     用途與流程：為 target-state 報表建立人類可讀策略標籤，避免 wrapper 啟用時 aggregate 仍顯示成未縮放版本。
-    參數：strategy 是 registry key；volatility_target 表示本輪是否啟用波動目標曝險縮放。
+    參數：strategy 是 registry key；volatility_target 表示本輪是否啟用波動目標曝險縮放；drawdown_risk_off 表示本輪是否啟用回撤狀態 risk-off。
     回傳與錯誤：回傳策略標籤字串；不會主動拋錯。
     """
+    label = strategy
     if volatility_target:
-        return f"{strategy}+vol-target"
-    return strategy
+        label = f"{label}+vol-target"
+    if drawdown_risk_off:
+        label = f"{label}+dd-risk-off"
+    return label
 
 
 def _drawdown_attribution(result: BacktestResult) -> DrawdownAttribution:

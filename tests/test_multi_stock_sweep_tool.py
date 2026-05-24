@@ -158,6 +158,28 @@ class MultiStockSweepToolTests(unittest.TestCase):
         self.assertEqual(args.volatility_min_observations, 20)
         self.assertEqual(args.volatility_max_scale, 0.8)
 
+    def test_target_state_parser_accepts_drawdown_risk_off_options(self) -> None:
+        """
+        用途與流程：驗證 target-state CLI 可接收 drawdown risk-off 相關參數，讓研究報表能用命令列重現單檔回撤風控設定。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；parser 參數名稱或預設型別漂移時 assertion 失敗。
+        """
+        args = build_target_state_parser().parse_args(
+            [
+                "--csv",
+                "data.csv",
+                "--drawdown-risk-off",
+                "--drawdown-risk-off-threshold",
+                "0.15",
+                "--drawdown-risk-off-bars",
+                "40",
+            ]
+        )
+
+        self.assertTrue(args.drawdown_risk_off)
+        self.assertEqual(args.drawdown_risk_off_threshold, 0.15)
+        self.assertEqual(args.drawdown_risk_off_bars, 40)
+
 
 def _row(symbol: str, *, gross_profit: float, gross_loss: float) -> SweepRow:
     """
