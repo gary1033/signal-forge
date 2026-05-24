@@ -7918,3 +7918,85 @@ rolling_windows = 24m window / 12m step / 12m min
 - **Do not promote**：不得把目前 execution-aware compare candidate 升級為穩定營利或主策略。
 - **Current compare candidate unchanged**：仍可用 `TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 作 compare candidate，但它更像 TWSE14-specific candidate，而不是已泛化策略。
 - **Next**：優先處理資料品質與 universe quality：adjusted price、較慢批次 TWSE30+、更嚴格股票池篩選、canary 分層設計。不要再只微調 breadth / top-N；canary failure 表示問題不是單一門檻可解。
+
+## 2026-05-24 Portfolio rotation adjusted price 診斷
+
+### 目的
+
+前幾輪一直把 TWSE STOCK_DAY 未調整權息列為主要資料邊界。本輪不改策略參數，而是把 Yahoo chart 的 `adjclose / close` 當成調整係數，套回 repo 既有 TWSE OHLCV，成交量仍保留 TWSE 原始成交股數，重新跑同一組 execution-aware compare candidate。
+
+研究假設：
+
+> 如果原本 TWSE14 強績效不是由未調整權息資料放大，則調整價版本至少應保留接近的 Information Ratio、rolling excess 與 drawdown profile；若調整價後 IR 明顯下降或 rolling window 變弱，原本未調整價結果不得當作主證據。
+
+### 資料處理
+
+- Yahoo 只用來提供調整係數：`adjustment_ratio = adjclose / close`。
+- 調整後 OHLC：`TWSE open/high/low/close * adjustment_ratio`。
+- 成交量：保留 TWSE 原始 `volume`，避免 Yahoo 台股 volume 與 TWSE 成交股數口徑不同而污染 liquidity gate。
+- 暫存 CSV：`reports/generated/adjusted-data/TWSEADJ_<symbol>_1D.csv`。
+
+Sanity check：直接使用 Yahoo OHLCV 會讓台股 volume 口徑和 TWSE 不一致，因此不採用 Yahoo volume 版本作主判斷。
+
+### 固定條件
+
+```text
+universe = TWSE14
+rebalance = monthly
+lookback_bars = 21
+top_n = 4
+min_return = 0.0
+breadth_filter = on
+breadth_lookback_bars = 42
+breadth_min_positive_count = 3
+max_consecutive_selections_per_symbol = 5
+liquidity_lookback_bars = 20
+min_average_traded_value = 500M
+cost_multipliers = 1,2,3
+rolling_windows = 24m window / 12m step / 12m min
+```
+
+報表檔案：
+
+- `reports/generated/twse14-twse-yahoo-ratio-adjusted-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- `reports/generated/twse14-twse-yahoo-ratio-adjusted-portfolio-rotation-monthly-lb21-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.md`
+
+### Full-window 與成本壓力
+
+| Cost | Return | Excess | IR | MDD | Active MDD |
+|---:|---:|---:|---:|---:|---:|
+| `1x` | `1644.65%` | `1160.72%` | `1.156` | `-27.97%` | `-20.62%` |
+| `2x` | `1616.61%` | `1132.79%` | `1.140` | `-28.20%` | `-20.79%` |
+| `3x` | `1589.02%` | `1105.32%` | `1.125` | `-28.44%` | `-20.98%` |
+
+與未調整價 baseline 對照：
+
+| Case | Return | Excess | IR | MDD | Active MDD | Min rolling excess | Min rolling IR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `TWSE14 raw liq500m` | `1745.89%` | `1409.71%` | `1.521` | `-18.61%` | `-19.81%` | `37.22%` | `0.814` |
+| `TWSE14 adjusted-ratio liq500m` | `1644.65%` | `1160.72%` | `1.156` | `-27.97%` | `-20.62%` | `1.54%` | `0.104` |
+
+### Rolling 摘要
+
+| Window | Return | Excess | IR | MDD | Active MDD | Max symbol | Top3 symbol share | Max group | Top3 group share |
+|---|---:|---:|---:|---:|---:|---|---:|---|---:|
+| `roll01` | `262.86%` | `157.89%` | `1.563` | `-17.65%` | `-19.81%` | `2603` | `65.72%` | `shipping` | `91.03%` |
+| `roll02` | `38.76%` | `1.54%` | `0.104` | `-27.10%` | `-20.61%` | `2603` | `76.90%` | `shipping` | `91.39%` |
+| `roll03` | `66.75%` | `40.96%` | `1.000` | `-18.41%` | `-14.49%` | `2382` | `68.29%` | `electronics` | `94.77%` |
+| `roll04` | `124.18%` | `55.26%` | `1.252` | `-17.04%` | `-13.77%` | `2382` | `59.59%` | `electronics` | `83.06%` |
+| `roll05` | `92.27%` | `26.18%` | `0.638` | `-18.61%` | `-18.11%` | `2308` | `54.05%` | `electronics` | `85.83%` |
+| `roll06` | `132.63%` | `44.78%` | `0.779` | `-13.79%` | `-20.62%` | `2308` | `63.07%` | `electronics` | `92.51%` |
+
+### 解讀
+
+1. **調整價後 edge 明顯降級**：full-window IR 從 `1.521` 降到 `1.156`，MDD 從 `-18.61%` 惡化到 `-27.97%`。策略沒有完全失效，但未調整價結果明顯過度樂觀。
+2. **最弱 rolling window 幾乎失去安全邊際**：`roll02` excess 只剩 `1.54%`、IR 只剩 `0.104`，遠低於未調整價的 `37.22%` / `0.814`。
+3. **group concentration 仍未解**：adjusted-ratio 版本 full-window top3 group share 仍約 `91.29%`，rolling top3 group share 最高約 `94.77%`，代表資料調整沒有自然解決群組依賴。
+4. **liquidity gate 仍可執行但不構成穩定證據**：`1x/2x/3x` 成本後 IR 仍為正，但 MDD、rolling IR 與群組集中度都不足以升級。
+
+### Keep / Discard 判斷
+
+- **Keep diagnostic**：adjusted-ratio 回測是必要資料品質反證，後續評估 portfolio rotation 必須優先看調整價版本。
+- **Do not promote**：不得用未調整價 `IR 1.521` / `MDD -18.61%` 當主策略證據；目前候選仍是 compare-only。
+- **Current compare candidate downgraded**：`TWSE14 top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 仍可作工程比較錨點，但策略品質判斷要以 adjusted-ratio 的 `IR 1.156`、`MDD -27.97%`、min rolling IR `0.104` 為主要風險版本。
+- **Next**：正式化 adjusted price 資料來源與 manifest、較慢批次完成 TWSE30+、建立更高品質股票池，並在所有後續回測同時報 raw 與 adjusted-ratio 結果。

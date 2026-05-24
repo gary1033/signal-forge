@@ -92,11 +92,12 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 群組歸因與群組曝險診斷已補上。`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 的 full-window 最大貢獻群組是 `electronics`，絕對貢獻占比約 `33.90%`；前三群組 `electronics / semiconductor / shipping` 合計約 `89.27%`。但 full-window 最大平均曝險群組是 `semiconductor`，平均權重約 `30.33%`，前三群組平均曝險約 `65.99%`。rolling 診斷更集中：`roll02` 的 `shipping` 群組貢獻約 `75.64%`，但最大平均曝險反而是 `financial`、約 `15.64%`，代表部分 concentration 來自 regime return，不是單純長期高曝險。
 - Dominant group exclusion 已測。移除 `shipping` 後 full IR 仍約 `1.255`，但 min rolling excess 轉為 `-4.68%`、min rolling IR 轉為 `-0.185`，表示 `shipping/2603` 是 2021-2022 window 的關鍵保護來源。移除 `electronics` 後 full IR 只剩約 `0.650`，MDD 惡化到約 `-27.31%`，表示 electronics 是 full-window edge 核心。移除 `semiconductor` 後 min rolling excess 仍為正、約 `26.86%`，但 MDD / active MDD 惡化到約 `-25.31%` / `-26.64%`，且 max rolling top-3 group share 升到約 `98.68%`。因此固定刪群組不是目前升級方向。
 - Canary universe 已測。把同一組 `top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 套到新增 9 檔股票後，full-window return 只有約 `14.92%`、excess 約 `-0.91%`、IR 約 `-0.002`，MDD 約 `-44.29%`；rolling 最差 excess 約 `-33.45%`、IR 約 `-1.645`，max rolling top-3 symbol share 約 `89.54%`、group share 約 `98.45%`。這表示目前候選沒有通過 held-out 股票池驗證，不能視為已泛化策略。
+- Adjusted price 診斷已測。以 Yahoo `adjclose / close` 作調整係數、套回 TWSE 原始 OHLC 並保留 TWSE volume 後，同一組候選 full-window return 約 `1644.65%`、excess 約 `1160.72%`、IR 約 `1.156`，MDD 約 `-27.97%`；最弱 rolling excess 只剩約 `1.54%`、IR 約 `0.104`。這表示未調整價版本的 `IR 1.521` / `MDD -18.61%` 過度樂觀，後續策略品質判斷要優先看 adjusted-ratio 版本。
 - `top_n=4` 可把 full-window top-3 絕對貢獻占比降到約 `48.32%`，但 max rolling top-3 share 仍約 `81.68%`，所以它改善 full-window 集中度，還沒有解決最關鍵的 rolling concentration。
 - `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 績效 compare candidate：full-window IR 約 `1.515`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、min rolling IR 約 `0.814`；但 max rolling top-3 share 仍約 `82.62%`。
 - 新增 liquidity gate 後，`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 暫時是 execution-aware compare candidate：full-window return 約 `1745.89%`、excess 約 `1409.71%`、IR 約 `1.521`、MDD 約 `-18.61%`、active MDD 約 `-19.81%`，3x 成本後 IR 仍約 `1.490`。但 max rolling top-3 share 仍約 `82.62%`，所以它不是 concentration 修復。
 - 擴到 TWSE23 後，concentration 明顯下降但 edge 變弱：`top4/min3/maxconsec5` 的 max rolling top-3 share 降到約 `65.32%`，但 full IR 降到約 `1.179`、MDD 惡化到約 `-36.64%`、min rolling excess 約 `-17.99%`。`top5/min5` 的 max rolling top-3 share 進一步降到約 `56.62%`，但 min rolling IR 約 `-0.265`，所以只能作 concentration diagnostic。
-- 因為分段貢獻仍偏集中、資料未還原權息、股票池仍小，所以仍不能宣稱穩定營利。
+- 因為分段貢獻仍偏集中、調整價版本明顯降級、股票池仍小，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
@@ -108,11 +109,12 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 已測 liquidity / capacity gate。`500M/20 bars` 幾乎不傷害原策略並小幅改善 active MDD，因此升為 execution-aware compare candidate；`1B` 雖提高報酬但回撤與 rolling IR tradeoff 較差，`2B` 明確 discard。
 - 已測 dominant group exclusion。固定移除單一群組不是解法：`no shipping` 讓 rolling edge 失效，`no electronics` 讓 full-window edge 大幅衰退，`no semiconductor` 雖保留 rolling edge 但回撤與 concentration 惡化。
 - 已測 canary universe。Canary9 的 full-window excess / IR 轉負，MDD 到約 `-44.29%`，rolling concentration 比 TWSE14 baseline 更糟，因此目前策略仍是 compare-only。
-- 下一步優先測 adjusted price、較慢批次完成 TWSE30+、更高品質股票池、group regime validation 或更嚴格的流動性/容量條件，目標是同時降低 rolling `max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`、`max_group_abs_contribution_share`、`top3_group_abs_contribution_share` 與 group exposure concentration，並保留正 min rolling excess 與可接受 active drawdown。
-- 再檢查 adjusted price、流動性與容量；不要只追求更高 total return 或微調 breadth threshold。
+- 已測 adjusted price。以 Yahoo 調整係數套回 TWSE OHLCV 後，full IR 降到約 `1.156`，MDD 惡化到約 `-27.97%`，min rolling IR 只剩約 `0.104`，因此目前策略品質要按 adjusted-ratio 版本降級解讀。
+- 下一步優先正式化 adjusted price 資料來源與 manifest、較慢批次完成 TWSE30+、更高品質股票池、group regime validation 或更嚴格的流動性/容量條件，目標是同時降低 rolling `max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`、`max_group_abs_contribution_share`、`top3_group_abs_contribution_share` 與 group exposure concentration，並保留正 min rolling excess 與可接受 active drawdown。
+- 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
-- 目前主比較錨點分成四個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是最新 execution-aware compare candidate。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、group attribution、group exposure、dominant group exclusion 與 canary universe 診斷保留為 discard / compare-only / diagnostic 對照，不取代核心錨點，也不是穩定營利證明。
+- 目前主比較錨點分成四個：`top3 + breadth 42/min3` 是最高報酬錨點；`top4 + breadth 42/min3` 是風險調整折衷錨點；`top4 + breadth 42/min3 + max consecutive 5` 是績效 compare candidate；`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 是 execution-aware compare candidate。`groupcap1/2`、更高 liquidity 門檻、TWSE23 擴大股票池、group attribution、group exposure、dominant group exclusion、canary universe 與 adjusted price 診斷保留為 discard / compare-only / diagnostic 對照；其中 adjusted-ratio 版本應成為後續品質判斷的主要風險版本，不取代核心錨點，也不是穩定營利證明。
 
 ## 參考來源
 
