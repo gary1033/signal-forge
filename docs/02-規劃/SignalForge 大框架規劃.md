@@ -127,7 +127,7 @@ python -m signal_forge.cli fetch-data `
 - 策略開發模板已整理為 hook-based `BarByBarStrategy`，三個既有策略透過 `prepare_context(...)` / `decide_bar(...)` 實作，外部 `Signal` contract 不變。
 - Strategy registry / factory 已接上 CLI，Phase 1 factory 固定建構 long-only 策略，並保留 `VolumeFilteredStrategy` wrapper。
 - `entry-edge` 支援 `--hold-bars-list`，可用同一個 strategy、資料與成本設定比較多個固定持有期，並輸出 deterministic hold comparison JSON/Markdown。
-- `multi_stock_target_state_sweep.py` 支援完整持倉 target-state 多股票報表，輸出 benchmark-relative return、MDD、Sharpe、Sortino、Calmar、turnover、time in market 與成本壓力。
+- `multi_stock_target_state_sweep.py` 支援完整持倉 target-state 多股票報表，輸出 benchmark-relative return、MDD、Sharpe、Sortino、Calmar、turnover、time in market、成本壓力與 worst drawdown attribution。
 - `VolatilityTargetStrategy` 支援只降曝險、不加槓桿的 realized-volatility target overlay，並已接入 target-state sweep 的 `--volatility-target`。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
@@ -144,6 +144,6 @@ python -m signal_forge.cli fetch-data `
 - 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics：Information Ratio、drawdown attribution 與 walk-forward / OOS。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
-- 針對 Absolute Momentum 的 volatility target 結果做下一層驗證：目前 `target_annual_volatility=0.40` 可把 worst MDD 從約 `-50.74%` 降到約 `-47.45%`，但 Sharpe/Calmar 未明顯改善，下一步應補 drawdown attribution 與 walk-forward / OOS，而不是直接升級。
+- 針對 Absolute Momentum 的 volatility target 結果做下一層驗證：`target_annual_volatility=0.40` 可把 worst MDD 從約 `-50.74%` 降到約 `-47.45%`，但 drawdown attribution 顯示 worst MDD 仍集中在 `2454` 的 `2024-06-20` 到 `2025-12-24`，且 trough 當天仍是滿倉 `1.000`；下一步應測更直接的 drawdown-state / per-symbol risk-off 或 walk-forward / OOS，而不是直接升級。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

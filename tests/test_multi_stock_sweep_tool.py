@@ -9,10 +9,12 @@ from tools.multi_stock_entry_edge_sweep import (
 )
 from tools.multi_stock_target_state_sweep import (
     TargetStateRow,
+    _drawdown_attribution,
     build_aggregates as build_target_state_aggregates,
     build_parser as build_target_state_parser,
     parse_cost_multipliers_list,
 )
+from signal_forge.backtesting.backtester import BacktestResult, EquityPoint
 
 
 class MultiStockSweepToolTests(unittest.TestCase):
@@ -92,6 +94,41 @@ class MultiStockSweepToolTests(unittest.TestCase):
         self.assertEqual(aggregates[0].lower_drawdown_than_benchmark_count, 1)
         self.assertAlmostEqual(aggregates[0].average_total_return, 0.05)
         self.assertAlmostEqual(aggregates[0].average_benchmark_excess_return, -0.025)
+        self.assertEqual(aggregates[0].worst_drawdown_symbol, "2317")
+        self.assertEqual(aggregates[0].worst_drawdown_trough_timestamp, "2026-01-03")
+
+    def test_target_state_drawdown_attribution_tracks_peak_trough_and_recovery(self) -> None:
+        """
+        用途與流程：驗證 target-state drawdown attribution 會定位最大回撤的 peak、trough、recovery 與回撤期間曝險，避免只知道 MDD 數字但不知道來源。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 attribution 演算法或欄位語意漂移，assertion 會失敗。
+        """
+        result = BacktestResult(
+            strategy_name="test",
+            start_equity=100.0,
+            end_equity=105.0,
+            total_return=0.05,
+            max_drawdown=-0.30,
+            trade_count=0,
+            equity_curve=[
+                EquityPoint("2026-01-01", 100.0, 0.0),
+                EquityPoint("2026-01-02", 120.0, 0.5),
+                EquityPoint("2026-01-03", 90.0, 0.8),
+                EquityPoint("2026-01-04", 84.0, 0.4),
+                EquityPoint("2026-01-05", 121.0, 0.0),
+            ],
+            trades=[],
+        )
+
+        attribution = _drawdown_attribution(result)
+
+        self.assertEqual(attribution.start_timestamp, "2026-01-02")
+        self.assertEqual(attribution.trough_timestamp, "2026-01-04")
+        self.assertEqual(attribution.recovery_timestamp, "2026-01-05")
+        self.assertEqual(attribution.duration_bars, 2)
+        self.assertEqual(attribution.recovery_bars, 1)
+        self.assertEqual(attribution.trough_position, 0.4)
+        self.assertAlmostEqual(attribution.average_abs_position, (0.5 + 0.8 + 0.4) / 3)
 
     def test_target_state_parser_accepts_volatility_target_options(self) -> None:
         """
@@ -194,6 +231,13 @@ def _target_state_row(
         turnover=2.0,
         time_in_market=0.5,
         end_equity=10_000.0 * (1.0 + total_return),
+        max_drawdown_start_timestamp="2026-01-01",
+        max_drawdown_trough_timestamp="2026-01-03",
+        max_drawdown_recovery_timestamp=None,
+        max_drawdown_duration_bars=2,
+        max_drawdown_recovery_bars=None,
+        max_drawdown_trough_position=0.5,
+        max_drawdown_average_abs_position=0.4,
     )
 
 

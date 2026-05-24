@@ -53,6 +53,13 @@ class TargetStateRow:
     total_cost: float
     turnover: float
     time_in_market: float
+    max_drawdown_start_timestamp: str
+    max_drawdown_trough_timestamp: str
+    max_drawdown_recovery_timestamp: str | None
+    max_drawdown_duration_bars: int
+    max_drawdown_recovery_bars: int | None
+    max_drawdown_trough_position: float
+    max_drawdown_average_abs_position: float
     end_equity: float
 
 
@@ -80,7 +87,28 @@ class TargetStateAggregate:
     total_cost: float
     average_turnover: float
     average_time_in_market: float
+    worst_drawdown_symbol: str | None
+    worst_drawdown_start_timestamp: str | None
+    worst_drawdown_trough_timestamp: str | None
+    worst_drawdown_recovery_timestamp: str | None
+    worst_drawdown_duration_bars: int | None
+    worst_drawdown_recovery_bars: int | None
+    worst_drawdown_trough_position: float | None
+    worst_drawdown_average_abs_position: float | None
     average_end_equity: float
+
+
+@dataclass(frozen=True)
+class DrawdownAttribution:
+    """Target-state 最大回撤來源，用於報表定位 peak、trough、recovery 與曝險。"""
+
+    start_timestamp: str
+    trough_timestamp: str
+    recovery_timestamp: str | None
+    duration_bars: int
+    recovery_bars: int | None
+    trough_position: float
+    average_abs_position: float
 
 
 def parse_cost_multipliers_list(value: str) -> tuple[float, ...]:
@@ -216,6 +244,11 @@ def build_aggregates(rows: list[TargetStateRow]) -> list[TargetStateAggregate]:
 
     aggregates: list[TargetStateAggregate] = []
     for (strategy, cost_multiplier, cost_label), group_rows in groups.items():
+        worst_drawdown_row = min(
+            group_rows,
+            key=lambda row: row.max_drawdown,
+            default=None,
+        )
         aggregates.append(
             TargetStateAggregate(
                 strategy=strategy,
@@ -266,6 +299,44 @@ def build_aggregates(rows: list[TargetStateRow]) -> list[TargetStateAggregate]:
                 total_cost=sum(row.total_cost for row in group_rows),
                 average_turnover=_average(row.turnover for row in group_rows),
                 average_time_in_market=_average(row.time_in_market for row in group_rows),
+                worst_drawdown_symbol=(
+                    None if worst_drawdown_row is None else worst_drawdown_row.symbol
+                ),
+                worst_drawdown_start_timestamp=(
+                    None
+                    if worst_drawdown_row is None
+                    else worst_drawdown_row.max_drawdown_start_timestamp
+                ),
+                worst_drawdown_trough_timestamp=(
+                    None
+                    if worst_drawdown_row is None
+                    else worst_drawdown_row.max_drawdown_trough_timestamp
+                ),
+                worst_drawdown_recovery_timestamp=(
+                    None
+                    if worst_drawdown_row is None
+                    else worst_drawdown_row.max_drawdown_recovery_timestamp
+                ),
+                worst_drawdown_duration_bars=(
+                    None
+                    if worst_drawdown_row is None
+                    else worst_drawdown_row.max_drawdown_duration_bars
+                ),
+                worst_drawdown_recovery_bars=(
+                    None
+                    if worst_drawdown_row is None
+                    else worst_drawdown_row.max_drawdown_recovery_bars
+                ),
+                worst_drawdown_trough_position=(
+                    None
+                    if worst_drawdown_row is None
+                    else worst_drawdown_row.max_drawdown_trough_position
+                ),
+                worst_drawdown_average_abs_position=(
+                    None
+                    if worst_drawdown_row is None
+                    else worst_drawdown_row.max_drawdown_average_abs_position
+                ),
                 average_end_equity=_average(row.end_equity for row in group_rows),
             )
         )
@@ -346,6 +417,29 @@ def format_markdown(
     lines.extend(
         [
             "",
+            "## Drawdown Attribution",
+            "",
+            "| Strategy | Cost | Worst symbol | Worst MDD | Peak | Trough | Recovery | Duration bars | Recovery bars | Trough position | Avg abs position |",
+            "|---|---:|---|---:|---|---|---|---:|---:|---:|---:|",
+        ]
+    )
+    for item in aggregates:
+        lines.append(
+            "| "
+            f"{item.strategy} | {item.cost_label} | "
+            f"{item.worst_drawdown_symbol or 'undefined'} | "
+            f"{item.worst_max_drawdown:.2%} | "
+            f"{item.worst_drawdown_start_timestamp or 'undefined'} | "
+            f"{item.worst_drawdown_trough_timestamp or 'undefined'} | "
+            f"{item.worst_drawdown_recovery_timestamp or 'unrecovered'} | "
+            f"{_format_optional_int(item.worst_drawdown_duration_bars)} | "
+            f"{_format_optional_int(item.worst_drawdown_recovery_bars)} | "
+            f"{_format_optional_ratio(item.worst_drawdown_trough_position)} | "
+            f"{_format_optional_ratio(item.worst_drawdown_average_abs_position)} |"
+        )
+    lines.extend(
+        [
+            "",
             "## Per Stock",
             "",
             "| Symbol | Strategy | Cost | Return | CAGR | Sharpe | Sortino | Calmar | B&H return | Excess | MDD | B&H MDD | Trades | Turnover | Time in market |",
@@ -369,6 +463,31 @@ def format_markdown(
             f"{row.max_drawdown:.2%} | "
             f"{row.benchmark_max_drawdown:.2%} | "
             f"{row.trade_count} | {row.turnover:.2f} | {row.time_in_market:.2%} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Per Stock Drawdown",
+            "",
+            "| Symbol | Strategy | Cost | MDD | Peak | Trough | Recovery | Duration bars | Recovery bars | Trough position | Avg abs position |",
+            "|---|---|---:|---:|---|---|---|---:|---:|---:|---:|",
+        ]
+    )
+    for row in sorted(
+        rows,
+        key=lambda item: (item.symbol, item.strategy, item.cost_multiplier),
+    ):
+        lines.append(
+            "| "
+            f"{row.symbol} | {row.strategy} | {row.cost_label} | "
+            f"{row.max_drawdown:.2%} | "
+            f"{row.max_drawdown_start_timestamp} | "
+            f"{row.max_drawdown_trough_timestamp} | "
+            f"{row.max_drawdown_recovery_timestamp or 'unrecovered'} | "
+            f"{row.max_drawdown_duration_bars} | "
+            f"{_format_optional_int(row.max_drawdown_recovery_bars)} | "
+            f"{row.max_drawdown_trough_position:.3f} | "
+            f"{row.max_drawdown_average_abs_position:.3f} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -530,6 +649,7 @@ def _build_row(
         years,
     )
     benchmark = _buy_and_hold_benchmark(bars, config=config)
+    drawdown_attribution = _drawdown_attribution(result)
     return TargetStateRow(
         symbol=symbol,
         csv_path=str(path),
@@ -557,6 +677,13 @@ def _build_row(
             abs(trade.to_position - trade.from_position) for trade in result.trades
         ),
         time_in_market=_time_in_market(result),
+        max_drawdown_start_timestamp=drawdown_attribution.start_timestamp,
+        max_drawdown_trough_timestamp=drawdown_attribution.trough_timestamp,
+        max_drawdown_recovery_timestamp=drawdown_attribution.recovery_timestamp,
+        max_drawdown_duration_bars=drawdown_attribution.duration_bars,
+        max_drawdown_recovery_bars=drawdown_attribution.recovery_bars,
+        max_drawdown_trough_position=drawdown_attribution.trough_position,
+        max_drawdown_average_abs_position=drawdown_attribution.average_abs_position,
         end_equity=result.end_equity,
     )
 
@@ -570,6 +697,63 @@ def _strategy_label(strategy: str, *, volatility_target: bool) -> str:
     if volatility_target:
         return f"{strategy}+vol-target"
     return strategy
+
+
+def _drawdown_attribution(result: BacktestResult) -> DrawdownAttribution:
+    """
+    用途與流程：從 Backtester equity curve 找出最大回撤的 peak-to-trough 區間，並統計該段曝險狀態。
+    參數：result 是完整 target-state 回測結果，equity_curve 需按時間排序且包含 equity 與 position。
+    回傳與錯誤：回傳 DrawdownAttribution；若 equity_curve 為空，回傳空字串與 0 值，避免報表寫入失敗。
+    """
+    if not result.equity_curve:
+        return DrawdownAttribution(
+            start_timestamp="",
+            trough_timestamp="",
+            recovery_timestamp=None,
+            duration_bars=0,
+            recovery_bars=None,
+            trough_position=0.0,
+            average_abs_position=0.0,
+        )
+
+    peak_index = 0
+    peak_equity = result.equity_curve[0].equity
+    max_drawdown = 0.0
+    max_peak_index = 0
+    trough_index = 0
+
+    for index, point in enumerate(result.equity_curve):
+        if point.equity > peak_equity:
+            peak_equity = point.equity
+            peak_index = index
+        if peak_equity <= 0:
+            continue
+        drawdown = (point.equity / peak_equity) - 1.0
+        if drawdown < max_drawdown:
+            max_drawdown = drawdown
+            max_peak_index = peak_index
+            trough_index = index
+
+    recovery_index: int | None = None
+    recovery_threshold = result.equity_curve[max_peak_index].equity
+    for index in range(trough_index + 1, len(result.equity_curve)):
+        if result.equity_curve[index].equity >= recovery_threshold:
+            recovery_index = index
+            break
+
+    drawdown_points = result.equity_curve[max_peak_index : trough_index + 1]
+    average_abs_position = _average(abs(point.position) for point in drawdown_points)
+    return DrawdownAttribution(
+        start_timestamp=result.equity_curve[max_peak_index].timestamp,
+        trough_timestamp=result.equity_curve[trough_index].timestamp,
+        recovery_timestamp=None
+        if recovery_index is None
+        else result.equity_curve[recovery_index].timestamp,
+        duration_bars=trough_index - max_peak_index,
+        recovery_bars=None if recovery_index is None else recovery_index - trough_index,
+        trough_position=result.equity_curve[trough_index].position,
+        average_abs_position=average_abs_position,
+    )
 
 
 def _buy_and_hold_benchmark(
@@ -814,6 +998,17 @@ def _format_optional_ratio(value: float | None) -> str:
     if value is None:
         return "undefined"
     return f"{value:.3f}"
+
+
+def _format_optional_int(value: int | None) -> str:
+    """
+    用途與流程：將可選整數欄位格式化為 Markdown 表格文字，供 recovery bars 這類可能不存在的欄位使用。
+    參數：value 是 None 或整數。
+    回傳與錯誤：None 回傳 `undefined`；否則回傳十進位整數字串。
+    """
+    if value is None:
+        return "undefined"
+    return str(value)
 
 
 if __name__ == "__main__":

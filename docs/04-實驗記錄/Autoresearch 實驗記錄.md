@@ -6017,3 +6017,50 @@ python tools\multi_stock_target_state_sweep.py `
 1. 補 target-state drawdown attribution，定位 vol target 的 worst MDD 仍來自哪檔股票與期間。
 2. 補 walk-forward / OOS split，確認 `0.35` 到 `0.40` 不是 2020-2026 樣本內折衷。
 3. 若繼續優化 vol target，先測 rebalance threshold / weekly rebalance，降低 fractional exposure 每日微調造成的交易數。
+
+## 2026-05-24 研究與執行：Target-state drawdown attribution
+
+這輪接續 volatility target 結論，先補 target-state 報表中的 drawdown attribution。目的不是優化參數，而是回答：Absolute Momentum 與 volatility target 的 worst MDD 到底來自哪檔股票、哪段期間，以及當時策略是否仍維持過高曝險。
+
+### 本輪程式改動
+
+- `tools\multi_stock_target_state_sweep.py` 新增 `DrawdownAttribution`，由 `BacktestResult.equity_curve` 找出最大回撤的 peak、trough 與 recovery。
+- `TargetStateRow` 新增：
+  - `max_drawdown_start_timestamp`
+  - `max_drawdown_trough_timestamp`
+  - `max_drawdown_recovery_timestamp`
+  - `max_drawdown_duration_bars`
+  - `max_drawdown_recovery_bars`
+  - `max_drawdown_trough_position`
+  - `max_drawdown_average_abs_position`
+- `TargetStateAggregate` 新增 worst drawdown symbol 與對應 attribution 欄位。
+- Markdown 報表新增 `Drawdown Attribution` 與 `Per Stock Drawdown` 兩段，讓下一輪策略修改可以先定位問題來源。
+- `tests\test_multi_stock_sweep_tool.py` 新增 regression test，鎖住 peak / trough / recovery / exposure 計算。
+
+### Target-state attribution 結果
+
+| Candidate | Cost | Worst symbol | Worst MDD | Peak | Trough | Recovery | Duration bars | Recovery bars | Trough position | Avg abs position | 判斷 |
+|---|---:|---|---:|---|---|---|---:|---:|---:|---:|---|
+| `absolute-momentum` | `1x` | `2454` | `-50.74%` | `2024-06-20` | `2025-12-24` | `2026-05-04` | `370` | `80` | `1.000` | `0.574` | compare-only：回撤來源明確，但仍接近 B&H |
+| `absolute-momentum` | `3x` | `2454` | `-51.33%` | `2024-06-20` | `2025-12-24` | `2026-05-04` | `370` | `80` | `1.000` | `0.574` | compare-only：成本放大後回撤更深 |
+| `absolute-momentum + vol-target 0.40` | `1x` | `2454` | `-47.45%` | `2024-06-20` | `2025-12-24` | `2026-05-05` | `370` | `81` | `1.000` | `0.515` | compare-only：平均曝險下降，但 trough 仍滿倉 |
+| `absolute-momentum + vol-target 0.40` | `3x` | `2454` | `-48.05%` | `2024-06-20` | `2025-12-24` | `2026-05-05` | `370` | `81` | `1.000` | `0.515` | compare-only：成本壓力後仍非主候選 |
+
+### 解讀
+
+1. **worst MDD 不是多檔平均問題，而是集中在 `2454` 的長回撤**：原始與 vol-target 版本的 peak / trough 都是 `2024-06-20` 到 `2025-12-24`。
+2. **Volatility target 有幫助，但不是足夠的保護機制**：`target_annual_volatility=0.40` 把 1x worst MDD 從 `-50.74%` 降到 `-47.45%`，但 peak-to-trough 平均曝險只從 `0.574` 降到 `0.515`，trough position 仍是 `1.000`。
+3. **問題不是再把 target vol 微調漂亮**：若 worst trough 當天仍滿倉，下一步應測 drawdown-state / per-symbol risk-off 或再平衡門檻，而不是只改 `target_annual_volatility`。
+4. **`2412` 是另一個要注意的弱點**：報表顯示 `2412` 在 `2022-04-26` 到 `2026-04-08` 的最大回撤尚未完全恢復，且策略本身總報酬為負，後續若做股票池或 regime 過濾，也要把它列為失敗案例。
+
+### Keep / Discard 判斷
+
+- **Keep**：drawdown attribution 報表欄位與 tests。它補上策略評估準則要求的「先定位回撤來源」。
+- **Compare-only**：`absolute-momentum + vol-target 0.40`。它比原始版本降低 worst MDD，但沒有解決 `2454` trough 滿倉問題。
+- **Discard as immediate main candidate**：繼續單純調 target vol。這輪證據顯示問題是 drawdown 狀態辨識與單檔風險控制，不只是目標波動率高低。
+
+### 下一步
+
+1. 優先做 `absolute-momentum` 的 drawdown-state / per-symbol risk-off 最小版本，例如當單檔 equity 從高點回撤超過門檻時暫時降曝險，並用同一套七檔、1x / 3x 成本壓力比較。
+2. 若不先改策略，先補 walk-forward / OOS split，確認 `2454` 的 2024-2025 回撤不是樣本內特例。
+3. 若繼續 volatility target，先測 rebalance threshold / weekly rebalance，目標是降低交易數，而不是期待它單獨解決最大回撤。

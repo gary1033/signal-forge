@@ -139,7 +139,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 
 - 新增 `tools\multi_stock_target_state_sweep.py`，用既有 `Backtester` 執行完整 close-to-close target exposure 回測。
 - 支援多股票、多策略、多成本倍率，讓 Phase 2 候選可以同時檢查 1x / 2x / 3x 成本壓力。
-- Aggregate 固定輸出 positive return count、beat benchmark count、lower drawdown count、average return、average excess、worst MDD、Sharpe、Sortino、Calmar、turnover、time in market 與 total cost。
+- Aggregate 固定輸出 positive return count、beat benchmark count、lower drawdown count、average return、average excess、worst MDD、Sharpe、Sortino、Calmar、turnover、time in market、total cost 與 worst drawdown attribution。
 - `tests\test_multi_stock_sweep_tool.py` 新增成本倍率 parser 與 target-state aggregate regression。
 - 這個工具補上 Phase 1 entry-edge 不能回答的完整持倉問題，但不改 `PhaseRunner` 現有 artifact contract，也不碰 live dry-run 邊界。
 
@@ -150,6 +150,13 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - `build_phase1_strategy(...)` 可選擇性套用 volatility target wrapper；target-state sweep 新增 `--volatility-target`、`--volatility-lookback-bars`、`--target-annual-volatility`、`--volatility-min-observations` 與 `--volatility-max-scale`。
 - 新增 `tests\test_volatility_target.py`、factory regression 與 target-state parser regression，鎖住縮放公式、wrapper 名稱與 CLI 參數。
 - 目前 `absolute-momentum + vol-target` 結果屬 compare-only：可以降低 worst MDD，但 Sharpe / Calmar 與 benchmark-relative 問題尚未解決。
+
+### 12. Target-state drawdown attribution
+
+- `TargetStateRow` 新增最大回撤的 peak、trough、recovery timestamp、duration / recovery bars、trough position 與 peak-to-trough 平均絕對曝險。
+- `TargetStateAggregate` 會直接指出同一策略 / 成本組合中 worst MDD 來自哪檔股票與哪段期間。
+- Markdown 報表新增 `Drawdown Attribution` 與 `Per Stock Drawdown` 區塊，讓策略優化先定位回撤來源，再決定要加 volatility scaling、drawdown-state exit、per-symbol risk-off 還是 walk-forward / OOS。
+- `tests\test_multi_stock_sweep_tool.py` 鎖住 peak / trough / recovery 與曝險計算，避免報表欄位 drift。
 
 ## 重要 commit 節點
 
@@ -168,7 +175,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點，下一步補 drawdown attribution 或 volatility scaling，而不是只調整動能 / 均線視窗。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；drawdown attribution 已顯示 worst MDD 集中在 `2454`，下一步應測更直接的 drawdown-state / per-symbol risk-off 或 walk-forward / OOS，而不是只調整動能 / 均線視窗。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

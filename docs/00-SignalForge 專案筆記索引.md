@@ -37,10 +37,10 @@ updated: 2026-05-24
 - `backtest`：優先 deterministic artifacts、regression tests、報表可稽核性。
 - `entry-edge`：支援單一固定持有期，也可用 `--hold-bars-list` 輸出多持有期 comparison JSON/Markdown。
 - `multi_stock_entry_edge_sweep.py`：支援多檔股票、多策略、多持有期一次 sweep，避免只看單一標的 PF。
-- `multi_stock_target_state_sweep.py`：支援多檔股票、多策略與 1x / 2x / 3x 成本壓力的完整持倉 target-state sweep。
+- `multi_stock_target_state_sweep.py`：支援多檔股票、多策略、1x / 2x / 3x 成本壓力與最大回撤歸因的完整持倉 target-state sweep。
 - `vwap-reversion`：可選 `--vwap-regime-filter`，用 `close >= SMA` 阻擋強下跌中的新 long entry。
 - `absolute-momentum`：長期趨勢持有 compare-only 候選，要求回看報酬為正且收盤站上長期 SMA。
-- `volatility-target`：可選風控 wrapper，只在 realized volatility 過高時縮小 target exposure；目前 `absolute-momentum + vol-target` 是 drawdown control compare-only，不是主候選。
+- `volatility-target`：可選風控 wrapper，只在 realized volatility 過高時縮小 target exposure；目前 `absolute-momentum + vol-target` 是 drawdown control compare-only，不是主候選，因為 drawdown attribution 顯示 worst MDD 仍集中在 `2454` 且 trough 當天仍滿倉。
 - `live`：只產生 dry-run `OrderIntent`，安全邊界由 `LIVE_DRY_RUN_ONLY` 鎖住。
 - 最新整理基線：readiness score 目標仍為 `110`，固定 guard 是 `python -m unittest discover -s tests` 與 `git diff --check`。
 

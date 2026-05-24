@@ -86,6 +86,7 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 - 預設 `126/200` 在目前七檔 TWSE common window 中沒有同時改善 `Avg excess return` 與 `Worst MDD`，因此只能作為 compare-only 候選。
 - target-state 持有的 worst MDD 可接近 buy-and-hold，不能直接升級為穩定營利候選。
 - volatility target 能降低 worst MDD，但也會犧牲 upside，且目前 Sharpe / Calmar 沒有明顯勝過原始 target-state；因此仍是 compare-only。
+- drawdown attribution 顯示 worst MDD 集中在 `2454`，且 vol target `0.40` 在 trough 當天仍是滿倉 `1.000`，代表單純波動縮放沒有完全處理長回撤狀態。
 
 ## 回測解讀
 
@@ -100,9 +101,18 @@ SignalForge 第一版使用 deterministic close-confirmed 規則：
 
 目前較值得後續追蹤的是 `target_annual_volatility=0.35` 到 `0.40`，因為它們比 Confluence cooldown target-state 的 avg excess 好，且 worst MDD 低於原始 Absolute Momentum；但它們尚未解決只有 `1/7` beat buy-and-hold 的問題。
 
+### Drawdown attribution 補充
+
+| 版本 | Cost | Worst symbol | Worst MDD | Peak | Trough | Recovery | Trough position | Avg abs position |
+|---|---:|---|---:|---|---|---|---:|---:|
+| 原始 target-state | `1x` | `2454` | `-50.74%` | `2024-06-20` | `2025-12-24` | `2026-05-04` | `1.000` | `0.574` |
+| Vol target `0.40` | `1x` | `2454` | `-47.45%` | `2024-06-20` | `2025-12-24` | `2026-05-05` | `1.000` | `0.515` |
+
+這代表 vol target 確實降低 peak-to-trough 的平均曝險，但在最大回撤 trough 當天沒有降到低曝險。下一步若要改善穩定性，方向應該是 drawdown-state / per-symbol risk-off、再平衡門檻或 OOS 檢查，而不是只調 `target_annual_volatility`。
+
 ## 下一步
 
 - 不先擴大 `momentum_window` / `trend_window` 搜尋；避免把 2020-2026 強趨勢樣本擬合成漂亮回測。
-- 優先補 drawdown attribution，確認 worst MDD 主要由哪檔股票、哪段期間與哪種 volatility scale 狀態造成。
+- 優先測最小 drawdown-state / per-symbol risk-off，確認能否壓低 `2454` 長回撤，同時保留多股票平均報酬與 1x / 3x 成本壓力。
 - 做 walk-forward / OOS，確認 vol target 不是只在單一 regime 中降低回撤。
 - 與 `confluence-score + hold=10 + signal_cooldown_bars=10` 固定在同一批七檔股票與同一期間比較。
