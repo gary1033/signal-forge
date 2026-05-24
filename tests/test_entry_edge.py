@@ -126,6 +126,63 @@ class EntryEdgeTests(unittest.TestCase):
         self.assertEqual(result.profit_factor_status, "finite")
         self.assertEqual(result.decision, "fail")
 
+    def test_transaction_tax_is_charged_on_exit_notional(self) -> None:
+        """
+        用途與流程：驗證 entry-edge 成本模型會把 commission/slippage 套用在進出場兩側，
+        並把 transaction_tax_bps 額外套用在出場端 notional。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        bars = bars_with_prices([(10, 10), (10, 11), (11, 11)])
+        strategy = StaticSignalStrategy([1.0, 0.0, 0.0])
+
+        result = EntryEdgeEvaluator(
+            EntryEdgeConfig(
+                commission_bps=10,
+                slippage_bps=5,
+                transaction_tax_bps=30,
+            )
+        ).run(strategy, bars)
+
+        self.assertEqual(result.trade_count, 1)
+        self.assertAlmostEqual(result.trades[0].gross_pnl, 1000.0)
+        self.assertAlmostEqual(result.trades[0].cost, 64.5)
+        self.assertAlmostEqual(result.trades[0].net_pnl, 935.5)
+
+    def test_result_includes_risk_adjusted_and_benchmark_metrics(self) -> None:
+        """
+        用途與流程：驗證 EntryEdgeResult 會固定輸出策略總報酬、風險調整指標與
+        buy-and-hold benchmark 對照欄位，讓報表不用在下游重新計算。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        bars = bars_with_prices(
+            [
+                (10, 10),
+                (10, 11),
+                (11, 11),
+                (10, 9),
+                (10, 9),
+                (10, 12),
+                (10, 12),
+            ]
+        )
+        strategy = StaticSignalStrategy([1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0])
+
+        result = EntryEdgeEvaluator(
+            EntryEdgeConfig(commission_bps=0, slippage_bps=0)
+        ).run(strategy, bars)
+
+        self.assertAlmostEqual(result.total_return, result.end_equity / 10000.0 - 1.0)
+        self.assertIsNotNone(result.sharpe_ratio)
+        self.assertIsNotNone(result.sortino_ratio)
+        self.assertIn("2026-01", result.monthly_returns)
+        self.assertIn("2026", result.yearly_returns)
+        self.assertAlmostEqual(
+            result.benchmark_excess_return,
+            result.total_return - result.benchmark_total_return,
+        )
+
     def test_failure_reason_is_ascii_and_deterministic(self) -> None:
         """
         用途與流程：驗證 failure reason is ascii and deterministic 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。

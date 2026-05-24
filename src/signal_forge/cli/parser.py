@@ -29,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
     entry_edge.add_argument("--initial-equity", type=float, default=10_000.0)
     entry_edge.add_argument("--commission-bps", type=float, default=1.0)
     entry_edge.add_argument("--slippage-bps", type=float, default=1.0)
+    entry_edge.add_argument(
+        "--transaction-tax-bps",
+        type=float,
+        default=0.0,
+        help="sell-side transaction tax in basis points; default keeps legacy reports unchanged",
+    )
     entry_edge.add_argument("--pass-profit-factor", type=float, default=1.2)
     add_strategy_arguments(entry_edge)
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import datetime
+from math import sqrt
 from typing import Literal, Sequence
 
 from signal_forge.core.market_data import Bar, validate_bars
@@ -17,6 +19,7 @@ class EntryEdgeConfig:
     initial_equity: float = 10_000.0
     commission_bps: float = 1.0
     slippage_bps: float = 1.0
+    transaction_tax_bps: float = 0.0
     hold_bars_per_day: int = 1
     pass_profit_factor: float = 1.2
 
@@ -62,9 +65,22 @@ class EntryEdgeResult:
     overlapping_signal_count: int
     win_rate: float
     average_net_pnl: float
+    total_return: float
+    cagr: float | None
+    sharpe_ratio: float | None
+    sortino_ratio: float | None
+    calmar_ratio: float | None
     max_drawdown: float
     start_equity: float
     end_equity: float
+    benchmark_end_equity: float
+    benchmark_total_return: float
+    benchmark_cagr: float | None
+    benchmark_max_drawdown: float
+    benchmark_excess_return: float
+    benchmark_excess_cagr: float | None
+    monthly_returns: dict[str, float]
+    yearly_returns: dict[str, float]
     trades: list[EntryEdgeTrade]
     equity_curve: list[EntryEdgeEquityPoint]
 
@@ -81,13 +97,23 @@ class EntryEdgeEvaluator:
 
     def __init__(self, config: EntryEdgeConfig | None = None) -> None:
         """
-        用途與流程：初始化物件狀態，保存後續執行所需的設定或 adapter 相依物件。
-        參數：self 表示目前物件實例；config（EntryEdgeConfig | None）由呼叫端傳入，需符合函式 contract
-        回傳與錯誤：回傳 None；若輸入不合法或 assertion 失敗，會依原實作拋出例外。
+        用途與流程：初始化 entry-edge evaluator，保存回測資金、成本、固定持有期與 PF
+        門檻，並在執行前先拒絕不合法設定。
+        參數：config 可為 None 或 EntryEdgeConfig；None 時使用預設初始資金、commission、
+        slippage、賣出端 transaction tax 與持有期。
+        回傳與錯誤：回傳 None；若資金非正、成本為負或持有期非正，拋出 ValueError。
         """
         self.config = config or EntryEdgeConfig()
         if self.config.hold_bars_per_day <= 0:
             raise ValueError("hold_bars_per_day must be positive")
+        if self.config.initial_equity <= 0:
+            raise ValueError("initial_equity must be positive")
+        if self.config.commission_bps < 0:
+            raise ValueError("commission_bps must be non-negative")
+        if self.config.slippage_bps < 0:
+            raise ValueError("slippage_bps must be non-negative")
+        if self.config.transaction_tax_bps < 0:
+            raise ValueError("transaction_tax_bps must be non-negative")
 
     def run(self, strategy: Strategy, bars: list[Bar]) -> EntryEdgeResult:
         """
@@ -118,7 +144,12 @@ class EntryEdgeEvaluator:
         equity = self.config.initial_equity
         trades: list[EntryEdgeTrade] = []
         equity_curve = [EntryEdgeEquityPoint(bars[0].timestamp, equity)]
-        total_cost_rate = (self.config.commission_bps + self.config.slippage_bps) / 10_000.0
+        entry_cost_rate = (self.config.commission_bps + self.config.slippage_bps) / 10_000.0
+        exit_cost_rate = (
+            self.config.commission_bps
+            + self.config.slippage_bps
+            + self.config.transaction_tax_bps
+        ) / 10_000.0
         previous_target = 0.0
         last_exit_index = -1
         ignored_short_count = 0
@@ -149,7 +180,7 @@ class EntryEdgeEvaluator:
             entry_notional = equity
             gross_pnl = entry_notional * ((exit_bar.close / entry_bar.open) - 1.0)
             exit_notional = entry_notional + gross_pnl
-            cost = (entry_notional * total_cost_rate) + (max(exit_notional, 0.0) * total_cost_rate)
+            cost = (entry_notional * entry_cost_rate) + (max(exit_notional, 0.0) * exit_cost_rate)
             net_pnl = gross_pnl - cost
             equity += net_pnl
             last_exit_index = exit_index
@@ -177,6 +208,7 @@ class EntryEdgeEvaluator:
         return _build_result(
             strategy_name=strategy_name,
             config=self.config,
+            bars=bars,
             trades=trades,
             equity_curve=equity_curve,
             ignored_short_count=ignored_short_count,
@@ -221,6 +253,7 @@ def _build_result(
     *,
     strategy_name: str,
     config: EntryEdgeConfig,
+    bars: list[Bar],
     trades: list[EntryEdgeTrade],
     equity_curve: list[EntryEdgeEquityPoint],
     ignored_short_count: int,
@@ -229,7 +262,7 @@ def _build_result(
 ) -> EntryEdgeResult:
     """
     用途與流程：依 registry 或 reporting 需求組合內部資料結構，集中維護建構規則。
-    參數：strategy_name（str）由呼叫端傳入，需符合函式 contract；config（EntryEdgeConfig）由呼叫端傳入，需符合函式 contract；trades（list[EntryEdgeTrade]）由呼叫端傳入，需符合函式 contract；equity_curve（list[EntryEdgeEquityPoint]）由呼叫端傳入，需符合函式 contract；ignored_short_count（int）由呼叫端傳入，需符合函式 contract；unclosed_signal_count（int）由呼叫端傳入，需符合函式 contract；overlapping_signal_count（int）由呼叫端傳入，需符合函式 contract
+    參數：strategy_name 是報表使用的策略名稱；config 是 entry-edge 成本、資金與持有期設定；bars 是完整 OHLCV 樣本，用來計算年化期間與 buy-and-hold benchmark；trades 是已完成交易；equity_curve 是交易後權益曲線；ignored_short_count、unclosed_signal_count、overlapping_signal_count 是訊號處理統計。
     回傳與錯誤：回傳 EntryEdgeResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
     """
     gross_profit = sum(trade.net_pnl for trade in trades if trade.net_pnl > 0)
@@ -271,6 +304,17 @@ def _build_result(
             )
 
     equity_values = [point.equity for point in equity_curve]
+    end_equity = equity_curve[-1].equity
+    total_return = (end_equity / config.initial_equity) - 1.0
+    years = _elapsed_years(bars)
+    trade_returns = [trade.return_pct for trade in trades]
+    benchmark = _buy_and_hold_benchmark(
+        bars,
+        initial_equity=config.initial_equity,
+        commission_bps=config.commission_bps,
+        slippage_bps=config.slippage_bps,
+        transaction_tax_bps=config.transaction_tax_bps,
+    )
     return EntryEdgeResult(
         strategy_name=strategy_name,
         config=config,
@@ -287,9 +331,28 @@ def _build_result(
         overlapping_signal_count=overlapping_signal_count,
         win_rate=win_rate,
         average_net_pnl=average_net_pnl,
+        total_return=total_return,
+        cagr=_compound_annual_growth_rate(config.initial_equity, end_equity, years),
+        sharpe_ratio=_annualized_sharpe_ratio(trade_returns, years),
+        sortino_ratio=_annualized_sortino_ratio(trade_returns, years),
+        calmar_ratio=_calmar_ratio(
+            _compound_annual_growth_rate(config.initial_equity, end_equity, years),
+            _max_drawdown(equity_values),
+        ),
         max_drawdown=_max_drawdown(equity_values),
         start_equity=config.initial_equity,
-        end_equity=equity_curve[-1].equity,
+        end_equity=end_equity,
+        benchmark_end_equity=benchmark["end_equity"],
+        benchmark_total_return=benchmark["total_return"],
+        benchmark_cagr=benchmark["cagr"],
+        benchmark_max_drawdown=benchmark["max_drawdown"],
+        benchmark_excess_return=total_return - benchmark["total_return"],
+        benchmark_excess_cagr=_subtract_optional(
+            _compound_annual_growth_rate(config.initial_equity, end_equity, years),
+            benchmark["cagr"],
+        ),
+        monthly_returns=_period_returns(equity_curve, key_length=7),
+        yearly_returns=_period_returns(equity_curve, key_length=4),
         trades=trades,
         equity_curve=equity_curve,
     )
@@ -308,3 +371,172 @@ def _max_drawdown(equity_values: list[float]) -> float:
         if peak > 0:
             max_drawdown = min(max_drawdown, (equity / peak) - 1.0)
     return max_drawdown
+
+
+def _elapsed_years(bars: list[Bar]) -> float:
+    """
+    用途與流程：由回測樣本第一根與最後一根 bar 的 timestamp 推估年化期間，供 CAGR、
+    Sharpe、Sortino 與 Calmar 使用。
+    參數：bars 是已通過 validate_bars 的 OHLCV 序列，timestamp 可為 YYYY-MM-DD 或 ISO datetime。
+    回傳與錯誤：回傳正浮點年數；若無法解析或期間為 0，退回用 bar 數除以 252 的近似值。
+    """
+    if len(bars) < 2:
+        return 0.0
+    try:
+        start = _parse_timestamp(bars[0].timestamp)
+        end = _parse_timestamp(bars[-1].timestamp)
+    except ValueError:
+        return len(bars) / 252.0
+    elapsed_days = (end - start).total_seconds() / 86_400.0
+    if elapsed_days <= 0:
+        return len(bars) / 252.0
+    return elapsed_days / 365.25
+
+
+def _parse_timestamp(timestamp: str) -> datetime:
+    """
+    用途與流程：將 SignalForge bar timestamp 轉成 datetime，支援日期與含時區的 ISO datetime。
+    參數：timestamp 是 Bar.timestamp 字串，可為 YYYY-MM-DD、ISO datetime 或 Z 結尾 UTC 格式。
+    回傳與錯誤：回傳 datetime；若格式不合法，拋出 ValueError。
+    """
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+
+def _compound_annual_growth_rate(
+    start_equity: float,
+    end_equity: float,
+    years: float,
+) -> float | None:
+    """
+    用途與流程：用起訖權益與年數計算 CAGR，避免報表只呈現未年化總報酬。
+    參數：start_equity 是期初資金；end_equity 是期末權益；years 是樣本期間年數。
+    回傳與錯誤：若起訖資金或年數不適合年化，回傳 None；否則回傳 CAGR 小數。
+    """
+    if start_equity <= 0 or end_equity <= 0 or years < (30.0 / 365.25):
+        return None
+    try:
+        return (end_equity / start_equity) ** (1.0 / years) - 1.0
+    except OverflowError:
+        return None
+
+
+def _annualized_sharpe_ratio(returns: list[float], years: float) -> float | None:
+    """
+    用途與流程：以每筆已完成交易的 net return 序列估算年化 Sharpe ratio，作為 entry-edge
+    階段的交易級風險調整報酬。
+    參數：returns 是每筆交易 net_pnl / entry_notional；years 是完整樣本年數，用來估算年化交易頻率。
+    回傳與錯誤：樣本不足、年數不合法或標準差為 0 時回傳 None；否則回傳 Sharpe。
+    """
+    if len(returns) < 2 or years <= 0:
+        return None
+    mean_return = sum(returns) / len(returns)
+    variance = sum((value - mean_return) ** 2 for value in returns) / (len(returns) - 1)
+    if variance <= 0:
+        return None
+    trades_per_year = len(returns) / years
+    return (mean_return / sqrt(variance)) * sqrt(trades_per_year)
+
+
+def _annualized_sortino_ratio(returns: list[float], years: float) -> float | None:
+    """
+    用途與流程：以負報酬交易的 downside deviation 估算年化 Sortino ratio，避免把上行波動也當成風險。
+    參數：returns 是每筆交易 net return；years 是樣本年數，用來估算年化交易頻率。
+    回傳與錯誤：樣本不足、沒有 downside deviation 或年數不合法時回傳 None；否則回傳 Sortino。
+    """
+    if len(returns) < 2 or years <= 0:
+        return None
+    mean_return = sum(returns) / len(returns)
+    downside = [min(0.0, value) for value in returns]
+    downside_variance = sum(value * value for value in downside) / len(returns)
+    if downside_variance <= 0:
+        return None
+    trades_per_year = len(returns) / years
+    return (mean_return / sqrt(downside_variance)) * sqrt(trades_per_year)
+
+
+def _calmar_ratio(cagr: float | None, max_drawdown: float) -> float | None:
+    """
+    用途與流程：計算 Calmar ratio，也就是 CAGR 除以最大回撤絕對值，用來衡量報酬是否足以補償回撤。
+    參數：cagr 是策略年化報酬；max_drawdown 是負數或 0 的最大回撤。
+    回傳與錯誤：若 CAGR 不存在或最大回撤為 0，回傳 None；否則回傳 Calmar。
+    """
+    if cagr is None or max_drawdown == 0:
+        return None
+    return cagr / abs(max_drawdown)
+
+
+def _subtract_optional(left: float | None, right: float | None) -> float | None:
+    """
+    用途與流程：安全計算兩個可選浮點數差值，供 excess CAGR 類欄位使用。
+    參數：left 與 right 是可為 None 的數值。
+    回傳與錯誤：任一側為 None 時回傳 None；否則回傳 left - right。
+    """
+    if left is None or right is None:
+        return None
+    return left - right
+
+
+def _buy_and_hold_benchmark(
+    bars: list[Bar],
+    *,
+    initial_equity: float,
+    commission_bps: float,
+    slippage_bps: float,
+    transaction_tax_bps: float,
+) -> dict[str, float | None]:
+    """
+    用途與流程：用同一份 bars 建立 buy-and-hold benchmark，第一根 open 買入、最後一根 close
+    賣出，並套用與策略相同的進出場成本設定。
+    參數：bars 是完整 OHLCV 樣本；initial_equity 是期初資金；commission_bps 與 slippage_bps
+    套用於買賣兩側；transaction_tax_bps 只套用於賣出端。
+    回傳與錯誤：回傳 end_equity、total_return、cagr、max_drawdown；若資料不足則回傳初始資金與 0 報酬。
+    """
+    if not bars:
+        return {
+            "end_equity": initial_equity,
+            "total_return": 0.0,
+            "cagr": None,
+            "max_drawdown": 0.0,
+        }
+    entry_cost_rate = (commission_bps + slippage_bps) / 10_000.0
+    exit_cost_rate = (commission_bps + slippage_bps + transaction_tax_bps) / 10_000.0
+    entry_price = bars[0].open * (1.0 + entry_cost_rate)
+    shares = initial_equity / entry_price if entry_price > 0 else 0.0
+    equity_values = [shares * bar.close for bar in bars]
+    end_equity = shares * bars[-1].close * (1.0 - exit_cost_rate)
+    equity_values[-1] = end_equity
+    years = _elapsed_years(bars)
+    return {
+        "end_equity": end_equity,
+        "total_return": (end_equity / initial_equity) - 1.0
+        if initial_equity > 0
+        else 0.0,
+        "cagr": _compound_annual_growth_rate(initial_equity, end_equity, years),
+        "max_drawdown": _max_drawdown(equity_values),
+    }
+
+
+def _period_returns(
+    equity_curve: list[EntryEdgeEquityPoint],
+    *,
+    key_length: int,
+) -> dict[str, float]:
+    """
+    用途與流程：把交易後 equity curve 聚合成月或年報酬，讓報表可以檢查績效是否集中於少數期間。
+    參數：equity_curve 是 EntryEdgeEquityPoint 序列；key_length 為 7 時取 YYYY-MM，為 4 時取 YYYY。
+    回傳與錯誤：回傳 period -> return 的 deterministic dict；若 period 內沒有權益變化則報酬為 0。
+    """
+    if not equity_curve:
+        return {}
+    period_start: dict[str, float] = {}
+    period_end: dict[str, float] = {}
+    previous_equity = equity_curve[0].equity
+    for point in equity_curve:
+        key = point.timestamp[:key_length]
+        period_start.setdefault(key, previous_equity)
+        period_end[key] = point.equity
+        previous_equity = point.equity
+    return {
+        key: (period_end[key] / start_equity) - 1.0 if start_equity else 0.0
+        for key, start_equity in sorted(period_start.items())
+    }

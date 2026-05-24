@@ -26,7 +26,15 @@ class SweepRow:
     trade_count: int
     win_rate: float
     average_net_pnl: float
+    total_return: float
+    cagr: float | None
+    sharpe_ratio: float | None
+    sortino_ratio: float | None
+    calmar_ratio: float | None
     max_drawdown: float
+    benchmark_total_return: float
+    benchmark_max_drawdown: float
+    benchmark_excess_return: float
     gross_profit: float
     gross_loss: float
     end_equity: float
@@ -44,6 +52,14 @@ class SweepAggregate:
     total_trades: int
     average_win_rate: float
     average_end_equity: float
+    average_total_return: float
+    average_cagr: float | None
+    average_sharpe_ratio: float | None
+    average_sortino_ratio: float | None
+    average_calmar_ratio: float | None
+    average_benchmark_total_return: float
+    worst_benchmark_max_drawdown: float
+    average_benchmark_excess_return: float
     worst_max_drawdown: float
     total_overlapping_signals: int
     total_gross_profit: float
@@ -112,6 +128,7 @@ def run_sweep(
     initial_equity: float,
     commission_bps: float,
     slippage_bps: float,
+    transaction_tax_bps: float = 0.0,
     signal_cooldown_bars: int | None = None,
 ) -> tuple[list[SweepRow], list[SweepAggregate]]:
     """
@@ -119,8 +136,9 @@ def run_sweep(
     strategy/hold 的跨股票 aggregate PF。
     參數：csv_paths 是待比較股票資料；strategies 是 SignalForge registry 策略名稱；
     hold_bars_values 是固定持有期清單；start/end 控制共同回測區間；pass_profit_factor、
-    initial_equity、commission_bps、slippage_bps 會傳入 EntryEdgeConfig；signal_cooldown_bars
-    為正整數時會要求策略工廠包上進場冷卻 wrapper，避免同一段行情反覆新進場。
+    initial_equity、commission_bps、slippage_bps 與 transaction_tax_bps 會傳入
+    EntryEdgeConfig；signal_cooldown_bars 為正整數時會要求策略工廠包上進場冷卻 wrapper，
+    避免同一段行情反覆新進場。
     回傳與錯誤：回傳逐檔 SweepRow 與聚合 SweepAggregate；若策略名稱不支援、資料不足
     或 entry-edge contract 不合法，底層會拋出 ValueError。
     """
@@ -137,6 +155,7 @@ def run_sweep(
                     initial_equity=initial_equity,
                     commission_bps=commission_bps,
                     slippage_bps=slippage_bps,
+                    transaction_tax_bps=transaction_tax_bps,
                     hold_bars_per_day=hold_bars,
                     pass_profit_factor=pass_profit_factor,
                 )
@@ -157,7 +176,15 @@ def run_sweep(
                         trade_count=result.trade_count,
                         win_rate=result.win_rate,
                         average_net_pnl=result.average_net_pnl,
+                        total_return=result.total_return,
+                        cagr=result.cagr,
+                        sharpe_ratio=result.sharpe_ratio,
+                        sortino_ratio=result.sortino_ratio,
+                        calmar_ratio=result.calmar_ratio,
                         max_drawdown=result.max_drawdown,
+                        benchmark_total_return=result.benchmark_total_return,
+                        benchmark_max_drawdown=result.benchmark_max_drawdown,
+                        benchmark_excess_return=result.benchmark_excess_return,
                         gross_profit=result.gross_profit,
                         gross_loss=result.gross_loss,
                         end_equity=result.end_equity,
@@ -171,7 +198,8 @@ def run_sweep(
 def build_aggregates(rows: list[SweepRow]) -> list[SweepAggregate]:
     """
     用途與流程：把逐檔 sweep 結果依 strategy/hold 分組，計算跨股票總損益後的 aggregate PF，
-    並彙總平均 end equity、最差 drawdown 與 total overlap，讓判斷不只依賴單一股票的漂亮結果。
+    並彙總平均 end equity、策略最差 drawdown、benchmark 最差 drawdown 與 total overlap，
+    讓判斷不只依賴單一股票的漂亮結果。
     參數：rows 是 run_sweep 產生的逐檔結果。
     回傳與錯誤：回傳依 aggregate PF、通過數與交易數排序的摘要；若某組沒有交易，PF 會標成
     undefined。
@@ -216,6 +244,37 @@ def build_aggregates(rows: list[SweepRow]) -> list[SweepAggregate]:
                     if group_rows
                     else 0.0
                 ),
+                average_total_return=(
+                    sum(row.total_return for row in group_rows) / len(group_rows)
+                    if group_rows
+                    else 0.0
+                ),
+                average_cagr=_average_optional(row.cagr for row in group_rows),
+                average_sharpe_ratio=_average_optional(
+                    row.sharpe_ratio for row in group_rows
+                ),
+                average_sortino_ratio=_average_optional(
+                    row.sortino_ratio for row in group_rows
+                ),
+                average_calmar_ratio=_average_optional(
+                    row.calmar_ratio for row in group_rows
+                ),
+                average_benchmark_total_return=(
+                    sum(row.benchmark_total_return for row in group_rows)
+                    / len(group_rows)
+                    if group_rows
+                    else 0.0
+                ),
+                worst_benchmark_max_drawdown=min(
+                    (row.benchmark_max_drawdown for row in group_rows),
+                    default=0.0,
+                ),
+                average_benchmark_excess_return=(
+                    sum(row.benchmark_excess_return for row in group_rows)
+                    / len(group_rows)
+                    if group_rows
+                    else 0.0
+                ),
                 worst_max_drawdown=min((row.max_drawdown for row in group_rows), default=0.0),
                 total_overlapping_signals=sum(
                     row.overlapping_signal_count for row in group_rows
@@ -248,7 +307,8 @@ def format_markdown(
 ) -> str:
     """
     用途與流程：把批次 sweep 結果整理成人可讀 Markdown，分成 aggregate ranking 與逐檔明細。
-    參數：rows 與 aggregates 是回測結果；start/end 與 pass_profit_factor 用來標明本次評估邊界。
+    參數：rows 與 aggregates 是回測結果，內含策略與 buy-and-hold benchmark 的報酬與回撤；
+    start/end 與 pass_profit_factor 用來標明本次評估邊界。
     回傳與錯誤：回傳 Markdown 字串；此函式只格式化已計算資料，不做額外 I/O。
     """
     window = f"{start or 'earliest'} to {end or 'latest'}"
@@ -276,10 +336,33 @@ def format_markdown(
     lines.extend(
         [
             "",
+            "## Risk Adjusted Aggregate",
+            "",
+            "| Strategy | Hold | Avg return | Avg CAGR | Avg Sharpe | Avg Sortino | Avg Calmar | Worst MDD | Avg B&H return | Worst B&H MDD | Avg excess return |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for item in aggregates:
+        lines.append(
+            "| "
+            f"{item.strategy} | {item.hold_bars} | "
+            f"{item.average_total_return:.2%} | "
+            f"{_format_optional_percent(item.average_cagr)} | "
+            f"{_format_optional_ratio(item.average_sharpe_ratio)} | "
+            f"{_format_optional_ratio(item.average_sortino_ratio)} | "
+            f"{_format_optional_ratio(item.average_calmar_ratio)} | "
+            f"{item.worst_max_drawdown:.2%} | "
+            f"{item.average_benchmark_total_return:.2%} | "
+            f"{item.worst_benchmark_max_drawdown:.2%} | "
+            f"{item.average_benchmark_excess_return:.2%} |"
+        )
+    lines.extend(
+        [
+            "",
             "## Per Stock",
             "",
-            "| Symbol | Strategy | Hold | Decision | PF | Trades | Win rate | Avg net PnL | Max drawdown | Overlap |",
-            "|---|---|---:|---|---:|---:|---:|---:|---:|---:|",
+            "| Symbol | Strategy | Hold | Decision | PF | Trades | Return | CAGR | Sharpe | Sortino | Calmar | B&H return | B&H max drawdown | Excess return | Max drawdown | Overlap |",
+            "|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in sorted(rows, key=lambda item: (item.symbol, item.strategy, item.hold_bars)):
@@ -287,7 +370,14 @@ def format_markdown(
             "| "
             f"{row.symbol} | {row.strategy} | {row.hold_bars} | {row.decision} | "
             f"{_format_pf(row.profit_factor_status, row.profit_factor)} | "
-            f"{row.trade_count} | {row.win_rate:.2%} | {row.average_net_pnl:.2f} | "
+            f"{row.trade_count} | {row.total_return:.2%} | "
+            f"{_format_optional_percent(row.cagr)} | "
+            f"{_format_optional_ratio(row.sharpe_ratio)} | "
+            f"{_format_optional_ratio(row.sortino_ratio)} | "
+            f"{_format_optional_ratio(row.calmar_ratio)} | "
+            f"{row.benchmark_total_return:.2%} | "
+            f"{row.benchmark_max_drawdown:.2%} | "
+            f"{row.benchmark_excess_return:.2%} | "
             f"{row.max_drawdown:.2%} | {row.overlapping_signal_count} |"
         )
     return "\n".join(lines) + "\n"
@@ -303,6 +393,40 @@ def _format_pf(status: str, value: float | None) -> str:
         return "Infinity"
     if value is None:
         return status
+    return f"{value:.3f}"
+
+
+def _average_optional(values: object) -> float | None:
+    """
+    用途與流程：計算可選績效指標的平均值，忽略 None，供多股票 aggregate 報表使用。
+    參數：values 是 float | None 的 iterable；None 表示該檔樣本不足或指標無定義。
+    回傳與錯誤：若沒有任何有效數值，回傳 None；否則回傳平均值。
+    """
+    valid = [value for value in values if value is not None]
+    if not valid:
+        return None
+    return sum(valid) / len(valid)
+
+
+def _format_optional_percent(value: float | None) -> str:
+    """
+    用途與流程：將可選百分比指標格式化為 Markdown 表格文字。
+    參數：value 是 None 或小數形式百分比。
+    回傳與錯誤：None 回傳 `undefined`；否則回傳兩位百分比字串。
+    """
+    if value is None:
+        return "undefined"
+    return f"{value:.2%}"
+
+
+def _format_optional_ratio(value: float | None) -> str:
+    """
+    用途與流程：將可選比率指標格式化為 Markdown 表格文字。
+    參數：value 是 None 或浮點比率。
+    回傳與錯誤：None 回傳 `undefined`；否則回傳三位小數字串。
+    """
+    if value is None:
+        return "undefined"
     return f"{value:.3f}"
 
 
@@ -330,6 +454,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--initial-equity", type=float, default=10_000.0)
     parser.add_argument("--commission-bps", type=float, default=1.0)
     parser.add_argument("--slippage-bps", type=float, default=1.0)
+    parser.add_argument(
+        "--transaction-tax-bps",
+        type=float,
+        default=0.0,
+        help="sell-side transaction tax in basis points",
+    )
     parser.add_argument(
         "--signal-cooldown-bars",
         type=int,
@@ -361,6 +491,7 @@ def main(argv: list[str] | None = None) -> int:
         initial_equity=args.initial_equity,
         commission_bps=args.commission_bps,
         slippage_bps=args.slippage_bps,
+        transaction_tax_bps=args.transaction_tax_bps,
         signal_cooldown_bars=args.signal_cooldown_bars,
     )
     markdown = format_markdown(

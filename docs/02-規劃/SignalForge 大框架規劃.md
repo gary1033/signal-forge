@@ -5,7 +5,7 @@ tags:
   - planning
   - trading/research
 status: active
-updated: 2026-05-20
+updated: 2026-05-24
 aliases:
   - SignalForge 規劃
   - SignalForge Roadmap
@@ -20,6 +20,7 @@ SignalForge 的大方向是把交易想法整理成可驗證研究流程，而�
 - `backtest`：優先穩定、可重複、可驗證；輸出要有固定 contract，方便 regression test。
 - `live`：回測穩定前只允許 dry-run；只產生 order intent，不接 broker、不讀 API key、不送真實訂單。
 - 策略研究：先拆清楚訊號假設，再做可重複回測，不先做參數最佳化。
+- 策略評估：回測、優化、參數調整或找新策略時，先參考 [[策略回測與優化評估準則|策略回測與優化評估準則]]，不能只用單一 PF、勝率或總損益決定 keep。
 - 文件管理：Obsidian 是筆記主來源；push 前同步到 repo `docs/`。
 
 ## Phase 分期
@@ -36,6 +37,7 @@ SignalForge 的大方向是把交易想法整理成可驗證研究流程，而�
 - exit bar close 離場。
 - 只測純多進場；short、停損、停利、加碼、完整出場先記錄但不納入第一階段。
 - 第一階段篩選門檻：`Profit Factor > 1.2`。
+- 升級候選門檻：參考 [[策略回測與優化評估準則|策略回測與優化評估準則]]，至少要同時檢查 PF、expectancy、trade count、max drawdown、多股票 sweep、cost stress 與 benchmark relative return。
 - 可選濾網：`--volume-filter` 先以外層 wrapper 實驗成交量確認，預設規則是 `volume >= sma(volume, 20) * 1.2`，預設不啟用。
 - 多持有期比較：`entry-edge --hold-bars-list 1,3,5,10` 可在保留原本單一 hold report / JSON / trade CSV 的同時，另外輸出 `*_hold_comparison.json` 與 `*_hold_comparison.md`。這只做稽核比較，不自動挑最佳持有期，也不視為參數最佳化。
 
@@ -47,6 +49,7 @@ SignalForge 的大方向是把交易想法整理成可驗證研究流程，而�
 - 完整出場規則，而不是固定 N 根 bar。
 - 停損、停利、成本敏感度與最大回撤檢查。
 - regime filter，例如趨勢、波動或成交量環境。
+- 風險調整與穩健性指標，例如 Sharpe、Sortino、Calmar、Information Ratio、walk-forward / OOS 與 drawdown attribution。
 
 ### Phase 3：Live intent schema
 
@@ -102,6 +105,7 @@ python -m signal_forge.cli fetch-data `
 - short、濾網、停損、停利、加碼、出場與倉位規則。
 - SignalForge 採用的第一階段參數。
 - 回測期間、資料來源、輸出 artifact 與驗證命令。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 判斷該策略目前是 keep、discard 還是 compare-only。
 
 第一批策略：
 
@@ -133,6 +137,7 @@ python -m signal_forge.cli fetch-data `
 
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 補齊 risk-adjusted / benchmark-relative metrics：Sharpe、Sortino、Calmar、Information Ratio、cost stress、drawdown attribution 與 walk-forward / OOS。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
 - 針對成交量過濾器，比較 entry-only filter 與 target-state filter，避免濾網語意本身造成交易數失真。

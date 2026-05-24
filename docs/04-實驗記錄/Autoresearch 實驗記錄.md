@@ -5,7 +5,7 @@ tags:
   - experiment
   - autoresearch
 status: active
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
 # Autoresearch 實驗記錄
@@ -18,6 +18,7 @@ updated: 2026-05-23
 - 方法：`modify -> verify -> keep/discard -> log`。
 - 每次 wakeup 只做一個聚焦改動。
 - 允許策略研究、策略績效最佳化、參數調整與策略更新，但每次改動都要保留可重現驗證與 discard 路徑。
+- 任何回測、優化、參數調整或找新策略的輪次，都必須參考 [[../02-規劃/策略回測與優化評估準則|策略回測與優化評估準則]]，並在結果中說明本輪是 keep、discard 還是 compare-only。
 - 不新增 broker。
 - 不新增 API key / credential 讀取。
 - 不新增真實下單介面。
@@ -5678,3 +5679,71 @@ python tools\multi_stock_entry_edge_sweep.py `
 1. 把 `Confluence Score + hold=10 + signal_cooldown_bars=10` 視為目前多股票 PF 目標的主候選。
 2. 下一輪不要再只追 PF，應補風控維度：例如冷卻後的 drawdown 來源、停損/停利或部位縮放。
 3. 若要新增策略，必須與這個 candidate 在同一個七檔 common window 上比較。
+
+## 2026-05-24 研究與執行：benchmark drawdown 納入多股票 sweep
+
+這輪接續「希望策略朝穩定營利方向疊代」的長期目標。依 [[../02-規劃/策略回測與優化評估準則|策略回測與優化評估準則]]，不能只看 PF 與總報酬；本輪先把目前主候選和 buy-and-hold 的報酬 / 回撤 tradeoff 攤開，再做一個聚焦工具改動。
+
+### 外部研究參考
+
+- Moskowitz、Ooi、Pedersen 的 Time Series Momentum 研究指出，跨市場資產存在 1 到 12 個月的報酬延續，且時間序列動能在極端市場表現有研究價值。
+  https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2089463
+- Moreira、Muir 的 Volatility Managed Portfolios 指出，高波動時降低風險曝險可提升 Sharpe；這支持後續不要只追進場分數，而要補波動 / 回撤控制。
+  https://econpapers.repec.org/paper/nbrnberwo/22208.htm
+- Antonacci 的 Dual Momentum 研究指出，absolute momentum 對降低波動與 drawdown 特別重要；這支持下一輪可以測「絕對動能 / 長期趨勢持有」類策略，但必須用同一批股票與 benchmark 檢查。
+  https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2042750
+
+### 本輪 baseline
+
+使用七檔 TWSE common window、`confluence-score + hold=10 + signal_cooldown_bars=10`：
+
+| 指標 | 結果 | 解讀 |
+|---|---:|---|
+| Aggregate PF | `2.324` | 交易 edge 仍達標 |
+| 通過股票 | `7/7` | 多股票 PF gate 通過 |
+| Trades | `439` | 樣本數足夠初步解讀 |
+| Avg return | `191.38%` | 策略本身有正報酬 |
+| Avg CAGR | `17.10%` | 不是單純靠一兩筆交易撐起 |
+| Avg Sharpe / Sortino / Calmar | `0.979` / `2.214` / `0.935` | 風險調整表現有研究價值，但 Calmar 未達強候選 |
+| Worst MDD | `-33.05%` | 仍是主要風險缺口 |
+| Avg B&H return | `452.73%` | 強趨勢樣本中，被動持有報酬極高 |
+| Worst B&H MDD | `-54.37%` | 策略明顯降低回撤，但犧牲大量 upside |
+| Avg excess return | `-261.35%` | 不可宣稱已優於 benchmark |
+
+逐檔來看，策略在七檔中都比 buy-and-hold 有較低最大回撤；但只有 `2412` 的 total return 也高於 buy-and-hold。因此目前候選應被解讀為「風險降低型候選」，不是「總報酬勝出型候選」。
+
+### 長持有期測試
+
+同樣使用 `confluence-score` 與 cooldown：
+
+| 設定 | 通過股票 | Aggregate PF | Avg return | Worst MDD | Avg excess return | 判斷 |
+|---|---:|---:|---:|---:|---:|---|
+| `hold=80, cooldown=10` | `6/7` | `4.106` | `308.56%` | `-42.70%` | `-144.17%` | compare-only：更接近 benchmark，但 overlap 回來且回撤惡化 |
+| `hold=80, cooldown=80` | `5/7` | `3.744` | `358.84%` | `-50.92%` | `-93.89%` | discard：相對報酬改善，但通過數下降、回撤接近 B&H |
+| `hold=120, cooldown=10` | `7/7` | `3.515` | `185.50%` | `-39.51%` | `-267.23%` | compare-only：PF 漂亮但交易數下降、相對報酬未改善 |
+
+結論：延長 hold 能改善對 benchmark 的落後幅度，但會把回撤拉高，且容易重新出現 overlap。這不能直接升級為主候選。
+
+### 本輪程式改動
+
+- `tools\multi_stock_entry_edge_sweep.py` 的 `SweepRow` 新增 `benchmark_max_drawdown`。
+- `SweepAggregate` 新增 `worst_benchmark_max_drawdown`。
+- Markdown 輸出在 aggregate 與 per-stock 表格顯示 B&H max drawdown。
+
+這個改動不改策略語意，只讓每輪策略比較能同時回答：
+
+- 策略是否賺錢；
+- 是否輸給 buy-and-hold；
+- 若輸給 buy-and-hold，是否至少用較低 MDD 換來更高可存活性。
+
+### Keep / Discard 判斷
+
+- **Keep**：benchmark drawdown 欄位。它直接補上策略評估準則中的風險與 benchmark-relative 檢查，讓後續優化不會把負 excess return 誤讀成失敗，也不會把低回撤 tradeoff 看漏。
+- **Compare-only**：`hold=80, cooldown=10`。它改善 avg excess return，但有 overlap 與較大回撤，不能升級。
+- **Discard**：`hold=80, cooldown=80` 作為主候選。它 avg excess return 最接近 B&H，但 worst MDD 到 `-50.92%`，且只有 `5/7` 股票通過 PF gate。
+
+### 下一步
+
+1. 下一輪優先測絕對動能 / 長期趨勢持有類候選，目標不是再把 PF 往上堆，而是同時改善 `Avg excess return` 與 `Worst MDD`。
+2. 若做策略語意改動，應明確區分 entry-edge 固定 hold 與 Phase 2 target-state 持有；目前固定 hold 已顯示會犧牲強趨勢 upside。
+3. 繼續補 `cost stress` 與 walk-forward / OOS，避免長 hold 或動能濾網只是在 2020-2026 台股強趨勢樣本上貼合。

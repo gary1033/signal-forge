@@ -42,9 +42,13 @@ Get-Content -Encoding UTF8 -LiteralPath AGENTS.md
 Get-Content -Encoding UTF8 -LiteralPath docs\00-SignalForge 專案筆記索引.md
 Get-Content -Encoding UTF8 -LiteralPath docs\01-架構\SignalForge 架構總覽.md
 Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\SignalForge 大框架規劃.md
+Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\策略回測與優化評估準則.md
 Get-Content -Encoding UTF8 -LiteralPath docs\03-程式疊代\Phase 程式疊代紀錄.md
 Get-Content -Encoding UTF8 -LiteralPath docs\04-實驗記錄\Autoresearch 實驗記錄.md
-Get-Content -Encoding UTF8 -LiteralPath src\signal_forge\phase.py
+Get-Content -Encoding UTF8 -LiteralPath src\signal_forge\phase\__init__.py
+Get-Content -Encoding UTF8 -LiteralPath src\signal_forge\phase\config.py
+Get-Content -Encoding UTF8 -LiteralPath src\signal_forge\phase\runner.py
+Get-Content -Encoding UTF8 -LiteralPath src\signal_forge\phase\adapters.py
 Get-Content -Encoding UTF8 -LiteralPath tests\test_phase.py
 Get-Content -Encoding UTF8 -LiteralPath tools\phase_readiness_score.py
 ```
@@ -79,6 +83,23 @@ modify -> verify -> keep/discard -> log
 - 可以做策略研究、策略績效最佳化、參數調整與策略更新。
 - 可以參考 TradingView 或其他公開來源，但要轉成 SignalForge 可驗證的研究假設與實作。
 - 每個 wakeup 仍只做一個聚焦改動，並保留 modify / verify / keep-or-discard / log 的 audit trail。
+
+## 策略評估準則
+
+回測、優化、參數調整、找新策略、修改策略邏輯或解讀策略結果時，必須先讀：
+
+```powershell
+Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\策略回測與優化評估準則.md
+```
+
+判斷策略方向時不可只看單一 `Profit Factor`、勝率、總損益或單一標的結果。每次策略研究都要依該準則同時檢查：
+
+- 交易 edge：PF、expectancy、trade count、win rate + payoff ratio。
+- 風險與可存活性：max drawdown、Sortino、Calmar、drawdown attribution。
+- 穩健性與抗過擬合：多股票 sweep、walk-forward / OOS、benchmark relative、Information Ratio、Deflated Sharpe / PBO 意識。
+- 可執行性與成本：1x / 2x / 3x cost stress、turnover / overlap、fill assumption、data boundary。
+
+每輪策略相關結論都要明確標示為 `keep`、`discard` 或 `compare-only`，並說明 tradeoff。若結果只改善單一指標、只靠少數大贏家、交易數不足、成本壓力後失效、或回撤惡化無法解釋，不得升級為主候選。
 
 ## Live 安全邊界
 

@@ -11,6 +11,7 @@ class BacktestConfig:
     initial_equity: float = 10_000.0
     commission_bps: float = 1.0
     slippage_bps: float = 1.0
+    transaction_tax_bps: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -55,9 +56,12 @@ class Backtester:
 
     def run(self, strategy: Strategy, bars: list[Bar]) -> BacktestResult:
         """
-        用途與流程：執行主要工作流程，先驗證輸入 contract，再產生結果物件供 reporting 或測試使用。
-        參數：self 表示目前物件實例；strategy（Strategy）由呼叫端傳入，需符合函式 contract；bars（list[Bar]）由呼叫端傳入，需符合函式 contract
-        回傳與錯誤：回傳 BacktestResult；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+        用途與流程：執行 close-to-close target exposure 回測，依每根 bar 的目標部位調整
+        持倉，並在新增曝險時套用 commission/slippage，在降低曝險時額外套用
+        transaction_tax_bps。
+        參數：strategy 是產生逐 bar Signal 的策略；bars 是已排序 OHLCV 序列，至少需要兩根；
+        self.config 提供初始資金、雙邊 commission/slippage 與賣出端交易稅 bps。
+        回傳與錯誤：回傳 BacktestResult；若 bars 太短或策略輸出未與 bars 一對一對齊，拋出 ValueError。
         """
         if len(bars) < 2:
             raise ValueError("at least two bars are required")
@@ -70,7 +74,12 @@ class Backtester:
         position = 0.0
         equity_curve = [EquityPoint(bars[0].timestamp, equity, position)]
         trades: list[Trade] = []
-        total_cost_bps = (self.config.commission_bps + self.config.slippage_bps) / 10_000.0
+        entry_cost_rate = (self.config.commission_bps + self.config.slippage_bps) / 10_000.0
+        exit_cost_rate = (
+            self.config.commission_bps
+            + self.config.slippage_bps
+            + self.config.transaction_tax_bps
+        ) / 10_000.0
 
         for index in range(1, len(bars)):
             previous_close = bars[index - 1].close
@@ -82,7 +91,8 @@ class Backtester:
             target = _clamp(signal.target_position, -1.0, 1.0)
             delta = target - position
             if abs(delta) > 1e-12:
-                cost = abs(delta) * equity * total_cost_bps
+                cost_rate = exit_cost_rate if delta < 0 else entry_cost_rate
+                cost = abs(delta) * equity * cost_rate
                 equity -= cost
                 trades.append(
                     Trade(

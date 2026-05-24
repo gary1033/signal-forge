@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from signal_forge import Backtester, Bar, Signal, Strategy
+from signal_forge import BacktestConfig, Backtester, Bar, Signal, Strategy
 from signal_forge.strategies import SmaCrossoverStrategy, VwapReversionStrategy
 
 
@@ -17,6 +17,22 @@ class AlwaysLongStrategy(Strategy):
         """
         return [
             Signal(index, bar.timestamp, 1.0 if index > 0 else 0.0, "test")
+            for index, bar in enumerate(bars)
+        ]
+
+
+class EnterThenExitStrategy(Strategy):
+    name = "enter_then_exit"
+
+    def generate_signals(self, bars: list[Bar]) -> list[Signal]:
+        """
+        用途與流程：產生先進場再出場的固定 target 序列，專門驗證 Backtester 的賣出端交易稅。
+        參數：bars 是測試用 OHLCV 序列，至少需要三根。
+        回傳與錯誤：回傳 list[Signal]；此測試替身不主動拋錯。
+        """
+        targets = [0.0, 1.0, 0.0]
+        return [
+            Signal(index, bar.timestamp, targets[index], "target")
             for index, bar in enumerate(bars)
         ]
 
@@ -50,6 +66,24 @@ class BacktesterTests(unittest.TestCase):
         self.assertEqual(result.trade_count, 1)
         self.assertGreater(result.end_equity, result.start_equity)
 
+    def test_backtester_applies_transaction_tax_when_reducing_exposure(self) -> None:
+        """
+        用途與流程：驗證一般 Backtester 在降低多單曝險時，會把 transaction_tax_bps 加到賣出端成本。
+        參數：self 表示目前 unittest 測試案例。
+        回傳與錯誤：回傳 None；assertion 失敗時由 unittest 回報。
+        """
+        result = Backtester(
+            BacktestConfig(
+                commission_bps=10,
+                slippage_bps=5,
+                transaction_tax_bps=30,
+            )
+        ).run(EnterThenExitStrategy(), sample_bars()[:3])
+
+        self.assertEqual(result.trade_count, 2)
+        self.assertAlmostEqual(result.trades[0].cost, 15.0)
+        self.assertAlmostEqual(result.trades[1].cost, 49.0173, places=4)
+
     def test_sma_strategy_returns_one_signal_per_bar(self) -> None:
         """
         用途與流程：驗證 sma strategy returns one signal per bar 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
@@ -77,4 +111,3 @@ class BacktesterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

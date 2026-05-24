@@ -29,6 +29,18 @@ def _round_float(value: float, decimals: int) -> float:
     return float(f"{value:.{decimals}f}")
 
 
+def _round_optional_float(value: float | None, decimals: int) -> float | None:
+    """
+    用途與流程：將可為 None 的績效指標轉成 deterministic JSON 浮點格式，避免各報表自行處理
+    CAGR、Sharpe、Sortino、Calmar 等樣本不足時不存在的數值。
+    參數：value 是可為 None 的浮點數；decimals 是輸出小數位數。
+    回傳與錯誤：value 為 None 時回傳 None；否則回傳固定小數位 round 後的 float。
+    """
+    if value is None:
+        return None
+    return _round_float(value, decimals)
+
+
 _ISO_DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 def _is_iso8601_timestamp(timestamp: str) -> bool:
     """
@@ -716,9 +728,30 @@ def _summary_dict(
             "overlapping_signal_count": result.overlapping_signal_count,
             "win_rate": _round_float(result.win_rate, 6),
             "average_net_pnl": _round_float(result.average_net_pnl, 2),
+            "total_return": _round_float(result.total_return, 6),
+            "cagr": _round_optional_float(result.cagr, 6),
+            "sharpe_ratio": _round_optional_float(result.sharpe_ratio, 6),
+            "sortino_ratio": _round_optional_float(result.sortino_ratio, 6),
+            "calmar_ratio": _round_optional_float(result.calmar_ratio, 6),
             "max_drawdown": _round_float(result.max_drawdown, 6),
             "start_equity": _round_float(result.start_equity, 2),
             "end_equity": _round_float(result.end_equity, 2),
+            "benchmark_end_equity": _round_float(result.benchmark_end_equity, 2),
+            "benchmark_total_return": _round_float(result.benchmark_total_return, 6),
+            "benchmark_cagr": _round_optional_float(result.benchmark_cagr, 6),
+            "benchmark_max_drawdown": _round_float(result.benchmark_max_drawdown, 6),
+            "benchmark_excess_return": _round_float(result.benchmark_excess_return, 6),
+            "benchmark_excess_cagr": _round_optional_float(result.benchmark_excess_cagr, 6),
+        },
+        "period_returns": {
+            "monthly": {
+                key: _round_float(value, 6)
+                for key, value in result.monthly_returns.items()
+            },
+            "yearly": {
+                key: _round_float(value, 6)
+                for key, value in result.yearly_returns.items()
+            },
         },
         "config": asdict(result.config),
         "data_validation": asdict(data_validation) if data_validation else None,
@@ -746,6 +779,7 @@ def _entry_edge_comparison_summary_dict(
             "initial_equity": config.initial_equity,
             "commission_bps": config.commission_bps,
             "slippage_bps": config.slippage_bps,
+            "transaction_tax_bps": config.transaction_tax_bps,
             "pass_profit_factor": config.pass_profit_factor,
         },
         "rows": [
@@ -776,7 +810,14 @@ def _entry_edge_comparison_row(result: EntryEdgeResult) -> dict[str, object]:
         "trade_count": result.trade_count,
         "win_rate": _round_float(result.win_rate, 6),
         "average_net_pnl": _round_float(result.average_net_pnl, 2),
+        "total_return": _round_float(result.total_return, 6),
+        "cagr": _round_optional_float(result.cagr, 6),
+        "sharpe_ratio": _round_optional_float(result.sharpe_ratio, 6),
+        "sortino_ratio": _round_optional_float(result.sortino_ratio, 6),
+        "calmar_ratio": _round_optional_float(result.calmar_ratio, 6),
         "max_drawdown": _round_float(result.max_drawdown, 6),
+        "benchmark_total_return": _round_float(result.benchmark_total_return, 6),
+        "benchmark_excess_return": _round_float(result.benchmark_excess_return, 6),
         "ignored_short_count": result.ignored_short_count,
         "unclosed_signal_count": result.unclosed_signal_count,
         "overlapping_signal_count": result.overlapping_signal_count,
@@ -807,6 +848,13 @@ def _phase_summary_dict(result: PhaseExecutionResult) -> dict[str, object]:
             "profit_factor_status": entry_edge.profit_factor_status,
             "trade_count": entry_edge.trade_count,
             "end_equity": entry_edge.end_equity,
+            "total_return": entry_edge.total_return,
+            "cagr": entry_edge.cagr,
+            "sharpe_ratio": entry_edge.sharpe_ratio,
+            "sortino_ratio": entry_edge.sortino_ratio,
+            "calmar_ratio": entry_edge.calmar_ratio,
+            "benchmark_total_return": entry_edge.benchmark_total_return,
+            "benchmark_excess_return": entry_edge.benchmark_excess_return,
         }
     if result.order_intents is not None:
         summary["order_intents"] = [asdict(intent) for intent in result.order_intents]
@@ -1331,6 +1379,13 @@ def _validate_entry_edge_dict(entry_edge: dict[str, object]) -> None:
         "profit_factor_status": str,
         "trade_count": int,
         "end_equity": (int, float),
+        "total_return": (int, float),
+        "cagr": (type(None), int, float),
+        "sharpe_ratio": (type(None), int, float),
+        "sortino_ratio": (type(None), int, float),
+        "calmar_ratio": (type(None), int, float),
+        "benchmark_total_return": (int, float),
+        "benchmark_excess_return": (int, float),
     }
     missing = sorted(field for field in required_fields if field not in entry_edge)
     if missing:
@@ -1716,6 +1771,13 @@ def _phase_markdown_report(
                 f"- Profit Factor: {_format_profit_factor(entry_edge)}",
                 f"- Trades: {entry_edge.trade_count}",
                 f"- End equity: {entry_edge.end_equity:.2f}",
+                f"- Total return: {entry_edge.total_return:.2%}",
+                f"- CAGR: {_format_optional_percent(entry_edge.cagr)}",
+                f"- Sharpe ratio: {_format_optional_ratio(entry_edge.sharpe_ratio)}",
+                f"- Sortino ratio: {_format_optional_ratio(entry_edge.sortino_ratio)}",
+                f"- Calmar ratio: {_format_optional_ratio(entry_edge.calmar_ratio)}",
+                f"- Buy and hold return: {entry_edge.benchmark_total_return:.2%}",
+                f"- Benchmark excess return: {entry_edge.benchmark_excess_return:.2%}",
             ]
         )
 
@@ -1823,8 +1885,14 @@ def _markdown_report(
         f"- Profit Factor: {pf}",
         f"- Trades: {result.trade_count}",
         f"- Win rate: {result.win_rate:.2%}",
+        f"- Total return: {result.total_return:.2%}",
+        f"- CAGR: {_format_optional_percent(result.cagr)}",
+        f"- Sharpe ratio: {_format_optional_ratio(result.sharpe_ratio)}",
+        f"- Sortino ratio: {_format_optional_ratio(result.sortino_ratio)}",
+        f"- Calmar ratio: {_format_optional_ratio(result.calmar_ratio)}",
         f"- Average net PnL: {result.average_net_pnl:.2f}",
         f"- Max drawdown: {result.max_drawdown:.2%}",
+        f"- Benchmark excess return: {result.benchmark_excess_return:.2%}",
     ]
     if result.failure_reason:
         lines.append(f"- Failure reason: {result.failure_reason}")
@@ -1839,6 +1907,7 @@ def _markdown_report(
             f"- Initial equity: {result.config.initial_equity:.2f}",
             f"- Commission (bps): {result.config.commission_bps:.2f}",
             f"- Slippage (bps): {result.config.slippage_bps:.2f}",
+            f"- Transaction tax on exit (bps): {result.config.transaction_tax_bps:.2f}",
             f"- Fixed hold bars: {result.config.hold_bars_per_day}",
             f"- Pass threshold PF: >{result.config.pass_profit_factor:.2f}",
             "- Execution: signal confirmed at bar close; enter at next bar open; exit at exit bar close after fixed hold.",
@@ -1885,6 +1954,19 @@ def _markdown_report(
             f"- Overlapping ignored signals: {result.overlapping_signal_count}",
             f"- End equity: {result.end_equity:.2f}",
             "",
+            "## Benchmark",
+            "",
+            f"- Buy and hold end equity: {result.benchmark_end_equity:.2f}",
+            f"- Buy and hold total return: {result.benchmark_total_return:.2%}",
+            f"- Buy and hold CAGR: {_format_optional_percent(result.benchmark_cagr)}",
+            f"- Buy and hold max drawdown: {result.benchmark_max_drawdown:.2%}",
+            f"- Excess CAGR: {_format_optional_percent(result.benchmark_excess_cagr)}",
+            "",
+            "## Period Returns",
+            "",
+            f"- Monthly periods: {len(result.monthly_returns)}",
+            f"- Yearly periods: {len(result.yearly_returns)}",
+            "",
         ]
     )
     return "\n".join(lines)
@@ -1911,8 +1993,8 @@ def _entry_edge_comparison_markdown(
         "",
         "## Comparison",
         "",
-        "| Hold bars | Decision | PF status | PF value | Trades | Win rate | Avg net PnL | Max drawdown | Ignored shorts | Unclosed | Overlap | Failure reason |",
-        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| Hold bars | Decision | PF status | PF value | Trades | Win rate | Total return | CAGR | Sharpe | Sortino | Calmar | Max drawdown | Benchmark excess | Ignored shorts | Unclosed | Overlap | Failure reason |",
+        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for result in comparison.results:
         failure_reason = result.failure_reason or "-"
@@ -1924,8 +2006,13 @@ def _entry_edge_comparison_markdown(
             f"{_format_profit_factor(result)} | "
             f"{result.trade_count} | "
             f"{result.win_rate:.2%} | "
-            f"{result.average_net_pnl:.2f} | "
+            f"{result.total_return:.2%} | "
+            f"{_format_optional_percent(result.cagr)} | "
+            f"{_format_optional_ratio(result.sharpe_ratio)} | "
+            f"{_format_optional_ratio(result.sortino_ratio)} | "
+            f"{_format_optional_ratio(result.calmar_ratio)} | "
             f"{result.max_drawdown:.2%} | "
+            f"{result.benchmark_excess_return:.2%} | "
             f"{result.ignored_short_count} | "
             f"{result.unclosed_signal_count} | "
             f"{result.overlapping_signal_count} | "
@@ -1940,6 +2027,7 @@ def _entry_edge_comparison_markdown(
             f"- Initial equity: {config.initial_equity:.2f}",
             f"- Commission (bps): {config.commission_bps:.2f}",
             f"- Slippage (bps): {config.slippage_bps:.2f}",
+            f"- Transaction tax on exit (bps): {config.transaction_tax_bps:.2f}",
             f"- Compared hold bars: {compared_holds}",
             f"- Pass threshold PF: >{config.pass_profit_factor:.2f}",
             "- Execution: signal confirmed at bar close; enter at next bar open; exit at exit bar close after fixed hold.",
@@ -2095,6 +2183,28 @@ def _format_profit_factor(result: EntryEdgeResult) -> str:
     if result.profit_factor is None:
         return "undefined"
     return f"{result.profit_factor:.3f}"
+
+
+def _format_optional_percent(value: float | None) -> str:
+    """
+    用途與流程：將可選百分比指標轉為 Markdown 穩定文字，供 CAGR 與 excess CAGR 顯示。
+    參數：value 是 None 或小數形式百分比，例如 0.1234。
+    回傳與錯誤：None 回傳 `undefined`；否則回傳兩位百分比字串。
+    """
+    if value is None:
+        return "undefined"
+    return f"{value:.2%}"
+
+
+def _format_optional_ratio(value: float | None) -> str:
+    """
+    用途與流程：將可選比率指標轉為 Markdown 穩定文字，供 Sharpe、Sortino、Calmar 顯示。
+    參數：value 是 None 或浮點比率。
+    回傳與錯誤：None 回傳 `undefined`；否則回傳三位小數字串。
+    """
+    if value is None:
+        return "undefined"
+    return f"{value:.3f}"
 
 
 def _safe_stem(value: str) -> str:

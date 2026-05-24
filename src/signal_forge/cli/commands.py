@@ -42,6 +42,7 @@ def run_entry_edge_command(args: argparse.Namespace) -> int:
         initial_equity=args.initial_equity,
         commission_bps=args.commission_bps,
         slippage_bps=args.slippage_bps,
+        transaction_tax_bps=args.transaction_tax_bps,
         hold_bars_per_day=args.hold_bars_per_day,
         pass_profit_factor=args.pass_profit_factor,
     )
