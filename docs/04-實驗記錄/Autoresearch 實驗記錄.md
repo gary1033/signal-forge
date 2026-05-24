@@ -6479,11 +6479,84 @@ python tools\portfolio_rotation_sweep.py `
 
 - **Keep**：`tools\portfolio_rotation_sweep.py` 與 tests。它補上 portfolio-level 評估能力，避免相對動能被逐檔 B&H 指標錯判。
 - **Promising candidate**：`monthly + 21 bars + top3 + min_return 0.0`。它通過 full-window、OOS、3x 成本與三段 rolling split 的初步 gate。
-- **Not complete / not stable-profit proof**：股票池太小、參數是掃描後挑出、尚未有 Information Ratio / active drawdown / 更廣 rolling split，因此不能標為穩定營利完成。
+- **Not complete / not stable-profit proof**：股票池太小、參數是掃描後挑出；雖然已補 Information Ratio / tracking error / active drawdown，但中段 rolling split 的 IR 太低，仍不能標為穩定營利完成。
 
 ### 下一步
 
-1. 對 portfolio rotation 補 Information Ratio、tracking error 與 active drawdown。
-2. 增加 rolling windows，例如每兩年訓練、一年測試，避免只看三段粗切。
-3. 擴大 TWSE 股票池或加入 sector / market regime，確認結果不是少數大型半導體股驅動。
+1. 增加 rolling windows，例如每兩年訓練、一年測試，避免只看三段粗切。
+2. 擴大 TWSE 股票池或加入 sector / market regime，確認結果不是少數大型半導體股驅動。
+3. 若繼續調 portfolio rotation 參數，必須同時看 Information Ratio、tracking error 與 active max drawdown，不只看 total return。
 4. 保留 live dry-run only，不做 broker / API key / 真實下單。
+
+## 2026-05-24 Portfolio rotation active-risk 指標
+
+### 假設
+
+前一輪 portfolio rotation 的總報酬與 OOS excess 很強，但仍缺 benchmark-relative risk 指標。這輪不再掃新參數，而是補上三個檢查：
+
+- `annualized_active_return`：策略逐期報酬減 benchmark 逐期報酬後的年化算術平均。
+- `tracking_error`：active return 的年化標準差，也就是主動風險。
+- `information_ratio`：annualized active return / tracking error。
+- `active_max_drawdown`：用 normalized relative equity 計算相對 benchmark 的高點回落。
+
+### 來源
+
+- CFA Institute, Sharpe Ratio and Information Ratio: https://rpc.cfainstitute.org/-/media/documents/code/gips/sharpe-ratio-and-the-information-ratio.pdf
+- CFA Institute, Analysis of Active Portfolio Management: https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2025/analysis-active-portfolio-management
+- Bailey and Lopez de Prado, The Deflated Sharpe Ratio: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 的 `PortfolioRotationResult` 新增：
+  - `annualized_active_return`
+  - `tracking_error`
+  - `information_ratio`
+  - `active_max_drawdown`
+- equal-weight benchmark 權益曲線改由共用 helper 建立，避免 benchmark summary 與 active-risk 計算使用不同基準。
+- Markdown / JSON / walk-forward retention 會輸出 IR、tracking error 與 active MDD。
+- `tests\test_portfolio_rotation_sweep_tool.py` 補上 active-risk regression。
+
+### 驗證命令
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --walk-forward-windows "early:2020-01-01:2021-12-31,mid:2022-01-01:2023-12-31,oos:2024-01-01:2026-05-20" `
+  --summary-json reports\generated\twse-portfolio-rotation-monthly-lb21-top3-active-risk-20260524.json `
+  --summary-md reports\generated\twse-portfolio-rotation-monthly-lb21-top3-active-risk-20260524.md
+```
+
+### Active-risk 結果摘要
+
+| Window | Cost | Annual active | Tracking error | IR | Active MDD | 解讀 |
+|---|---:|---:|---:|---:|---:|---|
+| Full `2020-2026` | `1x` | `14.43%` | `16.81%` | `0.858` | `-21.73%` | full-window 主動風險報酬達強候選水準 |
+| Full `2020-2026` | `3x` | `13.90%` | `16.82%` | `0.826` | `-22.76%` | 成本壓力後仍保留 |
+| `2020-2021` | `1x` | `4.48%` | `15.94%` | `0.281` | `-16.97%` | 早期 window 有正 active return，但 IR 只算有意義、未達強 |
+| `2022-2023` | `1x` | `0.95%` | `17.05%` | `0.056` | `-18.34%` | 弱點：幾乎沒有 risk-adjusted active edge |
+| `2024-2026` | `1x` | `37.82%` | `17.80%` | `2.124` | `-16.04%` | OOS 非常強，但也代表結果高度集中於近年 |
+
+### 解讀
+
+1. **IR 補上後，結論更保守**：full-window IR `0.858` 很強，但不是每個 rolling window 都強；`2022-2023` IR 只有 `0.056`，幾乎沒有主動風險報酬。
+2. **OOS 強度集中在 2024-2026**：OOS IR `2.124` 很漂亮，但也提示參數可能特別吃近年強勢行情或股票池結構，不能直接視為穩定營利。
+3. **Active MDD 沒有失控**：full-window active MDD 約 `-21.73%`，OOS active MDD 約 `-16.04%`，代表相對 benchmark 的回撤可讀，但仍需更廣股票池確認。
+
+### Keep / Discard 判斷
+
+- **Keep**：active-risk 指標與報表欄位。它們直接對應策略評估準則的 benchmark-relative gate。
+- **Promising candidate but not complete**：`monthly + 21 bars + top3` 仍是目前最強 portfolio-level 候選，但穩定性尚未被證明。
+- **下一步**：先做更多 rolling windows 或擴大股票池；不要只靠 OOS `2024-2026` 的高 IR 判定策略穩定。

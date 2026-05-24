@@ -20,6 +20,8 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Rebalance / 再平衡**：固定頻率重新計算排名與目標權重，例如每週或每月一次。
 - **Equal-weight benchmark / 等權買進持有基準**：把資金平均分配到同一批股票並長期持有，用來檢查輪動是否真的有 portfolio-level active return。
 - **Turnover / 週轉率**：每次再平衡時權重變化的總量。週轉率越高，交易成本與滑價風險越大。
+- **Information Ratio / 資訊比率**：把策略相對 benchmark 的年化 active return 除以 tracking error，用來看每承擔一單位主動風險是否真的換到超額報酬。
+- **Active max drawdown / 相對最大回撤**：用策略權益相對 benchmark 權益的 normalized relative equity 計算回撤，觀察策略相對基準是否曾長時間失速。
 
 ## 策略假設
 
@@ -71,7 +73,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 ## 下一步
 
 - 補更多 rolling split，避免只因 2024-2026 強勢 AI / 半導體行情而看起來漂亮。
-- 加入 Information Ratio 與 active drawdown，讓 portfolio-level active risk 更清楚。
+- 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
 - 不急著加入更複雜的風控；先確認 `monthly + 21 bars + top3` 是否在更多資料窗仍保留 active return。
 

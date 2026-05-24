@@ -133,7 +133,7 @@ python -m signal_forge.cli fetch-data `
 - `DrawdownRiskOffStrategy` 支援單檔 proxy equity drawdown-state risk-off overlay，並已接入 target-state sweep 的 `--drawdown-risk-off`。
 - `multi_stock_target_state_sweep.py` 支援 `--walk-forward-windows`，可用 `label:start:end` 指定樣本內 / 樣本外分段，並輸出 OOS retention 報表。
 - `multi_stock_target_state_sweep.py` 支援 `--relative-momentum-filter`，可用跨股票 lookback return top-N 建立股票池白名單；目前 OOS 參數掃描顯示它降低曝險但沒有改善 benchmark-relative edge。
-- `portfolio_rotation_sweep.py` 支援 portfolio-level relative momentum rotation、equal-weight buy-and-hold benchmark、成本壓力與 walk-forward / rolling split；`monthly + 21 bars + top3` 目前是第一個 full-window 與 OOS 都有正 active return 的候選。
+- `portfolio_rotation_sweep.py` 支援 portfolio-level relative momentum rotation、equal-weight buy-and-hold benchmark、成本壓力、walk-forward / rolling split、Information Ratio、tracking error 與 active max drawdown；`monthly + 21 bars + top3` 目前是第一個 full-window 與 OOS 都有正 active return 的候選。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
@@ -146,10 +146,10 @@ python -m signal_forge.cli fetch-data `
 
 - 強化 trace summary 的位置範圍稽核，例如 `min_previous_target_position` / `max_previous_target_position`。
 - 將 score 分布寫入 Confluence Score 相關 artifact，讓多因子訊號更容易稽核。
-- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics：Information Ratio、active drawdown tradeoff 與更多 rolling / OOS 檢查。
+- 依 [[策略回測與優化評估準則|策略回測與優化評估準則]] 繼續補齊 benchmark-relative metrics；portfolio rotation 已補 IR / tracking error / active drawdown，下一步重點轉向更多 rolling / OOS 檢查。
 - 使用 `entry-edge --hold-bars-list` 先檢查 SMA Crossover 是否被一日 entry-edge 低估，再決定是否進入完整趨勢持有 / 出場規則設計。
 - 針對 VWAP Reversion 比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否能減少強下跌中的反向接刀。
 - 針對 Absolute Momentum 的 benchmark-relative 問題做下一層驗證：`vol-target 0.40 + dd-risk-off 25%/120` 可降低回撤但 2024-2026 OOS 是 `0/7` beat B&H；relative-momentum top-N 股票池也沒有改善 `Beat B&H`。下一步應測 re-entry 條件、weekly rebalance 或市場 regime，不要只靠降曝險或 top-N 過濾。
-- 針對 portfolio rotation，下一步不要直接宣稱穩定營利；先補更多 rolling split、Information Ratio、active drawdown 與更大股票池，確認 `monthly + 21 bars + top3` 不只吃到 2024-2026 強勢行情。
+- 針對 portfolio rotation，下一步不要直接宣稱穩定營利；active-risk 指標已顯示 2022-2023 中段 IR 很低，後續應補更多 rolling split 與更大股票池，確認 `monthly + 21 bars + top3` 不只吃到 2024-2026 強勢行情。
 - 在 OOP template 穩定後，再逐一討論三種策略的下一步修改，避免一次混入模板重構與策略語意變更。
 - 維持 live dry-run only，直到回測穩定且另行審核 broker 介面。

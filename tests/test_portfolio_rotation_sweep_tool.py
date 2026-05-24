@@ -121,6 +121,10 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
 
         self.assertGreater(result.total_return, 0.20)
         self.assertGreater(result.benchmark_excess_return, 0.20)
+        self.assertIsNotNone(result.tracking_error)
+        self.assertIsNotNone(result.information_ratio)
+        self.assertGreater(result.information_ratio or 0.0, 0.0)
+        self.assertLessEqual(result.active_max_drawdown, 0.0)
         self.assertEqual(result.trade_count, 1)
         self.assertGreater(result.average_exposure, 0.0)
 
@@ -168,8 +172,10 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(len(retention), 1)
         self.assertAlmostEqual(retention[0].total_return_retention or 0.0, 0.5)
         self.assertAlmostEqual(retention[0].benchmark_excess_retention or 0.0, 0.4)
+        self.assertAlmostEqual(retention[0].information_ratio_retention or 0.0, 0.5)
         self.assertAlmostEqual(retention[0].sharpe_retention or 0.0, 0.5)
         self.assertAlmostEqual(retention[0].drawdown_change, -0.05)
+        self.assertAlmostEqual(retention[0].active_drawdown_change, -0.05)
 
 
 def _bar(timestamp: str, close: float) -> Bar:
@@ -222,6 +228,10 @@ def _rotation_result(
         benchmark_max_drawdown=-0.30,
         benchmark_excess_return=excess,
         benchmark_excess_cagr=excess,
+        annualized_active_return=0.2 * sharpe,
+        tracking_error=0.2,
+        information_ratio=sharpe,
+        active_max_drawdown=mdd + 0.10,
         trade_count=1,
         rebalance_count=1,
         total_cost=0.0,

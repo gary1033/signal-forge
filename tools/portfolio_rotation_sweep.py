@@ -62,6 +62,10 @@ class PortfolioRotationResult:
     benchmark_max_drawdown: float
     benchmark_excess_return: float
     benchmark_excess_cagr: float | None
+    annualized_active_return: float | None
+    tracking_error: float | None
+    information_ratio: float | None
+    active_max_drawdown: float
     trade_count: int
     rebalance_count: int
     total_cost: float
@@ -93,12 +97,18 @@ class PortfolioRetentionRow:
     train_benchmark_excess_return: float
     test_benchmark_excess_return: float
     benchmark_excess_retention: float | None
+    train_information_ratio: float | None
+    test_information_ratio: float | None
+    information_ratio_retention: float | None
     train_sharpe_ratio: float | None
     test_sharpe_ratio: float | None
     sharpe_retention: float | None
     train_max_drawdown: float
     test_max_drawdown: float
     drawdown_change: float
+    train_active_max_drawdown: float
+    test_active_max_drawdown: float
+    active_drawdown_change: float
 
 
 def load_rotation_inputs(
@@ -255,14 +265,25 @@ def run_portfolio_rotation(
             )
         )
 
-    benchmark = run_equal_weight_benchmark(
+    benchmark_equity_values = _equal_weight_benchmark_equity_values(
         timestamps,
         closes_by_symbol,
         config=effective_config,
-        periods_per_year=periods_per_year,
+    )
+    benchmark = _summarize_equal_weight_benchmark(
+        timestamps,
+        benchmark_equity_values,
+        initial_equity=effective_config.initial_equity,
     )
     equity_values = [point.equity for point in points]
     equity_returns = _equity_returns(equity_values)
+    benchmark_returns = _equity_returns(benchmark_equity_values)
+    active_returns = _active_returns(equity_returns, benchmark_returns)
+    tracking_error = _annualized_tracking_error(active_returns, periods_per_year)
+    annualized_active_return = _annualized_mean_return(
+        active_returns,
+        periods_per_year,
+    )
     years = _elapsed_years(timestamps)
     cagr = _compound_annual_growth_rate(
         effective_config.initial_equity,
@@ -292,6 +313,17 @@ def run_portfolio_rotation(
         benchmark_excess_return=((equity / effective_config.initial_equity) - 1.0)
         - benchmark["total_return"],
         benchmark_excess_cagr=_subtract_optional(cagr, benchmark["cagr"]),
+        annualized_active_return=annualized_active_return,
+        tracking_error=tracking_error,
+        information_ratio=_information_ratio(
+            annualized_active_return,
+            tracking_error,
+        ),
+        active_max_drawdown=_active_max_drawdown(
+            equity_values,
+            benchmark_equity_values,
+            effective_config.initial_equity,
+        ),
         trade_count=trade_count,
         rebalance_count=rebalance_count,
         total_cost=total_cost,
@@ -311,8 +343,31 @@ def run_equal_weight_benchmark(
 ) -> dict[str, float | None]:
     """
     用途與流程：建立 equal-weight buy-and-hold portfolio benchmark，作為輪動策略的 portfolio-level 比較基準。
-    參數：timestamps 是共同日期序列；closes_by_symbol 是對齊後 close matrix；config 提供初始資金與入場成本；periods_per_year 用於 CAGR 以外的外部一致性。
+    參數：timestamps 是共同日期序列；closes_by_symbol 是對齊後 close matrix；config 提供初始資金與入場成本；periods_per_year 保留給既有呼叫介面相容。
     回傳與錯誤：回傳 total_return、cagr、max_drawdown；若資料不足或無 symbol，拋出 ValueError。
+    """
+    equity_values = _equal_weight_benchmark_equity_values(
+        timestamps,
+        closes_by_symbol,
+        config=config,
+    )
+    return _summarize_equal_weight_benchmark(
+        timestamps,
+        equity_values,
+        initial_equity=config.initial_equity,
+    )
+
+
+def _equal_weight_benchmark_equity_values(
+    timestamps: list[str],
+    closes_by_symbol: dict[str, list[float]],
+    *,
+    config: BacktestConfig,
+) -> list[float]:
+    """
+    用途與流程：建立 equal-weight buy-and-hold benchmark 的權益曲線，供總報酬與 active-risk 指標共用。
+    參數：timestamps 是共同日期序列；closes_by_symbol 是對齊後 close matrix；config 提供期初資金與入場成本。
+    回傳與錯誤：回傳每個 timestamp 的 benchmark equity；資料不足或 symbol 為空時拋出 ValueError。
     """
     if len(timestamps) < 2 or not closes_by_symbol:
         raise ValueError("equal-weight benchmark requires aligned close data")
@@ -330,10 +385,27 @@ def run_equal_weight_benchmark(
             current_index=index,
         )
         equity_values.append(equity)
+    return equity_values
+
+
+def _summarize_equal_weight_benchmark(
+    timestamps: list[str],
+    equity_values: list[float],
+    *,
+    initial_equity: float,
+) -> dict[str, float | None]:
+    """
+    用途與流程：把 benchmark 權益曲線轉成摘要欄位，避免報表與 active-risk 計算使用不同基準。
+    參數：timestamps 是 benchmark 日期序列；equity_values 是同長度權益曲線；initial_equity 是比較基準的期初資金。
+    回傳與錯誤：回傳 total_return、cagr、max_drawdown；權益曲線不足時拋出 ValueError。
+    """
+    if len(equity_values) < 2:
+        raise ValueError("equal-weight benchmark requires at least two equity points")
+    equity = equity_values[-1]
     years = _elapsed_years(timestamps)
     return {
-        "total_return": (equity / config.initial_equity) - 1.0,
-        "cagr": _compound_annual_growth_rate(config.initial_equity, equity, years),
+        "total_return": (equity / initial_equity) - 1.0,
+        "cagr": _compound_annual_growth_rate(initial_equity, equity, years),
         "max_drawdown": _max_drawdown(equity_values),
     }
 
@@ -461,6 +533,12 @@ def build_portfolio_retention(
                         test.benchmark_excess_return,
                         train.benchmark_excess_return,
                     ),
+                    train_information_ratio=train.information_ratio,
+                    test_information_ratio=test.information_ratio,
+                    information_ratio_retention=_retention_ratio(
+                        test.information_ratio,
+                        train.information_ratio,
+                    ),
                     train_sharpe_ratio=train.sharpe_ratio,
                     test_sharpe_ratio=test.sharpe_ratio,
                     sharpe_retention=_retention_ratio(
@@ -470,6 +548,11 @@ def build_portfolio_retention(
                     train_max_drawdown=train.max_drawdown,
                     test_max_drawdown=test.max_drawdown,
                     drawdown_change=test.max_drawdown - train.max_drawdown,
+                    train_active_max_drawdown=train.active_max_drawdown,
+                    test_active_max_drawdown=test.active_max_drawdown,
+                    active_drawdown_change=(
+                        test.active_max_drawdown - train.active_max_drawdown
+                    ),
                 )
             )
     return rows
@@ -496,8 +579,8 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Return | CAGR | Benchmark return | Excess | MDD | Benchmark MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Avg turnover | Avg exposure | Avg selected |",
-        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Avg turnover | Avg exposure | Avg selected |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for result in results:
         lines.append(
@@ -508,8 +591,13 @@ def format_markdown(
             f"{_format_optional_percent(result.cagr)} | "
             f"{result.benchmark_total_return:.2%} | "
             f"{result.benchmark_excess_return:.2%} | "
+            f"{_format_optional_percent(result.benchmark_excess_cagr)} | "
+            f"{_format_optional_percent(result.annualized_active_return)} | "
+            f"{_format_optional_percent(result.tracking_error)} | "
+            f"{_format_optional_ratio(result.information_ratio)} | "
             f"{result.max_drawdown:.2%} | "
             f"{result.benchmark_max_drawdown:.2%} | "
+            f"{result.active_max_drawdown:.2%} | "
             f"{_format_optional_ratio(result.sharpe_ratio)} | "
             f"{_format_optional_ratio(result.sortino_ratio)} | "
             f"{_format_optional_ratio(result.calmar_ratio)} | "
@@ -536,8 +624,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | MDD | Benchmark MDD | Sharpe | Trades | Avg exposure |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Avg exposure |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -548,8 +636,13 @@ def format_walk_forward_markdown(
                 f"{result.cost_label} | {result.total_return:.2%} | "
                 f"{result.benchmark_total_return:.2%} | "
                 f"{result.benchmark_excess_return:.2%} | "
+                f"{_format_optional_percent(result.benchmark_excess_cagr)} | "
+                f"{_format_optional_percent(result.annualized_active_return)} | "
+                f"{_format_optional_percent(result.tracking_error)} | "
+                f"{_format_optional_ratio(result.information_ratio)} | "
                 f"{result.max_drawdown:.2%} | "
                 f"{result.benchmark_max_drawdown:.2%} | "
+                f"{result.active_max_drawdown:.2%} | "
                 f"{_format_optional_ratio(result.sharpe_ratio)} | "
                 f"{result.trade_count} | {result.average_exposure:.2%} |"
             )
@@ -558,8 +651,8 @@ def format_walk_forward_markdown(
             "",
             "## Walk-forward Retention",
             "",
-            "| Train | Test | Cost | Return retention | Excess retention | Sharpe retention | Train return | Test return | Train excess | Test excess | Train MDD | Test MDD | MDD change |",
-            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Train | Test | Cost | Return retention | Excess retention | IR retention | Sharpe retention | Train return | Test return | Train excess | Test excess | Train IR | Test IR | Train MDD | Test MDD | MDD change | Train active MDD | Test active MDD | Active MDD change |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in retention_rows:
@@ -568,12 +661,18 @@ def format_walk_forward_markdown(
             f"{row.train_label} | {row.test_label} | {row.cost_label} | "
             f"{_format_optional_percent(row.total_return_retention)} | "
             f"{_format_optional_percent(row.benchmark_excess_retention)} | "
+            f"{_format_optional_percent(row.information_ratio_retention)} | "
             f"{_format_optional_percent(row.sharpe_retention)} | "
             f"{row.train_total_return:.2%} | {row.test_total_return:.2%} | "
             f"{row.train_benchmark_excess_return:.2%} | "
             f"{row.test_benchmark_excess_return:.2%} | "
+            f"{_format_optional_ratio(row.train_information_ratio)} | "
+            f"{_format_optional_ratio(row.test_information_ratio)} | "
             f"{row.train_max_drawdown:.2%} | {row.test_max_drawdown:.2%} | "
-            f"{row.drawdown_change:.2%} |"
+            f"{row.drawdown_change:.2%} | "
+            f"{row.train_active_max_drawdown:.2%} | "
+            f"{row.test_active_max_drawdown:.2%} | "
+            f"{row.active_drawdown_change:.2%} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -840,6 +939,102 @@ def _equity_returns(equity_values: list[float]) -> list[float]:
         else:
             returns.append((current / previous) - 1.0)
     return returns
+
+
+def _active_returns(
+    strategy_returns: list[float],
+    benchmark_returns: list[float],
+) -> list[float]:
+    """
+    用途與流程：將策略每期報酬扣除 benchmark 每期報酬，形成 active return 序列。
+    參數：strategy_returns 與 benchmark_returns 是相鄰 equity return 序列，應使用同一 timestamps。
+    回傳與錯誤：回傳逐期 active returns；若長度不一致，會只取共同前綴以避免索引錯誤。
+    """
+    return [
+        strategy_return - benchmark_return
+        for strategy_return, benchmark_return in zip(
+            strategy_returns,
+            benchmark_returns,
+        )
+    ]
+
+
+def _annualized_mean_return(
+    returns: list[float],
+    periods_per_year: int,
+) -> float | None:
+    """
+    用途與流程：計算逐期報酬的年化算術平均，供 Information Ratio 的 active return 分子使用。
+    參數：returns 是逐期報酬序列；periods_per_year 是年化期數。
+    回傳與錯誤：樣本不足或期數非正時回傳 None；否則回傳年化平均報酬。
+    """
+    if not returns or periods_per_year <= 0:
+        return None
+    return (sum(returns) / len(returns)) * periods_per_year
+
+
+def _annualized_tracking_error(
+    active_returns: list[float],
+    periods_per_year: int,
+) -> float | None:
+    """
+    用途與流程：計算 active return 序列的年化標準差，也就是 tracking error / active risk。
+    參數：active_returns 是策略報酬扣 benchmark 報酬的逐期序列；periods_per_year 是年化期數。
+    回傳與錯誤：樣本不足、變異數為 0 或期數非正時回傳 None；否則回傳年化 tracking error。
+    """
+    if len(active_returns) < 2 or periods_per_year <= 0:
+        return None
+    mean_return = sum(active_returns) / len(active_returns)
+    variance = sum((value - mean_return) ** 2 for value in active_returns) / (
+        len(active_returns) - 1
+    )
+    if variance <= 0:
+        return None
+    return sqrt(variance) * sqrt(periods_per_year)
+
+
+def _information_ratio(
+    annualized_active_return: float | None,
+    tracking_error: float | None,
+) -> float | None:
+    """
+    用途與流程：用年化 active return 除以年化 tracking error，衡量每單位主動風險帶來的超額報酬。
+    參數：annualized_active_return 是 active return 年化平均；tracking_error 是 active return 年化標準差。
+    回傳與錯誤：任一輸入缺失或 tracking error 為 0 時回傳 None；否則回傳 Information Ratio。
+    """
+    if annualized_active_return is None or tracking_error in {None, 0.0}:
+        return None
+    return annualized_active_return / tracking_error
+
+
+def _active_max_drawdown(
+    strategy_equity_values: list[float],
+    benchmark_equity_values: list[float],
+    initial_equity: float,
+) -> float:
+    """
+    用途與流程：用 normalized relative equity 計算 active max drawdown，觀察策略相對 benchmark 的高點回落。
+    參數：strategy_equity_values 與 benchmark_equity_values 是同 timestamps 權益曲線；initial_equity 只作為相對曲線縮放基準。
+    回傳與錯誤：回傳小於等於 0 的相對權益最大回撤；資料不足或 benchmark 權益非正時回傳 0。
+    """
+    if not strategy_equity_values or not benchmark_equity_values:
+        return 0.0
+    first_strategy = strategy_equity_values[0]
+    first_benchmark = benchmark_equity_values[0]
+    if first_strategy <= 0 or first_benchmark <= 0:
+        return 0.0
+    start_ratio = first_strategy / first_benchmark
+    relative_equity: list[float] = []
+    for strategy_equity, benchmark_equity in zip(
+        strategy_equity_values,
+        benchmark_equity_values,
+    ):
+        if benchmark_equity <= 0:
+            continue
+        relative_equity.append(
+            initial_equity * ((strategy_equity / benchmark_equity) / start_ratio)
+        )
+    return _max_drawdown(relative_equity)
 
 
 def _annualized_sharpe_ratio(
