@@ -212,6 +212,9 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
             result.symbol_attribution[0].absolute_contribution_share,
             0.99,
         )
+        self.assertEqual(result.max_symbol_abs_contribution_symbol, "2330")
+        self.assertGreater(result.max_symbol_abs_contribution_share, 0.99)
+        self.assertGreater(result.top3_symbol_abs_contribution_share, 0.99)
 
     def test_format_markdown_includes_symbol_attribution(self) -> None:
         """
@@ -229,6 +232,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         )
 
         self.assertIn("## Top Symbol Attribution", markdown)
+        self.assertIn("Max contrib symbol", markdown)
+        self.assertIn("2330 | 75.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)
 
     def test_market_regime_filter_blocks_rotation_when_market_index_below_sma(self) -> None:
@@ -538,6 +543,9 @@ def _rotation_result(
         average_exposure=1.0,
         average_selected_count=1.0,
         end_equity=10_000.0 * (1.0 + total_return),
+        max_symbol_abs_contribution_symbol="2330",
+        max_symbol_abs_contribution_share=0.75,
+        top3_symbol_abs_contribution_share=0.75,
         symbol_attribution=[
             PortfolioSymbolAttribution(
                 symbol="2330",

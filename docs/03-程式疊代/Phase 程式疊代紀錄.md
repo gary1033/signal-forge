@@ -5,7 +5,7 @@ tags:
   - iteration
   - phase
 status: active
-updated: 2026-05-21
+updated: 2026-05-24
 ---
 
 # Phase 程式疊代紀錄
@@ -194,6 +194,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 資料池擴大到 14 檔 TWSE 日線後，`breadth lookback 42 / min positive 3` 取代七檔版本成為目前最佳折衷：full-window IR 約 `1.417`、MDD 約 `-23.01%`，1x/2x/3x 成本與 6 個 rolling windows 都保持正 excess。
 - `src\signal_forge\data\fetch.py` 修正 TWSE 批次下載可靠性：request 會帶 `SignalForge/1.0 research data fetcher` User-Agent，並對 HTTP 308 redirect 做 bounded follow；`tests\test_data_fetch.py` 鎖住這個 regression。
 - `PortfolioRotationResult` 新增 `symbol_attribution`，逐股輸出實際持倉期間數、再平衡入選次數、平均權重、`weight * close-to-close return` 貢獻與絕對貢獻占比。
+- `PortfolioRotationResult` 新增 `max_symbol_abs_contribution_symbol`、`max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`，讓 full-window 與 rolling window 都能直接檢查是否過度依賴少數股票。
 - Markdown 報表新增 `Top Symbol Attribution` 與 `Walk-forward Top Symbol Attribution`，讓 full-window 與 rolling window 都能檢查報酬是否集中在少數股票。
 - CLI 支援 `--rebalance-frequency daily|weekly|monthly`、`--lookback-bars`、`--top-n`、`--min-return`、`--cost-multipliers-list`、`--walk-forward-windows` 與 JSON/Markdown 摘要輸出。
 - 報表已新增 `annualized_active_return`、`tracking_error`、`information_ratio` 與 `active_max_drawdown`，用 relative equity 檢查主動風險報酬與相對 benchmark 回撤。
@@ -218,7 +219,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；14 檔 `breadth 42/min3` 是目前最佳折衷，但 attribution 顯示部分 rolling window 仍有單檔集中風險。下一步應補 concentration guard，並用 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；14 檔 `breadth 42/min3` 是目前最佳折衷，但 concentration guard 顯示部分 rolling window 仍有單檔集中風險。下一步應測 concentration-aware 約束，並用 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

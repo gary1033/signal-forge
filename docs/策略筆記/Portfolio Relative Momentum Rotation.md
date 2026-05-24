@@ -26,6 +26,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Information Ratio / 資訊比率**：把策略相對 benchmark 的年化 active return 除以 tracking error，用來看每承擔一單位主動風險是否真的換到超額報酬。
 - **Active max drawdown / 相對最大回撤**：用策略權益相對 benchmark 權益的 normalized relative equity 計算回撤，觀察策略相對基準是否曾長時間失速。
 - **Symbol attribution / 選股歸因**：把實際持倉期間的 `weight * close-to-close return` 分配回各股票，檢查報酬是否集中在少數高波動股票。
+- **Concentration guard / 集中度防線**：把最大單檔貢獻占比與前三檔貢獻占比拉成一級欄位，避免只看總報酬或 IR 時忽略少數大贏家依賴。
 
 ## 策略假設
 
@@ -80,14 +81,15 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 可選 `--breadth-filter --breadth-lookback-bars 42 --breadth-min-positive-count 2` 在七檔股票池是最佳折衷：full-window IR 約 `1.017`，但 2021-2022 仍輸 benchmark。
 - 擴大到 14 檔 TWSE 股票池後，`--breadth-min-positive-count 3` 是目前最佳折衷：full-window return 約 `1974.85%`、excess 約 `1638.67%`、MDD 約 `-23.01%`、IR 約 `1.417`，1x/2x/3x 成本與 6 個 rolling windows 都維持正 excess。
 - 選股歸因顯示 full-window 最大貢獻 `2603` 的絕對貢獻占比約 `23.77%`，不是單一股票完全壟斷；但 rolling window 仍有集中風險，`roll02` 的 `2603` 約 `68.75%`、`roll06` 的 `2308` 約 `48.75%`。
+- Concentration guard 進一步顯示 full-window top-3 絕對貢獻占比約 `55.04%`；rolling top-3 在 `roll01` 約 `73.33%`、`roll02` 約 `82.56%`、`roll03` 約 `72.39%`，代表部分分段仍過度集中。
 - 因為分段貢獻仍偏集中、資料未還原權息、股票池仍小，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
 ## 下一步
 
-- 下一步優先補 concentration guard，例如 `max_symbol_abs_contribution_share` 與 `top3_abs_contribution_share`，確認每個 rolling window 不是靠單一股票撐住。
-- 再檢查 adjusted price、流動性與容量；不要只微調 breadth threshold。
+- 下一步優先測 concentration-aware 約束，例如 `top_n=4/5`、限制單檔連續入選、sector cap 或擴大股票池，目標是降低 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share`。
+- 再檢查 adjusted price、流動性與容量；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
 - 目前主比較錨點改為 `TWSE14 monthly + 21 bars + top3 + breadth 42/min3`，但仍要和原始七檔版本與 baseline 一起保留，避免只看單一 overlay。

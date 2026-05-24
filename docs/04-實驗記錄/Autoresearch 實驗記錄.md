@@ -7168,3 +7168,62 @@ Full-window 看起來不是單一股票壟斷，top 1 `2603` 絕對貢獻占比�
 - **Keep as current best compare candidate**：`TWSE14 monthly + 21 bars + top3 + breadth42/min3` 仍是目前最強候選。
 - **Not stable-profit proof**：rolling attribution 顯示部分 window 對單檔依賴過高；資料仍未還原權息，股票池仍小，尚未驗證流動性與容量。
 - **Next**：優先做 concentration guard，例如報表先標示 `max_symbol_abs_contribution_share`、`top3_abs_contribution_share`，再測是否能用更大股票池、sector cap 或 top-N / rebalance 約束降低分段集中度，而不是只追求更高 return / IR。
+
+## 2026-05-24 Portfolio rotation concentration guard 指標
+
+### 目的
+
+上一輪已經能看到逐股 attribution，但判讀仍要人工從表格中抓最大值。本輪不改策略交易語意，只把集中度變成 `PortfolioRotationResult` 的一級欄位，讓 full-window 與 rolling windows 都能直接檢查：
+
+- `max_symbol_abs_contribution_symbol`
+- `max_symbol_abs_contribution_share`
+- `top3_symbol_abs_contribution_share`
+
+這三個欄位用來回答「目前候選是否靠一檔或前三檔股票撐住」，是策略升級前必須看的 guard 指標。
+
+### 程式改動
+
+- `tools\portfolio_rotation_sweep.py`
+  - `PortfolioRotationResult` 新增 `max_symbol_abs_contribution_symbol`、`max_symbol_abs_contribution_share`、`top3_symbol_abs_contribution_share`。
+  - 新增 `_symbol_concentration_metrics(...)`，由 `symbol_attribution` 推導集中度。
+  - `Portfolio Result` 與 `Walk-forward Windows` Markdown 表格直接輸出最大貢獻股票、最大貢獻占比與 top-3 貢獻占比。
+- `tests\test_portfolio_rotation_sweep_tool.py`
+  - 鎖住 concentration 欄位與 Markdown 表頭。
+
+### TWSE14 concentration 結果
+
+固定候選仍是：
+
+```text
+TWSE14 monthly + 21 bars + top3 + breadth42/min3
+```
+
+Full-window：
+
+| Scope | Max symbol | Max contribution share | Top-3 contribution share | 判斷 |
+|---|---|---:|---:|---|
+| `2020-2026` | `2603` | `23.77%` | `55.04%` | full-window 沒有單檔壟斷，但 top-3 已過半 |
+
+Rolling windows：
+
+| Window | Max symbol | Max contribution share | Top-3 contribution share | 判斷 |
+|---|---|---:|---:|---|
+| `roll01` `2020-2021` | `2603` | `44.86%` | `73.33%` | 高度集中 |
+| `roll02` `2021-2022` | `2603` | `68.75%` | `82.56%` | 最嚴重集中；原本問題段主要靠航運行情修復 |
+| `roll03` `2022-2023` | `2382` | `42.35%` | `72.39%` | 高度集中 |
+| `roll04` `2023-2024` | `2382` | `37.09%` | `70.58%` | 偏集中 |
+| `roll05` `2024-2025` | `2308` | `36.63%` | `60.80%` | 中度集中 |
+| `roll06` `2025-2026-05` | `2308` | `48.75%` | `69.86%` | partial window 偏集中 |
+
+### 解讀
+
+1. **Full-window 集中度可接受但不低**：單檔最大 `23.77%` 還不到單一壟斷，但 top-3 `55.04%` 代表報酬主要來自少數強勢股。
+2. **Rolling window 才是主要問題**：`roll02` 的 max share `68.75%`、top-3 `82.56%`，代表最關鍵修復段其實高度依賴 `2603`。
+3. **候選仍不應升級為穩定營利**：即使 IR、MDD、rolling excess 變好，concentration guard 顯示分段穩健性不足。
+4. **下一輪方向**：測試 concentration-aware 約束，例如提高 `top_n`、限制單一股票連續入選、加入 sector cap，或先擴大股票池看 top-3 share 是否自然下降。
+
+### Keep / Discard 判斷
+
+- **Keep**：concentration guard 指標與 tests。這讓策略評估準則中的「不要只靠少數大贏家」變成可直接讀取的報表欄位。
+- **Compare-only**：`TWSE14 breadth42/min3` 仍是目前最強候選，但 concentration risk 未解。
+- **Next**：先用同一批資料測 `top_n=4/5` 或更大股票池，要求 rolling `max_symbol_abs_contribution_share` 與 `top3_symbol_abs_contribution_share` 降低，同時不得犧牲太多 IR / active drawdown。

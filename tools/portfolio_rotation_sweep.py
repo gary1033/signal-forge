@@ -92,6 +92,9 @@ class PortfolioRotationResult:
     average_exposure: float
     average_selected_count: float
     end_equity: float
+    max_symbol_abs_contribution_symbol: str | None
+    max_symbol_abs_contribution_share: float
+    top3_symbol_abs_contribution_share: float
     symbol_attribution: list["PortfolioSymbolAttribution"]
 
 
@@ -439,6 +442,19 @@ def run_portfolio_rotation(
         equity,
         years,
     )
+    symbol_attribution = _build_symbol_attribution(
+        symbols,
+        selected_bar_counts=selected_bar_counts,
+        rebalance_selected_counts=rebalance_selected_counts,
+        total_weight_sums=total_weight_sums,
+        selected_weight_sums=selected_weight_sums,
+        return_contributions=return_contributions,
+        period_count=len(timestamps) - 1,
+        rebalance_count=rebalance_count,
+    )
+    max_symbol, max_share, top3_share = _symbol_concentration_metrics(
+        symbol_attribution
+    )
     return PortfolioRotationResult(
         strategy=PORTFOLIO_ROTATION_STRATEGY,
         cost_multiplier=cost_multiplier,
@@ -498,16 +514,10 @@ def run_portfolio_rotation(
         average_exposure=_average(exposure_values),
         average_selected_count=_average_float(selected_counts),
         end_equity=equity,
-        symbol_attribution=_build_symbol_attribution(
-            symbols,
-            selected_bar_counts=selected_bar_counts,
-            rebalance_selected_counts=rebalance_selected_counts,
-            total_weight_sums=total_weight_sums,
-            selected_weight_sums=selected_weight_sums,
-            return_contributions=return_contributions,
-            period_count=len(timestamps) - 1,
-            rebalance_count=rebalance_count,
-        ),
+        max_symbol_abs_contribution_symbol=max_symbol,
+        max_symbol_abs_contribution_share=max_share,
+        top3_symbol_abs_contribution_share=top3_share,
+        symbol_attribution=symbol_attribution,
     )
 
 
@@ -569,6 +579,27 @@ def _build_symbol_attribution(
     return sorted(
         rows,
         key=lambda row: (-row.absolute_contribution_share, row.symbol),
+    )
+
+
+def _symbol_concentration_metrics(
+    symbol_attribution: list[PortfolioSymbolAttribution],
+) -> tuple[str | None, float, float]:
+    """
+    用途與流程：從已排序的逐股 attribution 推導集中度摘要，作為策略是否過度依賴少數股票的 guard 指標。
+    參數：symbol_attribution 是 `_build_symbol_attribution(...)` 產生的清單，通常已依絕對貢獻占比排序。
+    回傳與錯誤：回傳 `(max_symbol, max_share, top3_share)`；清單為空時股票代號為 None、比例為 0，此函式不主動拋錯。
+    """
+    if not symbol_attribution:
+        return None, 0.0, 0.0
+    top_rows = sorted(
+        symbol_attribution,
+        key=lambda row: (-row.absolute_contribution_share, row.symbol),
+    )
+    return (
+        top_rows[0].symbol,
+        top_rows[0].absolute_contribution_share,
+        sum(row.absolute_contribution_share for row in top_rows[:3]),
     )
 
 
@@ -914,8 +945,8 @@ def format_markdown(
         "",
         "## Portfolio Result",
         "",
-        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected |",
-        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Strategy | Cost | Rebalance | Lookback | Top N | Regime | Regime SMA | Breadth | Breadth lookback | Breadth min | Avg breadth | Vol target | Target vol | Avg vol scale | Return | CAGR | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Sortino | Calmar | Trades | Rebalances | Regime blocks | Breadth blocks | Breadth warmup | Vol scaled | Vol warmup | Avg turnover | Avg exposure | Avg selected | Max contrib symbol | Max contrib share | Top3 contrib share |",
+        "|---|---:|---|---:|---:|---|---:|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
     ]
     for result in results:
         lines.append(
@@ -950,7 +981,10 @@ def format_markdown(
             f"{result.volatility_warmup_count} | "
             f"{result.average_turnover:.2f} | "
             f"{result.average_exposure:.2%} | "
-            f"{result.average_selected_count:.2f} |"
+            f"{result.average_selected_count:.2f} | "
+            f"{result.max_symbol_abs_contribution_symbol or 'none'} | "
+            f"{result.max_symbol_abs_contribution_share:.2%} | "
+            f"{result.top3_symbol_abs_contribution_share:.2%} |"
         )
     lines.extend(_format_symbol_attribution_lines(results, heading="Top Symbol Attribution", limit=5))
     return "\n".join(lines) + "\n"
@@ -971,8 +1005,8 @@ def format_walk_forward_markdown(
         "",
         "## Walk-forward Windows",
         "",
-        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Avg breadth | Vol scaled | Avg vol scale | Avg exposure |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Window | Range | Cost | Return | Benchmark return | Excess | Excess CAGR | Annual active | Tracking error | IR | MDD | Benchmark MDD | Active MDD | Sharpe | Trades | Regime blocks | Breadth blocks | Avg breadth | Vol scaled | Avg vol scale | Avg exposure | Max contrib symbol | Max contrib share | Top3 contrib share |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|",
     ]
     for window_result in window_results:
         window_range = f"{window_result.window.start or 'earliest'} to {window_result.window.end or 'latest'}"
@@ -996,7 +1030,10 @@ def format_walk_forward_markdown(
                 f"{_format_optional_ratio(result.average_breadth_positive_count)} | "
                 f"{result.volatility_scaled_rebalance_count} | "
                 f"{_format_optional_ratio(result.average_volatility_scale)} | "
-                f"{result.average_exposure:.2%} |"
+                f"{result.average_exposure:.2%} | "
+                f"{result.max_symbol_abs_contribution_symbol or 'none'} | "
+                f"{result.max_symbol_abs_contribution_share:.2%} | "
+                f"{result.top3_symbol_abs_contribution_share:.2%} |"
             )
     lines.extend(
         _format_window_symbol_attribution_lines(

@@ -92,6 +92,13 @@ modify -> verify -> keep/discard -> log
 Get-Content -Encoding UTF8 -LiteralPath docs\02-規劃\策略回測與優化評估準則.md
 ```
 
+策略相關任務的必讀順序是：
+
+1. 先讀 `docs\02-規劃\策略回測與優化評估準則.md`，確認本輪要改善的指標與 keep / discard / compare-only gate。
+2. 再讀 `docs\04-實驗記錄\Autoresearch 實驗記錄.md` 的最近策略實驗，避免重做已 discard 的方向。
+3. 若是既有策略，讀 `docs\策略筆記\<策略名稱>.md`；若是新策略，先在 Obsidian `策略筆記` 建立獨立筆記再實作。
+4. 若有新回測報表或 generated artifact，先核對 JSON / Markdown / CSV 是否和策略評估準則的欄位一致，再下結論。
+
 判斷策略方向時不可只看單一 `Profit Factor`、勝率、總損益或單一標的結果。每次策略研究都要依該準則同時檢查：
 
 - 交易 edge：PF、expectancy、trade count、win rate + payoff ratio。
