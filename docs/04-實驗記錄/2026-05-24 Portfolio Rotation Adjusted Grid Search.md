@@ -146,3 +146,66 @@ Rolling 1x 對照中，adjusted 版本的最弱 window 仍是 `roll02`：excess 
 - **Keep diagnostic**：`top3 / breadth4 / maxconsec5 / liq500M` 比 current baseline 更適合作為下一個 compare anchor，因為 adjusted min rolling IR 與 MDD 較好。
 - **Do not promote strategy**：group concentration gate 仍失敗，adjusted top3 group share full-window `92.78%`，rolling 最高 `97.38%`；這不是穩定營利證明。
 - **Next**：不要繼續只微調 top-N / breadth / consecutive cap。下一步應做 group regime validation 或更高品質股票池，目標是降低 rolling group contribution concentration，同時保留 adjusted min rolling excess、IR 與可接受 MDD。
+
+## 2026-05-24 follow-up：group regime validation
+
+### 目的
+
+上一段確認 `top3 / breadth4 / maxconsec5 / liq500M` 的 adjusted rolling robustness 比 current baseline 好，但 group concentration 仍是主瓶頸。本段新增 deterministic group regime validation artifact，用同一份 adjusted summary 檢查每個 full / rolling window 的群組貢獻是否只是長期高曝險造成，還是特定群組在該 window 的 realized return 主導。
+
+### 程式改動
+
+- 新增 `tools/portfolio_rotation_group_regime_validation.py`。
+- 新增 `tests/test_portfolio_rotation_group_regime_validation_tool.py`。
+- 工具會讀取 portfolio rotation summary JSON，針對指定 `cost_label` 輸出：
+  - 最大貢獻群組與貢獻占比。
+  - 最大貢獻群組的平均權重。
+  - 貢獻占比減平均權重的 contribution-exposure gap。
+  - 最大平均曝險群組。
+  - top3 group contribution share 與 top3 group average weight。
+  - dominance type：`return_regime_dominated`、`exposure_dominated` 或 `mixed`。
+  - gate failure reason。
+
+### 產生 artifact
+
+```powershell
+python tools\portfolio_rotation_group_regime_validation.py `
+  --summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-rolling24m-20260524.json `
+  --cost-label 1x `
+  --max-top3-group-share 0.90 `
+  --max-contribution-exposure-gap 0.30 `
+  --output-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-regime-validation-20260524.json `
+  --output-md reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-regime-validation-20260524.md
+```
+
+### 主要結果
+
+| Metric | Value |
+|---|---:|
+| Gate pass | `false` |
+| High concentration windows | `7 / 7` |
+| Return-regime dominated windows | `7 / 7` |
+| Exposure dominated windows | `0 / 7` |
+| Worst top3 group window | `roll03 = 97.38%` |
+| Weakest IR window | `roll02 = 0.264` |
+
+重點 rolling windows：
+
+| Window | Max contrib group | Contrib share | Avg weight | Gap | Max exposure group | Top3 group | Dominance |
+|---|---|---:|---:|---:|---|---:|---|
+| `roll02` | `shipping` | `70.86%` | `10.43%` | `60.43%` | `financial` | `93.36%` | `return_regime_dominated` |
+| `roll03` | `electronics` | `61.84%` | `12.02%` | `49.81%` | `semiconductor` | `97.38%` | `return_regime_dominated` |
+| `roll06` | `electronics` | `63.61%` | `30.40%` | `33.20%` | `electronics` | `94.99%` | `return_regime_dominated` |
+
+### 解讀
+
+1. **不是單純高曝險問題**：全部 `7 / 7` 視窗都被分類為 `return_regime_dominated`。例如 `roll02` 最大貢獻是 `shipping`，但最大平均曝險是 `financial`；`shipping` 平均權重只有 `10.43%`，卻貢獻 `70.86%` 的絕對貢獻占比。
+2. **硬壓 group exposure 未必有效**：若問題來自特定 window 的 realized return，而不是長期平均權重，單純 group cap 或固定刪 group 容易傷害 edge，這和前面的 group cap / dominant group exclusion 診斷一致。
+3. **下一步要改驗證方向**：比起繼續微調 `top_n`、breadth 或 max consecutive，下一步應優先做更高品質股票池或 group regime validation 延伸，例如檢查不同產業 regime proxy、rolling breadth by group、或要求每個 rolling window 的 top3 group contribution share 下降到 gate 內。
+
+### Keep / Discard 判斷
+
+- **Keep code**：group regime validation 工具與 regression tests。它把群組集中度來源從人工解讀升級為可重跑 artifact。
+- **Keep diagnostic**：`top3 / breadth4 / maxconsec5 / liq500M` 的 rolling IR / MDD tradeoff 仍較 current baseline 好，但群組 regime 依賴沒有改善。
+- **Do not promote strategy**：`7 / 7` 視窗都 high concentration 且 return-regime dominated，不可宣稱穩定營利。
+- **Next**：轉向更高品質股票池、group-level breadth / regime validation，或直接設計能限制 realized group contribution concentration 的 gate；不要再只擴同一組 top-N / breadth / max-consecutive grid。

@@ -139,6 +139,20 @@ python tools\compare_portfolio_rotation_reports.py `
 
 這個工具把 raw 與 adjusted summary 對齊後輸出 deterministic JSON / Markdown，比較 total return、benchmark excess、Information Ratio、MDD、active MDD、symbol concentration 與 group concentration。2026-05-24 對照顯示同一 execution-aware candidate 從 raw `IR 1.521 / MDD -18.61%` 降成 adjusted `IR 1.156 / MDD -27.97%`，最弱 rolling IR 從 `0.814` 降到 `0.104`；因此後續 portfolio rotation 優化必須先通過 raw/adjusted comparison gate。
 
+Group regime validation 工具：
+
+```powershell
+python tools\portfolio_rotation_group_regime_validation.py `
+  --summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-rolling24m-20260524.json `
+  --cost-label 1x `
+  --max-top3-group-share 0.90 `
+  --max-contribution-exposure-gap 0.30 `
+  --output-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-regime-validation-20260524.json `
+  --output-md reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-regime-validation-20260524.md
+```
+
+這個工具把 portfolio rotation 的 group contribution concentration 和 group exposure 對齊，判斷 rolling concentration 是長期高曝險、特定 group realized return regime，還是混合來源。2026-05-24 `top3 / breadth4 / maxconsec5 / liq500M` adjusted anchor 的結果是 full + 6 個 rolling windows 全部 high concentration，且 `7 / 7` 都是 `return_regime_dominated`；因此下一步不應只做 group cap 或固定刪群組，而要轉向更高品質股票池、group-level breadth / regime validation，或能直接限制 realized group contribution concentration 的 gate。
+
 ## 策略蒸餾規則
 
 每個策略先整理成獨立策略筆記，並保留：
@@ -177,7 +191,7 @@ python tools\compare_portfolio_rotation_reports.py `
 - `DrawdownRiskOffStrategy` 支援單檔 proxy equity drawdown-state risk-off overlay，並已接入 target-state sweep 的 `--drawdown-risk-off`。
 - `multi_stock_target_state_sweep.py` 支援 `--walk-forward-windows`，可用 `label:start:end` 指定樣本內 / 樣本外分段，並輸出 OOS retention 報表。
 - `multi_stock_target_state_sweep.py` 支援 `--relative-momentum-filter`，可用跨股票 lookback return top-N 建立股票池白名單；目前 OOS 參數掃描顯示它降低曝險但沒有改善 benchmark-relative edge。
-- `portfolio_rotation_sweep.py` 支援 portfolio-level relative momentum rotation、equal-weight buy-and-hold benchmark、成本壓力、walk-forward / rolling split、自動 rolling window 產生、Information Ratio、tracking error、active max drawdown、market regime filter、breadth filter、volatility target、單檔連續入選上限、group cap 與 liquidity gate；股票池已由 7 檔擴到 14 檔，並暫時擴到 TWSE23 做 concentration diagnostic。`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 目前是 execution-aware compare candidate。sector/group cap 已測但未改善 rolling concentration；group attribution / exposure 顯示部分 window 是群組 regime return 主導；dominant group exclusion 顯示固定刪除 `shipping`、`electronics` 或 `semiconductor` 都不能同時改善 edge、回撤與 concentration；TWSE23 可降低 concentration 但犧牲 edge 與 drawdown；Canary9 held-out universe 顯示 full excess 約 `-0.91%`、MDD 約 `-44.29%`；adjusted-ratio 版本顯示 full IR 降到約 `1.156`、MDD 惡化到約 `-27.97%`、min rolling IR 只剩約 `0.104`；`tools\build_twse_adjusted_ohlcv.py` 與 `tools\build_twse_adjusted_ohlcv_batch.py` 已正式化 adjusted price 資料來源、per-symbol manifest 與 TWSE14 batch manifest，後續仍需要 raw / adjusted 同報表引用、TWSE30+ 與更高品質股票池驗證。
+- `portfolio_rotation_sweep.py` 支援 portfolio-level relative momentum rotation、equal-weight buy-and-hold benchmark、成本壓力、walk-forward / rolling split、自動 rolling window 產生、Information Ratio、tracking error、active max drawdown、market regime filter、breadth filter、volatility target、單檔連續入選上限、group cap 與 liquidity gate；股票池已由 7 檔擴到 14 檔，並暫時擴到 TWSE23 做 concentration diagnostic。`top4 + breadth 42/min3 + max consecutive 5 + liquidity 500M/20 bars` 目前是 execution-aware compare candidate。sector/group cap 已測但未改善 rolling concentration；group attribution / exposure 顯示部分 window 是群組 regime return 主導；dominant group exclusion 顯示固定刪除 `shipping`、`electronics` 或 `semiconductor` 都不能同時改善 edge、回撤與 concentration；TWSE23 可降低 concentration 但犧牲 edge 與 drawdown；Canary9 held-out universe 顯示 full excess 約 `-0.91%`、MDD 約 `-44.29%`；adjusted-ratio 版本顯示 full IR 降到約 `1.156`、MDD 惡化到約 `-27.97%`、min rolling IR 只剩約 `0.104`；`tools\build_twse_adjusted_ohlcv.py` 與 `tools\build_twse_adjusted_ohlcv_batch.py` 已正式化 adjusted price 資料來源、per-symbol manifest 與 TWSE14 batch manifest，`tools\portfolio_rotation_group_regime_validation.py` 已正式化 group contribution vs exposure 診斷，後續仍需要 TWSE30+、更高品質股票池或 group-level breadth / regime validation。
 - Phase summary JSON 與 markdown exact-text regression。
 - Entry Edge summary JSON、markdown、trade log CSV deterministic contract。
 - `*_signals.csv` 與 `*_trace_summary.json`。
