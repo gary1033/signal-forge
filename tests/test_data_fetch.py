@@ -6,7 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
+from signal_forge.data.fetch import _fetch_url_text
 from signal_forge.data_fetch import (
     fetch_market_data,
     fetch_stooq_daily_stock,
@@ -18,6 +20,40 @@ from signal_forge.market_data import MarketDataValidationError, load_bars_from_c
 
 
 class DataFetchTests(unittest.TestCase):
+    def test_fetch_url_text_follows_http_308_redirect(self) -> None:
+        """
+        用途與流程：驗證底層資料下載 helper 會追蹤 HTTP 308 redirect，避免 TWSE 端點轉址讓批次股票池下載中斷。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 redirect location 解析或二次下載行為漂移，assertion 會失敗。
+        """
+        redirect = HTTPError(
+            "https://example.test/source",
+            308,
+            "Permanent Redirect",
+            {"Location": "/target"},
+            None,
+        )
+
+        with patch(
+            "signal_forge.data.fetch.urlopen",
+            side_effect=[redirect, _FakeHttpResponse(b"{\"ok\": true}")],
+        ) as fake_urlopen:
+            text = _fetch_url_text("https://example.test/source")
+
+        self.assertEqual(text, "{\"ok\": true}")
+        self.assertEqual(
+            fake_urlopen.call_args_list[0].args[0].full_url,
+            "https://example.test/source",
+        )
+        self.assertEqual(
+            fake_urlopen.call_args_list[1].args[0].full_url,
+            "https://example.test/target",
+        )
+        self.assertIn(
+            "SignalForge",
+            fake_urlopen.call_args_list[0].args[0].headers["User-agent"],
+        )
+
     def test_parse_twse_row_converts_roc_date_and_numeric_fields(self) -> None:
         """
         用途與流程：驗證 parse twse row converts roc date and numeric fields 這個行為或 regression contract，透過 unittest assertion 鎖住預期結果。
@@ -171,6 +207,26 @@ class DataFetchTests(unittest.TestCase):
         self.assertEqual([bar.timestamp for bar in bars], ["2024-01-02", "2024-01-03"])
         self.assertEqual(manifest["data_source"], "TWSE STOCK_DAY")
         self.assertFalse(manifest["adjusted"])
+
+
+class _FakeHttpResponse:
+    """
+    用途與流程：提供 `_fetch_url_text` 測試用的最小 context manager response，避免測試真的連網。
+    參數：body 是要由 read() 回傳的 bytes。
+    回傳與錯誤：`__enter__` 回傳自身；`read()` 回傳 body；此 helper 不主動拋錯。
+    """
+
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def __enter__(self) -> "_FakeHttpResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self.body
 
 
 if __name__ == "__main__":

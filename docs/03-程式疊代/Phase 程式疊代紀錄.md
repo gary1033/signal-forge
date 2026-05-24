@@ -191,11 +191,13 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 新增可選 market regime overlay：`--market-regime-filter` 與 `--market-regime-sma-bars` 會用等權市場指數跌破 SMA 時留現金，並在 Markdown / JSON 補上 `market_regime_filter`、`market_regime_sma_bars`、`regime_block_count`。SMA84 可把 2021-2022 excess 從 `-24.62%` 改到 `-13.59%`，但 full-window IR 從 `0.858` 降到 `0.544`，因此只保留為 compare-only，不升級主候選。
 - 新增可選 portfolio volatility target：`--volatility-target`、`--volatility-lookback-bars`、`--target-annual-volatility`、`--volatility-min-observations`、`--volatility-max-scale` 會在 rebalance date 對已選出投組按 realized volatility 只降曝險、不加槓桿。`lookback=42 / target=20%` full-window IR 只剩約 `0.065`，`2021-2022` excess 仍約 `-22.85%`，因此只保留為 compare-only，不升級主候選。
 - 新增可選 breadth filter：`--breadth-filter`、`--breadth-lookback-bars`、`--breadth-min-positive-count`、`--breadth-positive-threshold` 會在 rebalance date 檢查股票池正動能檔數，寬度不足時留現金。`breadth lookback 42 / min positive 2` full-window IR 約 `1.017`、MDD 約 `-21.11%`，是目前最佳折衷；但 `2021-2022` excess 仍約 `-16.91%`，不能宣稱穩定營利。
+- 資料池擴大到 14 檔 TWSE 日線後，`breadth lookback 42 / min positive 3` 取代七檔版本成為目前最佳折衷：full-window IR 約 `1.417`、MDD 約 `-23.01%`，1x/2x/3x 成本與 6 個 rolling windows 都保持正 excess。
+- `src\signal_forge\data\fetch.py` 修正 TWSE 批次下載可靠性：request 會帶 `SignalForge/1.0 research data fetcher` User-Agent，並對 HTTP 308 redirect 做 bounded follow；`tests\test_data_fetch.py` 鎖住這個 regression。
 - CLI 支援 `--rebalance-frequency daily|weekly|monthly`、`--lookback-bars`、`--top-n`、`--min-return`、`--cost-multipliers-list`、`--walk-forward-windows` 與 JSON/Markdown 摘要輸出。
 - 報表已新增 `annualized_active_return`、`tracking_error`、`information_ratio` 與 `active_max_drawdown`，用 relative equity 檢查主動風險報酬與相對 benchmark 回撤。
 - CLI 已新增自動 rolling windows：`--rolling-window-months`、`--rolling-step-months`、`--rolling-min-months`；它會產生 `roll01`、`roll02` 這類日期窗，避免每次手寫少數分段。
 - `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、共同日期對齊、top momentum 選股、benchmark 成本、market regime block、breadth block、volatility scaling 與 retention regression。
-- 本輪結果：原始 `monthly + 21 bars + top3` 在 full-window 與 2024-2026 OOS 很強，但 24 個月 rolling 顯示 `2021-2022` return 約 `-18.74%`、excess 約 `-24.62%`、IR 約 `-0.881`。最新 `breadth 42/min2` 可把 full-window IR 提到約 `1.017`、MDD 降到約 `-21.11%`，但 `2021-2022` excess 仍約 `-16.91%`，因此只升級成 current best compare candidate，仍不能宣稱穩定營利。
+- 本輪結果：原始七檔 `monthly + 21 bars + top3` 在 full-window 與 2024-2026 OOS 很強，但 24 個月 rolling 顯示 `2021-2022` return 約 `-18.74%`、excess 約 `-24.62%`、IR 約 `-0.881`。七檔 `breadth 42/min2` 改善但仍未修好 `2021-2022`。14 檔 `breadth 42/min3` 讓 full-window IR 約 `1.417`、MDD 約 `-23.01%`，且 rolling `6/6` 正 excess，因此升級成 current best compare candidate；但資料未還原權息、股票池仍小且尚未選股歸因，仍不能宣稱穩定營利。
 
 ## 重要 commit 節點
 
@@ -214,7 +216,7 @@ Reporting 會用 `validate_signal_digest_csv(...)` 對 signals CSV 和 trace sum
 - 優先補強 trace summary 或 validation，不做績效最佳化。
 - SMA Crossover 可先用 `--hold-bars-list` 比較一日、三日、五日、十日固定持有期，再決定是否進入完整趨勢持有 / 出場規則設計。
 - VWAP Reversion 可比較未啟用與啟用 `--vwap-regime-filter` 的結果，確認簡單趨勢濾網是否降低強下跌中的反向接刀。
-- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；`breadth 42/min2` 是目前最佳折衷，但 24 個月 rolling 仍揭露 2021-2022 失敗 window。下一步應擴大股票池、補 1x / 2x / 3x cost stress 固定報表，或測 canary / re-entry 條件，並用已新增的 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
+- Target-state 主線先以 `absolute-momentum` 作 compare-only 錨點；逐檔 target-state 已證明 benchmark-relative 問題仍存在。Portfolio-level rotation 是目前較有希望的新主線；14 檔 `breadth 42/min3` 是目前最佳折衷，但下一步應補 per-symbol / per-window selection attribution，確認報酬不是少數高波動股票集中貢獻，並用已新增的 Information Ratio / active drawdown gate 防止單一 OOS window 過度樂觀。
 - OOP template 已完成後，下一步仍要分開討論 SMA Crossover、VWAP Reversion、Confluence Score、Absolute Momentum 的策略語意修改。
 - 若新增策略或改策略邏輯，同步更新 [[../策略筆記/策略筆記索引|策略筆記]]。
 - push 前先把 Obsidian 筆記同步進 repo `docs/`。

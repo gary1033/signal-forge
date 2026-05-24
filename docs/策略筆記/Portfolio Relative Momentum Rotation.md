@@ -57,7 +57,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `lookback_bars`：預設研究候選使用 `21`，約一個月交易日。
 - `top_n`：預設研究候選使用 `3`。
 - `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
-- `breadth_filter`：目前最佳折衷候選啟用；`breadth_lookback_bars=42`、`breadth_min_positive_count=2`、`breadth_positive_threshold=0.0`。
+- `breadth_filter`：七檔股票池最佳折衷是 `breadth_lookback_bars=42`、`breadth_min_positive_count=2`；擴大到 14 檔 TWSE 股票池後，目前最佳折衷改為 `breadth_min_positive_count=3`。
 - `cost_multipliers`：固定用 `1x` 與 `3x` 成本壓力檢查。
 - benchmark：同一批股票的 equal-weight buy-and-hold portfolio。
 
@@ -76,17 +76,18 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 24 個月 rolling 檢查已發現 2021-2022 失敗 window，代表策略可能需要 market regime 或 risk-off 條件，不能只看 2024-2026 強勢期。
 - 可選 `--market-regime-filter --market-regime-sma-bars 84` 已測：它把 2021-2022 excess 從約 `-24.62%` 改到約 `-13.59%`，但 full-window IR 從約 `0.858` 降到約 `0.544`，所以只能作 compare-only 風控工具，不能當作目前主候選改善。
 - 可選 `--volatility-target --volatility-lookback-bars 42 --target-annual-volatility 0.20` 已測：full excess 只剩約 `43.00%`、IR 約 `0.065`，2021-2022 excess 仍約 `-22.85%`，所以也只能作 compare-only 風控工具，不能當作目前主候選改善。
-- 可選 `--breadth-filter --breadth-lookback-bars 42 --breadth-min-positive-count 2` 是目前最佳折衷：full-window return 約 `1193.44%`、excess 約 `789.41%`、MDD 約 `-21.11%`、IR 約 `1.017`；但 2021-2022 excess 仍約 `-16.91%`、IR 約 `-0.598`，所以只能標為 current best compare candidate，不能宣稱穩定營利。
+- 可選 `--breadth-filter --breadth-lookback-bars 42 --breadth-min-positive-count 2` 在七檔股票池是最佳折衷：full-window IR 約 `1.017`，但 2021-2022 仍輸 benchmark。
+- 擴大到 14 檔 TWSE 股票池後，`--breadth-min-positive-count 3` 是目前最佳折衷：full-window return 約 `1974.85%`、excess 約 `1638.67%`、MDD 約 `-23.01%`、IR 約 `1.417`，1x/2x/3x 成本與 6 個 rolling windows 都維持正 excess；但資料未還原權息、股票池仍小、尚未做選股歸因，因此仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
 ## 下一步
 
-- 針對 2021-2022 失敗 window 擴大股票池與補 1x / 2x / 3x cost stress 固定報表；不要只微調 breadth threshold。
-- 若要再改善 breadth gate，優先測 canary universe / re-entry 條件，而不是把同一個七檔股票池的門檻調到剛好好看。
+- 補 per-symbol / per-window selection attribution，確認 14 檔版本的報酬是否集中在 `2603` 或少數高波動股票。
+- 下一步優先檢查 adjusted price、流動性與容量；不要只微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
-- 目前主比較錨點改為 `monthly + 21 bars + top3 + breadth 42/min2`，但仍要和原始版本一起保留，避免只看單一 overlay。
+- 目前主比較錨點改為 `TWSE14 monthly + 21 bars + top3 + breadth 42/min3`，但仍要和原始七檔版本與 baseline 一起保留，避免只看單一 overlay。
 
 ## 參考來源
 

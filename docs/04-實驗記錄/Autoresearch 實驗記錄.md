@@ -6935,3 +6935,129 @@ python tools\portfolio_rotation_sweep.py `
 - **Promote to current best compare candidate**：`monthly + 21 bars + top3 + breadth lookback 42 / min positive 2` 是目前 portfolio rotation 的最佳折衷候選。
 - **Not stable-profit proof**：因 `2021-2022` 仍輸 benchmark，且七檔股票池仍太小，不能宣稱已穩定營利。
 - **下一步**：先做更大股票池與 1x / 2x / 3x cost stress 的固定報表，再測 re-entry 或 canary universe；不要只繼續微調 breadth threshold。
+
+## 2026-05-24 TWSE14 股票池擴大驗證
+
+### 假設
+
+上一輪 breadth filter 在七檔股票池上得到最佳折衷，但「七檔大型股」仍太小，可能只是半導體與金融權重的樣本結構。這輪不新增交易策略，而是把 portfolio rotation 候選拿到更大的 TWSE 股票池檢查：
+
+1. 先擴大資料池，加入塑化、電子代工、航運、金融與封測控股。
+2. 修正資料下載 helper 對 TWSE 端點 `HTTP 308` 的處理，避免批次下載因 User-Agent / redirect 失敗。
+3. 固定 `monthly + 21 bars + top3`，重新比較 baseline 與 `breadth lookback 42` 的不同 `min positive count`。
+4. 對最佳折衷候選產生 1x / 2x / 3x 成本壓力與 24 個月 rolling windows。
+
+### 本輪資料改動
+
+原有股票池：
+
+```text
+2303, 2308, 2317, 2330, 2412, 2454, 2882
+```
+
+新增股票：
+
+| Symbol | 粗略類別 | Rows | Source |
+|---|---|---:|---|
+| `1301` | 塑化 | `1526` | TWSE STOCK_DAY |
+| `1303` | 塑化 | `1547` | TWSE STOCK_DAY |
+| `2382` | 電子代工 | `1547` | TWSE STOCK_DAY |
+| `2603` | 航運 | `1540` | TWSE STOCK_DAY |
+| `2881` | 金融 | `1547` | TWSE STOCK_DAY |
+| `2891` | 金融 | `1547` | TWSE STOCK_DAY |
+| `3711` | 封測控股 | `1547` | TWSE STOCK_DAY |
+
+> [!warning]
+> 這些 TWSE 日線仍是未還原權息資料。它們足以做 deterministic research / relative comparison，但不能當成可交易績效保證。
+
+### 資料下載工具修正
+
+- `src\signal_forge\data\fetch.py` 的 `_fetch_url_text(...)` 現在每次 request 會帶 `User-Agent: SignalForge/1.0 research data fetcher`。
+- 若資料來源回 `HTTP 308`，會依 `Location` 追蹤最多 5 次；缺少 Location 或轉址過多會拋出明確 `ValueError`。
+- `tests\test_data_fetch.py` 新增 fake HTTP 308 regression，鎖住 request URL、redirect URL 與 User-Agent。
+
+這個修正是資料可靠性改動，不碰 broker、不讀 credential、不改 live dry-run 邊界。
+
+### 14 檔 scan 摘要
+
+固定：
+
+```text
+rebalance = monthly
+lookback_bars = 21
+top_n = 3
+min_return = 0.0
+breadth_lookback_bars = 42
+```
+
+| Setting | Full return | Full excess | Full IR | Full MDD | Avg exposure | `2021-2022` excess | `2021-2022` IR | `2022-2023` excess | Positive excess windows | 解讀 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| baseline | `1178.12%` | `841.94%` | `1.035` | `-44.29%` | `96.15%` | `14.12%` | `0.395` | `26.34%` | `6/6` | 擴大股票池後 baseline 也轉強，但 MDD 太深 |
+| `breadth42/min2` | `1401.28%` | `1065.10%` | `1.136` | `-44.29%` | `94.58%` | `-5.07%` | `0.032` | `34.66%` | `5/6` | full IR 改善但 roll02 變弱，不採用 |
+| `breadth42/min3` | `1974.85%` | `1638.67%` | `1.417` | `-23.01%` | `88.51%` | `40.48%` | `0.799` | `89.46%` | `6/6` | 本輪最佳折衷 |
+| `breadth42/min4` | `1648.91%` | `1312.73%` | `1.283` | `-21.93%` | `84.08%` | `16.09%` | `0.389` | `53.70%` | `6/6` | MDD 略低但 IR / excess 較弱 |
+| `breadth42/min8` | `1648.04%` | `1311.86%` | `1.165` | `-18.18%` | `57.17%` | `42.83%` | `0.833` | `37.44%` | `6/6` | 風險較低但曝險太低，機會成本高 |
+| `breadth42/min10` | `514.89%` | `178.71%` | `0.295` | `-18.18%` | `42.40%` | `36.46%` | `0.712` | `19.53%` | `3/6` | 過度保守，active edge 消失 |
+
+### 正式報表命令
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_1301_1D.csv `
+  --csv data\processed\TWSE_1303_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2382_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2603_1D.csv `
+  --csv data\processed\TWSE_2881_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --csv data\processed\TWSE_2891_1D.csv `
+  --csv data\processed\TWSE_3711_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,2,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --breadth-filter `
+  --breadth-lookback-bars 42 `
+  --breadth-min-positive-count 3 `
+  --breadth-positive-threshold 0.0 `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\twse14-portfolio-rotation-monthly-lb21-top3-breadth42-min3-rolling24m-20260524.json `
+  --summary-md reports\generated\twse14-portfolio-rotation-monthly-lb21-top3-breadth42-min3-rolling24m-20260524.md
+```
+
+### `TWSE14 breadth42/min3` 結果摘要
+
+| Scope | Cost | Return | Benchmark return | Excess | IR | MDD | Active MDD | Breadth blocks | Avg exposure | 判斷 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Full `2020-2026` | `1x` | `1974.85%` | `336.18%` | `1638.67%` | `1.417` | `-23.01%` | `-26.79%` | `5` | `88.51%` | 最佳折衷 |
+| Full `2020-2026` | `2x` | `1940.15%` | `336.09%` | `1604.05%` | `1.403` | `-23.24%` | `-26.87%` | `5` | `88.51%` | 成本壓力後仍強 |
+| Full `2020-2026` | `3x` | `1906.02%` | `336.01%` | `1570.01%` | `1.389` | `-23.48%` | `-26.95%` | `5` | `88.51%` | 3x 成本後仍強 |
+| `2020-2021` | `1x` | `335.65%` | `91.24%` | `244.41%` | `1.900` | `-18.37%` | `-19.81%` | `1` | `84.43%` | 強 |
+| `2021-2022` | `1x` | `64.77%` | `24.29%` | `40.48%` | `0.799` | `-23.01%` | `-21.25%` | `4` | `65.60%` | 原失敗段被修復到正 excess |
+| `2022-2023` | `1x` | `98.27%` | `8.80%` | `89.46%` | `2.041` | `-9.25%` | `-7.79%` | `4` | `64.76%` | 強 |
+| `2023-2024` | `1x` | `113.54%` | `51.20%` | `62.34%` | `1.237` | `-19.91%` | `-15.09%` | `0` | `87.76%` | 強 |
+| `2024-2025` | `1x` | `82.58%` | `53.98%` | `28.60%` | `0.662` | `-19.91%` | `-20.70%` | `0` | `86.73%` | 正但較弱 |
+| `2025-2026-05` | `1x` | `110.14%` | `79.78%` | `30.36%` | `0.564` | `-16.41%` | `-26.79%` | `0` | `82.47%` | partial window 正但 active MDD 偏深 |
+
+### 解讀
+
+1. **擴大股票池後，breadth gate 的證據明顯變強**：`breadth42/min3` 在 full-window、1x/2x/3x 成本、6 個 rolling windows 都保持正 excess。
+2. **原本 `2021-2022` 問題被修復到正 active return**：七檔股票池的 `breadth42/min2` 仍輸 benchmark；14 檔後 `breadth42/min3` 在 `2021-2022` excess 約 `40.48%`、IR 約 `0.799`。
+3. **風險仍不可忽略**：full-window MDD 約 `-23.01%`，active MDD 約 `-26.79%`；`2025-2026` partial window 雖為正 excess，但 active MDD 偏深。
+4. **不能直接視為穩定營利完成**：資料未還原權息、股票池仍只有 14 檔、`min3` 是本輪掃描後挑出，仍有參數選擇偏誤；也尚未檢查交易容量、流動性、現金利息、真實稅費與不可成交情境。
+
+### Keep / Discard 判斷
+
+- **Keep**：新增 TWSE 資料與 fetcher User-Agent / HTTP 308 regression。這是讓更大股票池回測可重複的必要基礎。
+- **Promote current best compare candidate**：`TWSE14 monthly + 21 bars + top3 + breadth42/min3`。它比七檔版本更接近穩健候選，但仍不是穩定營利證明。
+- **Next**：下一輪優先補 `portfolio_rotation_sweep.py` 的 per-symbol / per-window selection attribution，確認報酬是否集中在 `2603` 或少數高波動股票；再考慮 adjusted price 或更大股票池。

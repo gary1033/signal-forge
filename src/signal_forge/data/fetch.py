@@ -8,8 +8,9 @@ import json
 import os
 from pathlib import Path
 from typing import Callable
-from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.error import HTTPError
+from urllib.parse import urlencode, urljoin
+from urllib.request import Request, urlopen
 
 from signal_forge.core.market_data import Bar, MarketDataValidationError, validate_bars
 
@@ -301,12 +302,27 @@ def _stooq_daily_url(
 
 def _fetch_url_text(url: str) -> str:
     """
-    用途與流程：提供模組內部輔助流程，將主要函式中的重複規則集中到單一位置。
-    參數：url（str）由呼叫端傳入，需符合函式 contract
-    回傳與錯誤：回傳 str；若輸入不合法，會依原實作拋出 ValueError 或專用驗證例外。
+    用途與流程：下載指定 URL 的 UTF-8 文字內容；每次 request 會帶明確 User-Agent，避免 TWSE 對無 UA 請求回同路徑 308；若資料來源仍回 HTTP 308 redirect，會依 Location 重新抓取。
+    參數：url 是完整 HTTP(S) URL 字串，通常由 TWSE 或 Stooq URL helper 產生。
+    回傳與錯誤：成功回傳解碼後文字；非 308 HTTPError 會原樣拋出，缺少 Location 或 redirect 過多時拋出 ValueError。
     """
-    with urlopen(url, timeout=30) as response:
-        return response.read().decode("utf-8-sig")
+    current_url = url
+    for _redirect_count in range(5):
+        try:
+            request = Request(
+                current_url,
+                headers={"User-Agent": "SignalForge/1.0 research data fetcher"},
+            )
+            with urlopen(request, timeout=30) as response:
+                return response.read().decode("utf-8-sig")
+        except HTTPError as exc:
+            if exc.code != 308:
+                raise
+            location = exc.headers.get("Location") if exc.headers else None
+            if not location:
+                raise ValueError("HTTP 308 redirect missing Location header") from exc
+            current_url = urljoin(current_url, location)
+    raise ValueError("too many HTTP 308 redirects while fetching market data")
 
 
 def _iter_month_starts(start: date, end: date) -> list[date]:
