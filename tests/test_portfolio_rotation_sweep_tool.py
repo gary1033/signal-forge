@@ -69,6 +69,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "2",
                 "--max-consecutive-selections-per-symbol",
                 "2",
+                "--reentry-cooldown-rebalances",
+                "1",
                 "--group-contribution-lookback-bars",
                 "3",
                 "--max-group-contribution-share",
@@ -104,6 +106,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.max_selections_per_group, 1)
         self.assertEqual(args.min_symbols_per_selected_group, 2)
         self.assertEqual(args.max_consecutive_selections_per_symbol, 2)
+        self.assertEqual(args.reentry_cooldown_rebalances, 1)
         self.assertEqual(args.group_contribution_lookback_bars, 3)
         self.assertEqual(args.max_group_contribution_share, 0.65)
         self.assertTrue(args.volatility_target)
@@ -486,6 +489,71 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.consecutive_selection_block_count, 1)
         self.assertEqual(alternative.rebalance_selected_count, 1)
 
+    def test_reentry_cooldown_blocks_fast_reentry_after_exit(self) -> None:
+        """
+        用途與流程：驗證股票離開輪動投組後，re-entry cooldown 會在下一次 rebalance 阻擋它立刻重新入選，且不偷看未來報酬。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 cooldown 狀態更新、block count 或替代股票入選語意漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "2330",
+                Path("2330.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 120.0),
+                    _bar("2026-01-03", 108.0),
+                    _bar("2026-01-04", 129.6),
+                ],
+            ),
+            (
+                "2317",
+                Path("2317.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 100.0),
+                    _bar("2026-01-03", 110.0),
+                    _bar("2026-01-04", 104.5),
+                ],
+            ),
+            (
+                "2881",
+                Path("2881.csv"),
+                [
+                    _bar("2026-01-01", 100.0),
+                    _bar("2026-01-02", 100.0),
+                    _bar("2026-01-03", 100.0),
+                    _bar("2026-01-04", 105.0),
+                ],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            reentry_cooldown_rebalances=1,
+        )
+
+        selected_by_symbol = {
+            row.symbol: row.rebalance_selected_count
+            for row in result.symbol_attribution
+        }
+        self.assertEqual(result.reentry_cooldown_rebalances, 1)
+        self.assertEqual(result.reentry_cooldown_block_count, 1)
+        self.assertEqual(selected_by_symbol["2330"], 1)
+        self.assertEqual(selected_by_symbol["2317"], 1)
+        self.assertEqual(selected_by_symbol["2881"], 1)
+
     def test_group_cap_limits_same_group_selection(self) -> None:
         """
         用途與流程：驗證同組入選上限會阻擋同一產業或自訂群組過度集中，讓較低排名但不同組的股票能補上配置。
@@ -775,6 +843,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("Group contrib lookback", markdown)
         self.assertIn("Group contrib blocks", markdown)
         self.assertIn("Consec cap", markdown)
+        self.assertIn("Reentry cooldown", markdown)
+        self.assertIn("Reentry blocks", markdown)
         self.assertIn("2330 | 75.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | 2330 | 12.00% | 75.00%", markdown)
         self.assertIn("| 1x | 1 | semiconductor | 2330, 2454 | 15.00% | 80.00%", markdown)
@@ -1056,6 +1126,7 @@ def _rotation_result(
         symbol_groups={},
         max_selections_per_group=None,
         max_consecutive_selections_per_symbol=None,
+        reentry_cooldown_rebalances=0,
         volatility_target=False,
         volatility_lookback_bars=21,
         target_annual_volatility=0.20,
@@ -1088,6 +1159,7 @@ def _rotation_result(
         liquidity_warmup_count=0,
         group_selection_block_count=0,
         consecutive_selection_block_count=0,
+        reentry_cooldown_block_count=0,
         volatility_scaled_rebalance_count=0,
         volatility_warmup_count=0,
         total_cost=0.0,

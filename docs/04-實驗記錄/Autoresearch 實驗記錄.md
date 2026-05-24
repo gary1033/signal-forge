@@ -9037,3 +9037,93 @@ Group regime validation 仍失敗：`6` 個 high concentration windows。Group b
 - **Discard as current improvement**：所有 contribution gate 掃描都讓 min rolling IR 或 min rolling excess 轉負，且 max rolling top3 group share 仍接近或高於 `98%`；因此不能取代 TWSE35 baseline，更不能宣稱穩定營利。
 - **Do not promote strategy**：promotion gate 仍是 `compare-only`，主因是 rolling edge、drawdown 與 group regime / breadth gate 未通過。
 - **Next**：不要再只調 contribution share threshold 或 lookback。下一步應改測 re-entry 條件，或先重建更高品質股票池，讓 group contribution gate 有更合理的替代群組可選。
+
+## 2026-05-24 TWSE35 re-entry cooldown follow-up
+
+### 目的
+
+這輪接續 TWSE35 baseline 與 realized group contribution gate 的失敗原因：full-window IR 很強，但 rolling group concentration、drawdown 與 group regime / breadth gate 仍沒有通過。這次不再掃 contribution threshold，而是測「股票剛退出投組後，是否應該等待幾次 rebalance 才能重新入選」的 re-entry cooldown。
+
+研究假設：
+
+> 若 TWSE35 baseline 的一部分回撤與 concentration 來自同一批強勢股票短期落榜後快速回補、造成追高與來回換股，re-entry cooldown 應能降低 MDD、active MDD 與 rolling concentration；若它只是犧牲原本 momentum edge 或仍依賴同一 group regime，就只能保留為 compare-only。
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增：
+  - `--reentry-cooldown-rebalances`
+  - `reentry_cooldown_rebalances`
+  - `reentry_cooldown_block_count`
+- Gate 預設 `0`，完全關閉，不改既有 baseline。
+- 每次 rebalance 後，剛從非零權重變成 `0.0` 的股票會被設定 cooldown；cooldown 期間若它又是正動能候選，會被本次 rebalance 排除，由下一順位補上。
+- 狀態更新只用 rebalance 前既有權重與本次已算出的 target weights，不讀未來 window attribution。
+- `tools\portfolio_rotation_promotion_gate.py` 把 re-entry cooldown 參數與 block count 納入 candidate parameters。
+- `tests\test_portfolio_rotation_sweep_tool.py` 補上 parser、Markdown 欄位與「退出後下一次 rebalance 被阻擋」regression。
+
+### 產生 artifact
+
+- Re-entry cooldown adjusted scan：
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-reentry1-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-reentry2-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-reentry3-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-reentry4-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-reentry5-liq500m-rolling24m-20260524.json`
+  - `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-reentry6-liq500m-rolling24m-20260524.json`
+- Re-entry 6 raw summary：`reports\generated\twse35-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-reentry6-liq500m-rolling24m-20260524.json`
+- Raw / adjusted comparison：`reports\generated\twse35-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-reentry6-liq500m-compare-20260524.json`
+- Group regime validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-reentry6-liq500m-group-regime-validation-20260524.json`
+- Group breadth validation：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-reentry6-liq500m-group-breadth-validation-20260524.json`
+- Promotion gate：`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-reentry6-liq500m-promotion-gate-20260524.json`
+
+### Cooldown scan
+
+固定設定：TWSE35 adjusted `monthly + lookback 21 + skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M/20 bars`。
+
+| Cooldown | Full IR | Stress 3x IR | MDD | Active MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Reentry blocks |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0` | `1.685` | `1.668` | `-37.80%` | `-29.98%` | `0.429` | `11.33%` | `100.00%` | `0` |
+| `1` | `1.352` | `1.332` | `-36.93%` | `-27.23%` | `0.342` | `8.89%` | `100.00%` | `38` |
+| `2` | `1.402` | `1.382` | `-33.09%` | `-40.80%` | `0.232` | `3.38%` | `100.00%` | `40` |
+| `3` | `1.192` | `1.172` | `-31.16%` | `-29.39%` | `0.479` | `16.23%` | `100.00%` | `44` |
+| `4` | `1.234` | `1.214` | `-37.69%` | `-40.39%` | `0.208` | `2.09%` | `100.00%` | `44` |
+| `5` | `1.331` | `1.311` | `-26.84%` | `-25.92%` | `0.309` | `7.21%` | `100.00%` | `44` |
+| `6` | `1.046` | `1.026` | `-28.76%` | `-25.74%` | `0.500` | `18.63%` | `100.00%` | `44` |
+
+`reentry6` 是唯一同時把 MDD 與 active MDD 壓進約 `30%` 門檻附近、且保留正 rolling excess 的候選，所以用它補完整 promotion diagnostics。精確值上，min rolling IR 是 `0.4995822479291175`，仍低於 promotion threshold `0.5` 一點點。
+
+### Reentry 6 promotion gate
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.046` |
+| Full 1x excess | `711.20%` |
+| Full 1x MDD | `-28.76%` |
+| Full 1x active MDD | `-25.74%` |
+| Stress 3x IR | `1.026` |
+| Min rolling IR | `0.499582` |
+| Min rolling excess | `18.63%` |
+| Max rolling top3 group share | `100.00%` |
+| Reentry blocks | `44` |
+
+Failure reasons：
+
+```text
+rolling_ir_below_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+single_member_dominant_group
+narrow_group_momentum
+```
+
+Raw / adjusted comparison gate 本身通過：adjusted 1x full IR `1.046` 高於 raw `0.828`，MDD 也由 raw `-31.43%` 改到 adjusted `-28.76%`；但 adjusted rolling top3 group contribution 仍有 `100%` window。Group regime validation 失敗：`3` 個 high concentration windows，`5` 個 exposure-dominated、`2` 個 return-regime-dominated。Group breadth validation 也失敗：`3` 個 high concentration windows、`2` 個 single-member dominant、`1` 個 narrow group momentum。
+
+### Keep / Discard 判斷
+
+- **Keep code/tool**：`--reentry-cooldown-rebalances` 是 deterministic、test-covered、預設關閉的事前 gate；它把「退出後快速回補」轉成可重跑假設，而不是只靠事後描述。
+- **Compare-only artifact**：`reentry6` 改善 TWSE35 baseline 的 MDD、active MDD、min rolling excess 與 raw/adjusted robustness，可作後續比較參考。
+- **Discard as current improvement**：`reentry6` 明顯犧牲 full-window IR，min rolling IR 精確值仍低於 `0.5`，且 max rolling top3 group contribution 仍可到 `100%`。
+- **Do not promote strategy**：promotion gate 仍是 `compare-only`，失敗點集中在 rolling IR 邊界、group concentration、group regime 與 group breadth。
+- **Next**：不要繼續掃 re-entry cooldown 參數。下一步應改成更高品質股票池建構，或用 group breadth / single-member diagnostics 先改善可替代標的，再回頭測 re-entry 與 contribution gate。

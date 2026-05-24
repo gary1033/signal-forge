@@ -574,6 +574,8 @@ def _candidate_parameters(result: dict[str, Any]) -> dict[str, Any]:
         "breadth_lookback_bars",
         "breadth_min_positive_count",
         "max_consecutive_selections_per_symbol",
+        "reentry_cooldown_rebalances",
+        "reentry_cooldown_block_count",
         "min_symbols_per_selected_group",
         "group_contribution_lookback_bars",
         "max_group_contribution_share",
