@@ -22,15 +22,29 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 | Benchmark | 同股票池 equal-weight buy-and-hold |
 | 進階 gate | [[Portfolio Rotation Group Gates]] |
 
-## 目前最強候選摘要
+### 術語速讀
 
-目前最強候選是 **Portfolio Relative Momentum Rotation**。它不是單一股票策略，而是股票池輪動策略：每月重新檢查 TWSE35 股票池，挑出近期相對強勢、流動性足夠，且所屬產業也健康的股票等權持有；下一次再平衡時，如果別的股票變強，就換股。
+- **Portfolio rotation**：定期在股票池內重新分配資金，不是每檔股票各自和自己比較。
+- **Relative momentum**：同一日期比較多檔股票的近期報酬，選排名較高者。
+- **Rebalance**：固定週期重新排名與調整權重。
+- **Top-N**：每次最多持有幾檔股票。
+- **Cash allowed**：沒有股票通過條件時可留現金。
+- **Attribution**：把報酬拆回個股或群組，檢查是否依賴少數贏家。
 
-簡化成一句話：
+## 目前參數
 
-> 每月從 35 檔大型台股中，挑近期表現最強、且所屬產業也健康的 4 檔股票持有。
+這裡保留目前可重跑的主要參數。README 只放最短命令；要調參、複製完整命令或確認目前採用值時，以本表與本頁「如何運行」為準。
 
-### 目前參數
+| 目前最佳回測設定 | 值 | 用途 |
+|---|---:|---|
+| `--rebalance-frequency` | `monthly` | 目前 TWSE35 adjusted 最強錨點。 |
+| `--lookback-bars` | `21` | 約一個月相對動能。 |
+| `--ranking-skip-bars` | `10` | 避免追最近 10 bars 過熱反彈。 |
+| `--top-n` | `4` | 每次最多持有 4 檔。 |
+| `--breadth-lookback-bars / min-positive-count` | `42 / 3` | 股票池寬度 gate。 |
+| `--min-average-traded-value` | `500000000` | 流動性 gate。 |
+| `--group-breadth-lookback-bars / share` | `21 / 0.50` | 群組內部廣度 gate。 |
+| `--group-regime-lookback-bars / min-return` | `21 / 0` | 群組趨勢 gate。 |
 
 | 參數 | 設定 | 意義 |
 |---|---:|---|
@@ -45,93 +59,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 | Group breadth | `21 bars / 50%` | 候選股票所屬產業裡，至少一半成員要有正動能。 |
 | Group regime | `21 bars / > 0` | 候選股票所屬產業本身的等權報酬要為正。 |
 
-### 進場流程
-
-每月再平衡日依序做這些檢查：
-
-1. 檢查整體市場寬度：如果 35 檔裡中期正動能股票太少，就不進場或維持現金。
-2. 計算每檔股票的相對動能：用約 21 個交易日報酬作排名基礎，但跳過最近 10 天，避免追太近的噪音。
-3. 檢查流動性：近 20 日平均成交金額低於 5 億的股票不選。
-4. 檢查產業內部健康度：如果某檔股票很強，但它的產業裡其他股票大多不強，就擋掉。
-5. 檢查產業本身趨勢：如果該產業等權報酬不是正的，也擋掉。
-6. 選出前 4 檔：通過所有 gate 後，挑排名最高的 4 檔。
-7. 等權配置：每檔約 25% 權重；如果不足 4 檔，剩餘資金留現金。
-
-### 出場流程
-
-這個候選沒有傳統停損停利，主要靠每月再平衡出場：
-
-- 股票不再排名前段，就賣出。
-- 股票被 liquidity、breadth 或 group gate 擋掉，就賣出或不再續抱。
-- 同一檔連續入選超過上限，會暫停一次。
-- 如果沒有足夠合格標的，資金留現金。
-
-### 它想捕捉的 edge
-
-- 強勢股票短中期可能延續強勢。
-- 產業動能比單一股票動能更可信。
-- 如果某檔股票強，但產業內部不健康，可能是假突破或單一事件。
-- 跳過最近 10 天可以降低追高短線反轉風險。
-- 流動性與分散限制可降低策略只靠冷門小股或單一股票撐績效的風險。
-
-### 目前問題
-
-雖然回測報酬很強，但這組候選仍只能標記為 `compare-only`，不能升級成正式穩定營利策略：
-
-- 最大回撤仍約 `-32.85%`。
-- 報酬仍集中在少數產業，rolling top3 group share 最高約 `99.09%`。
-- Group regime / breadth diagnostics 仍失敗，代表產業集中與單成員依賴還沒完全解掉。
-- 因此目前結論是：這是很強的研究候選，不是可直接 live 的主策略。
-
-## 先懂這些詞
-
-- **Portfolio rotation**：定期在股票池內重新分配資金，不是每檔股票各自和自己比較。
-- **Relative momentum**：同一日期比較多檔股票的近期報酬，選排名較高者。
-- **Rebalance**：固定週期重新排名與調整權重。
-- **Top-N**：每次最多持有幾檔股票。
-- **Cash allowed**：沒有股票通過條件時可留現金。
-- **Attribution**：把報酬拆回個股或群組，檢查是否依賴少數贏家。
-
-## 策略假設
-
-若股票池內存在可持續的相對強弱，資金應該集中到近期表現較強的標的，而不是等權持有全部股票。這個策略的成敗必須用整個投組和 equal-weight benchmark 比，不應只看單一股票勝負。
-
-## 進出場規則
-
-每個 rebalance timestamp 執行：
-
-1. 對每檔股票計算 lookback return。
-2. 若設定 `ranking_skip_bars`，先排除最近 N 根 bar 再計算排名。
-3. 排除報酬不高於 `min_return` 的股票。
-4. 套用 market breadth、group、liquidity、cooldown 等 gate。
-5. 依 ranking score 選前 `top_n`。
-6. 入選股票等權配置；未入選股票權重為 `0.0`。
-7. 沒有股票通過時，全投組留現金。
-
-這裡的每一步都只使用 rebalance 當下以前可見的資料。若後續新增 gate，必須確認它不是用未來 attribution 或完整 window 結果來回頭篩選候選股票；診斷工具可以看完整結果，線上 gate 只能看當下以前的資訊。
-
-| 控制點 | 對候選的影響 | 維護語意 |
-|---|---|---|
-| `lookback return` | 決定初始排名 | 這是 rotation 的核心 alpha 假設，改它等於改變策略家族。 |
-| `ranking_skip_bars` | 排除最近 N 根 bar 後排名 | 用來測試近期過熱或短期反轉是否傷害策略，不應和 lookback 混為同一參數。 |
-| `min_return` | 不達絕對動能者排除 | 防止在整個股票池都弱時仍被迫選相對沒那麼弱的股票。 |
-| breadth / group / liquidity gate | 候選可能被排除，由下一順位補上 | 這些是風險與可執行性控制，不應被解讀成新的報酬來源。 |
-| `top_n` 等權配置 | 決定集中度與單檔權重 | 越小越集中，必須搭配 attribution 檢查是否依賴少數股票。 |
-
-## 主要參數
-
-| 參數 | 預設 | 用途與調整判斷 |
-|---|---:|---|
-| `--rebalance-frequency` | `weekly` | 決定多久重新排名與換股；頻率越高越快反應，但 turnover 與成本壓力也越高。 |
-| `--lookback-bars` | `126` | 計算相對動能的 formation window；短 lookback 反應快但更容易追短線過熱，長 lookback 更穩但可能落後。 |
-| `--ranking-skip-bars` | `0` | 排除最近 N 根 bar 後再排名；用來測試 skip-recent-period 是否能避開短期反轉。 |
-| `--ranking-mode` | `total-return` | 排名分數來源；`group-residual` 會扣掉同組平均報酬，用來測試是否降低 group regime 依賴。 |
-| `--top-n` | `3` | 每次最多持有檔數；越小越集中、越大越接近等權股票池。 |
-| `--min-return` | `0.0` | 絕對動能下限；即使排名高，若自身 lookback return 不達門檻也不入選。 |
-| `--cost-multipliers-list` | `1` | 成本壓力倍率；策略候選至少要看 1x / 2x / 3x，避免只在低成本假設下有效。 |
-| `--volatility-target` | 關閉 | 投組層級降曝險 overlay；只縮小已選 basket 權重，不改變排名與候選名單。 |
-
-## 怎麼跑
+## 如何運行
 
 精簡版：
 
@@ -146,7 +74,36 @@ python tools\portfolio_rotation_sweep.py `
   --summary-md reports\generated\portfolio-rotation-default.md
 ```
 
-完整版請看 repo 根目錄 `README.md` 的「Portfolio rotation」段落；group gate 版本必須提供 `--symbol-group SYMBOL:GROUP`。
+完整 TWSE35 adjusted 強錨點參數已集中在本頁「目前參數」；要重跑時依該表補完整股票池與 `--symbol-group SYMBOL:GROUP`。README 只保留小型股票池的最短啟動命令。
+
+## 進場流程
+
+每月再平衡日依序做這些檢查：
+
+1. 檢查整體市場寬度：如果 35 檔裡中期正動能股票太少，就不進場或維持現金。
+2. 計算每檔股票的相對動能：用約 21 個交易日報酬作排名基礎，但跳過最近 10 天，避免追太近的噪音。
+3. 檢查流動性：近 20 日平均成交金額低於 5 億的股票不選。
+4. 檢查產業內部健康度：如果某檔股票很強，但它的產業裡其他股票大多不強，就擋掉。
+5. 檢查產業本身趨勢：如果該產業等權報酬不是正的，也擋掉。
+6. 選出前 4 檔：通過所有 gate 後，挑排名最高的 4 檔。
+7. 等權配置：每檔約 25% 權重；如果不足 4 檔，剩餘資金留現金。
+
+## 出場流程
+
+這個候選沒有傳統停損停利，主要靠每月再平衡出場：
+
+- 股票不再排名前段，就賣出。
+- 股票被 liquidity、breadth 或 group gate 擋掉，就賣出或不再續抱。
+- 同一檔連續入選超過上限，會暫停一次。
+- 如果沒有足夠合格標的，資金留現金。
+
+## 它想捕捉的 edge
+
+- 強勢股票短中期可能延續強勢。
+- 產業動能比單一股票動能更可信。
+- 如果某檔股票強，但產業內部不健康，可能是假突破或單一事件。
+- 跳過最近 10 天可以降低追高短線反轉風險。
+- 流動性與分散限制可降低策略只靠冷門小股或單一股票撐績效的風險。
 
 ## 股價走勢解說圖
 
@@ -156,19 +113,34 @@ python tools\portfolio_rotation_sweep.py `
 
 ## 風險與限制
 
+雖然回測報酬很強，但這組候選仍只能標記為 `compare-only`，不能升級成正式穩定營利策略：
+
+- 最大回撤仍約 `-32.85%`。
+- 報酬仍集中在少數產業，rolling top3 group share 最高約 `99.09%`。
+- Group regime / breadth diagnostics 仍失敗，代表產業集中與單成員依賴還沒完全解掉。
+- 因此目前結論是：這是很強的研究候選，不是可直接 live 的主策略。
+
 - 股票池太小時，結果容易被少數個股或少數產業主導。
 - 未調整價資料可能高估策略品質，需做 raw / adjusted 對照。
 - 高 turnover 會放大手續費、滑價與稅費。
 - 只看 full-window 報酬不夠，必須檢查 rolling / OOS、MDD、IR、attribution 與成本壓力。
 
-## 下一步
+### 後續優化方向
 
 - 對每個候選先跑 universe audit，再跑 sweep / grid search。
 - group breadth / group regime / group contribution 的使用方式集中在 [[Portfolio Rotation Group Gates]]。
 
 ## 最新回測註記（2026-05-24）
 
-- 最新 artifacts：`reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb21-share050-m1-greg21-r000-liq500m-rolling24m-20260524.md`、`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-greg21-r000-liq500m-promotion-gate-20260524.md`
-- 最新強錨點：TWSE35 adjusted `monthly + lookback21 + ranking_skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M + group breadth 21/share0.50 + group regime 21/r0.00`。
-- 結果：1x full IR `2.005`，3x IR `1.987`，full excess `3888.38%`，MDD `-32.85%`，active MDD `-19.44%`，min rolling IR `1.034`，min rolling excess `48.53%`。
-- 刪減判斷：`compare-only`。這是目前最強 portfolio-level anchor，但 promotion gate 仍失敗，原因包含 drawdown above threshold、group concentration、group regime/breadth diagnostics、single-member dominant group 與 narrow group momentum。
+| 指標 | 數值 | 解讀 |
+|---|---:|---|
+| 最新 artifacts | `reports\generated\twse35-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-gb21-share050-m1-greg21-r000-liq500m-rolling24m-20260524.md`、`reports\generated\twse35-batch-adjusted-portfolio-rotation-lb21-skip10-top4-gb21-share050-m1-greg21-r000-liq500m-promotion-gate-20260524.md` | 追溯 TWSE35 adjusted strongest anchor 與 promotion gate。 |
+| 目前最強設定 | `monthly + lookback21 + skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M + group breadth21/share0.50 + group regime21/r0.00` | 目前 portfolio-level 最強錨點。 |
+| 1x full IR | `2.005` | full-window 主動風險報酬很強。 |
+| 3x IR | `1.987` | 成本壓力後仍可讀。 |
+| Full excess | `3888.38%` | 相對等權 B&H 的 full-window 超額很高。 |
+| MDD | `-32.85%` | 絕對回撤仍高。 |
+| Active MDD | `-19.44%` | 相對 benchmark 回撤仍需控管。 |
+| Min rolling IR | `1.034` | rolling IR 比前期候選改善。 |
+| Min rolling excess | `48.53%` | rolling excess 為正。 |
+| 刪減判斷 | `compare-only` | 目前最強 anchor，但 promotion gate 因 drawdown、concentration、group diagnostics 仍失敗。 |

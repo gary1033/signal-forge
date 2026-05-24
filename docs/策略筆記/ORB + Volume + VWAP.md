@@ -21,7 +21,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 | 實作位置 | `src\signal_forge\strategies\orb_volume_vwap.py` |
 | 參數入口 | `src\signal_forge\cli\strategy_options.py` |
 
-## 先懂這些詞
+### 術語速讀
 
 - **Opening Range / OR**：開盤後前 N 分鐘形成的高低區間。
 - **Breakout**：價格收盤突破 OR high。
@@ -29,26 +29,13 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 - **Retest confirmation**：先突破，再回踩 OR high 後重新站回，才進場。
 - **Signal window**：只接受 session 開始後指定分鐘內的新突破。
 
-## 策略假設
+## 目前參數
 
-開盤初期通常是價格重新定價的主戰區。若 OR 建立完成後，價格收盤突破 OR high、站上 session VWAP，且突破 bar 伴隨量能確認，這個突破比單純穿越高點更有參與度。
+這裡保留目前可重跑的主要參數。README 只放最短命令；要調參、複製完整命令或確認目前採用值時，以本表與本頁「如何運行」為準。
 
-這個版本仍是 same-session、close-confirmed、long-only 的研究骨架；它不是完整 intraday 交易系統，也沒有真實下單能力。
-
-## 進出場規則
-
-| 狀態 / 條件 | 目標曝險 | 維護語意 |
+| 目前最佳回測設定 | 值 | 用途 |
 |---|---:|---|
-| 開盤區間尚未建立完成 | `0.0` | OR high / low 還在收集期，任何突破判斷都太早。 |
-| timestamp 不含 intraday 時間 | `0.0` | ORB 依賴 session 時間；日線資料不能硬套 intraday 規則。 |
-| close 未突破 OR high | `0.0` | 價格還在開盤區間內或下方，沒有 breakout entry。 |
-| close 突破 OR high 但未站上 session VWAP | `0.0` | 突破位置不足，還要確認價格高於當日平均成交成本。 |
-| 啟用量能條件但 breakout volume 不足 | `0.0` | 低量越線容易是假突破，先擋掉而不是追價。 |
-| 啟用 retest，第一次突破後尚未回踩確認 | `0.0` | retest 模式下第一次突破只記錄狀態，等回踩後重新站回才進場。 |
-| breakout 通過 OR、VWAP、量能與可選 refinement | `1.0` | 價格位置、平均成本、量能與結構條件同時通過，才接受 long。 |
-| 新 session 開始 | 重設狀態 | 前一日 OR 與持倉狀態不能直接帶到下一個 session。 |
-
-## 主要參數
+| `--hold-bars-per-day` | `5` | 最新 intraday ORB rerun 中相對最好，但 PF 仍小於 1。 |
 
 | 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
@@ -61,7 +48,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\orb_volume_vwap.
 | signal window | 關閉 | `--orb-signal-window-minutes` | 限制新 breakout 必須發生在 session 開始後 N 分鐘內；它不會平掉既有持倉。 |
 | OR volume baseline | 關閉 | `--orb-use-opening-range-volume-baseline` | 量能改拿 breakout bar 對比 OR 期間平均量；比 rolling volume SMA 更貼近 ORB 語意。 |
 
-## 怎麼跑
+## 如何運行
 
 精簡版：
 
@@ -94,10 +81,33 @@ python -m signal_forge.cli entry-edge `
   --orb-min-breakout-body-pct 0.5 `
   --orb-fresh-breakout-from-or `
   --orb-use-opening-range-volume-baseline `
-  --hold-bars-per-day 6 `
+  --hold-bars-per-day 5 `
   --output-dir reports\generated `
-  --run-name tsmc-orb-full
+  --run-name tsmc-orb-hold5
 ```
+
+## 進場流程
+
+| 狀態 / 條件 | 目標曝險 | 維護語意 |
+|---|---:|---|
+| 開盤區間尚未建立完成 | `0.0` | OR high / low 還在收集期，任何突破判斷都太早。 |
+| timestamp 不含 intraday 時間 | `0.0` | ORB 依賴 session 時間；日線資料不能硬套 intraday 規則。 |
+| close 未突破 OR high | `0.0` | 價格還在開盤區間內或下方，沒有 breakout entry。 |
+| close 突破 OR high 但未站上 session VWAP | `0.0` | 突破位置不足，還要確認價格高於當日平均成交成本。 |
+| 啟用量能條件但 breakout volume 不足 | `0.0` | 低量越線容易是假突破，先擋掉而不是追價。 |
+| 啟用 retest，第一次突破後尚未回踩確認 | `0.0` | retest 模式下第一次突破只記錄狀態，等回踩後重新站回才進場。 |
+| breakout 通過 OR、VWAP、量能與可選 refinement | `1.0` | 價格位置、平均成本、量能與結構條件同時通過，才接受 long。 |
+| 新 session 開始 | 重設狀態 | 前一日 OR 與持倉狀態不能直接帶到下一個 session。 |
+
+## 出場流程
+
+新 session 開始時會重設 ORB 狀態；既有 intraday breakout 若進入下一個 session 會先回到 flat。目前 session end / timezone 是報表 metadata，還不是完整 forced-flat 出場系統。
+
+## 它想捕捉的 edge
+
+開盤初期通常是價格重新定價的主戰區。若 OR 建立完成後，價格收盤突破 OR high、站上 session VWAP，且突破 bar 伴隨量能確認，這個突破比單純穿越高點更有參與度。
+
+這個版本仍是 same-session、close-confirmed、long-only 的研究骨架；它不是完整 intraday 交易系統，也沒有真實下單能力。
 
 ## 股價走勢解說圖
 
@@ -112,14 +122,20 @@ python -m signal_forge.cli entry-edge `
 - 目前 session end / timezone 主要寫入 artifact metadata，不等於已完成 forced-flat 出場規則。
 - ORB refinement 很多，新增前要確認它補到新資訊，而不是重複擋掉同一批突破。
 
-## 下一步
+### 後續優化方向
 
 - 先確保 intraday CSV 與 market-clock metadata 可重現。
 - 若要新增出場規則，先定義 session close、extended-hours 與 forced-flat 的 reporting contract。
 
 ## 最新回測註記（2026-05-21）
 
-- 最新 artifact：`reports\generated\tsmc-orb-rerun-20260521_hold_comparison.md`
-- 樣本：台積電 `TWSE_2330_5M.csv`，`2026-02-23T09:00:00+08:00` 到 `2026-05-21T13:30:00+08:00`，固定持有期 `1/3/5/10`。
-- 結果：所有 hold bars 都未通過 PF `>1.20`；最佳 `hold=5` PF `0.852`、交易數 `24`、win rate `41.67%`、max drawdown `-5.44%`。
-- 刪減判斷：`discard as current main candidate`。目前只能保留 intraday session / artifact contract，不能拿來做策略升級。
+| 指標 | 數值 | 解讀 |
+|---|---:|---|
+| 最新 artifact | `reports\generated\tsmc-orb-rerun-20260521_hold_comparison.md` | 追溯 intraday ORB rerun。 |
+| 樣本 | `TWSE_2330_5M.csv`，`2026-02-23` 到 `2026-05-21` | 只是一段 5 分 K intraday 檢查。 |
+| 目前最佳設定 | `hold=5` | 測過持有期中相對最好。 |
+| PF | `0.852` | 未達 PF `>1.20`。 |
+| 交易數 | `24` | 樣本偏少，且 PF 不足。 |
+| Win rate | `41.67%` | 沒有穩定勝率優勢。 |
+| Max drawdown | `-5.44%` | 回撤不大，但報酬 edge 不成立。 |
+| 刪減判斷 | `discard as current main candidate` | 保留 intraday artifact / session contract，不升級策略。 |

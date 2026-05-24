@@ -21,26 +21,19 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\vwap_reversion.p
 | 實作位置 | `src\signal_forge\strategies\vwap_reversion.py` |
 | 參數入口 | `src\signal_forge\cli\strategy_options.py` |
 
-## 先懂這些詞
+### 術語速讀
 
 - **VWAP**：成交量加權平均價格，用價格和量一起估算市場平均成交成本。
 - **Z-score**：目前價格偏離 rolling VWAP 的標準化程度。
 - **Regime filter**：只在價格仍高於較長均線時接受回歸訊號，避免在下跌趨勢中接刀。
 
-## 策略假設
+## 目前參數
 
-當價格短期跌到 rolling VWAP 下方太多，但整體趨勢尚未破壞時，價格可能回到平均成交成本附近。這個策略用來檢查「跌深回彈」是否有足夠 entry edge。
+這裡保留目前可重跑的主要參數。README 只放最短命令；要調參、複製完整命令或確認目前採用值時，以本表與本頁「如何運行」為準。
 
-## 進出場規則
-
-| 判定點 | 目標曝險 | 維護語意 |
+| 目前最佳回測設定 | 值 | 用途 |
 |---|---:|---|
-| VWAP 或標準差尚未暖機 | `0.0` | rolling VWAP 與偏離幅度還不可信時，不把早期資料硬解讀成跌深訊號。 |
-| `z_score <= -entry_z` | `1.0` | 價格低於 VWAP 達指定標準化距離，才視為足夠跌深的 long candidate。 |
-| 持有中且 `z_score >= -exit_z` | `0.0` | 價格已回到 VWAP 附近，均值回歸假設完成，退出而不是繼續當趨勢單持有。 |
-| 啟用 regime filter 且 close 低於 regime SMA | `0.0` | 即使跌深，也先擋掉處於下跌 regime 的接刀訊號。 |
-
-## 主要參數
+| `--hold-bars-per-day` | `3` | 最新多股票 baseline 中相對最佳的固定持有期，但整體仍 discard。 |
 
 | 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
@@ -50,7 +43,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\vwap_reversion.p
 | `vwap_regime_filter` | `False` | `--vwap-regime-filter` | 可選接刀防線；啟用後只有 close 仍在 regime SMA 上方才接受 long。 |
 | `vwap_regime_window` | `50` | `--vwap-regime-window` | regime SMA 的視窗；調大會更慢確認趨勢，調小會更容易頻繁切換 regime。 |
 
-## 怎麼跑
+## 如何運行
 
 精簡版：
 
@@ -70,10 +63,27 @@ python -m signal_forge.cli entry-edge `
   --exit-z 0.25 `
   --vwap-regime-filter `
   --vwap-regime-window 50 `
-  --hold-bars-per-day 1 `
+  --hold-bars-per-day 10 `
   --output-dir reports\generated `
   --run-name tsmc-vwap-regime
 ```
+
+## 進場流程
+
+| 判定點 | 目標曝險 | 維護語意 |
+|---|---:|---|
+| VWAP 或標準差尚未暖機 | `0.0` | rolling VWAP 與偏離幅度還不可信時，不把早期資料硬解讀成跌深訊號。 |
+| `z_score <= -entry_z` | `1.0` | 價格低於 VWAP 達指定標準化距離，才視為足夠跌深的 long candidate。 |
+| 持有中且 `z_score >= -exit_z` | `0.0` | 價格已回到 VWAP 附近，均值回歸假設完成，退出而不是繼續當趨勢單持有。 |
+| 啟用 regime filter 且 close 低於 regime SMA | `0.0` | 即使跌深，也先擋掉處於下跌 regime 的接刀訊號。 |
+
+## 出場流程
+
+持有期間若 `abs(z_score) <= exit_z`，代表價格已回到 VWAP 附近，策略輸出 flat。若啟用 regime filter，它只擋新 long entry，不強制把既有部位提前平掉。
+
+## 它想捕捉的 edge
+
+當價格短期跌到 rolling VWAP 下方太多，但整體趨勢尚未破壞時，價格可能回到平均成交成本附近。這個策略用來檢查「跌深回彈」是否有足夠 entry edge。
 
 ## 股價走勢解說圖
 
@@ -87,14 +97,20 @@ python -m signal_forge.cli entry-edge `
 - 日線 VWAP 是 rolling proxy，不等於 intraday session VWAP。
 - `entry_z` 越大，交易數越少；越小，訊號越多但假訊號也可能上升。
 
-## 下一步
+### 後續優化方向
 
 - 若回撤太集中，先加 `--vwap-regime-filter` 比直接調小 `entry_z` 更容易解釋。
 - 若要測量能確認，搭配 [[Volume Filter]]。
 
 ## 最新回測註記（2026-05-23）
 
-- 最新 artifact：`reports\generated\twse-multistock-baseline-20260523.md`
-- 樣本：七檔 TWSE 日線，`2020-01-01` 到 `2026-05-20`，固定持有期 `1/3/5/10`，成本為 commission `1 bps` + slippage `1 bps`。
-- 最佳讀法：`hold=3` 的 aggregate PF `1.218`，只通過 `1/7` 檔，交易數 `242`，worst max drawdown `-15.44%`。
-- 刪減判斷：`discard as current main candidate`。單檔台積電可看到局部均值回歸，但多股票 baseline 沒有達到跨股票 PF 目標，後續只能在加上 regime filter 後重新驗證。
+| 指標 | 數值 | 解讀 |
+|---|---:|---|
+| 最新 artifact | `reports\generated\twse-multistock-baseline-20260523.md` | 用來追溯多股票 baseline。 |
+| 樣本 | 7 檔 TWSE 日線，`2020-01-01` 到 `2026-05-20` | 檢查均值回歸是否跨股票成立。 |
+| 目前最佳設定 | `hold=3` | 在測過的固定持有期中相對最好。 |
+| Aggregate PF | `1.218` | 勉強接近門檻，但品質不足。 |
+| 通過股票 | `1/7` | 跨股票表現不足。 |
+| 交易數 | `242` | 交易數足夠，失敗不是因樣本太少。 |
+| Worst MDD | `-15.44%` | 回撤不算失控，但 edge 不夠。 |
+| 刪減判斷 | `discard as current main candidate` | 不作主候選，只保留後續 regime filter 驗證可能。 |

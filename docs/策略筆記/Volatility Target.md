@@ -20,26 +20,20 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\volatility_targe
 | 適用工具 | `tools\multi_stock_target_state_sweep.py`、`tools\portfolio_rotation_sweep.py` |
 | 實作位置 | `src\signal_forge\strategies\volatility_target.py`、`tools\portfolio_rotation_sweep.py` |
 
-## 先懂這些詞
+### 術語速讀
 
 - **Realized volatility**：用近期 close-to-close return 算出的已實現波動。
 - **Target annual volatility**：希望曝險後的年化波動上限。
 - **Scale**：把原本目標曝險乘上一個小於等於 1 的倍率。
 
-## 策略假設
+## 目前參數
 
-當近期波動過高時，同樣的 long signal 承擔的風險更大。Volatility Target 不改變底層方向，只把非零曝險往下縮，測試「降曝險」是否能改善 MDD、Sortino 或 Calmar。
+這裡保留目前可重跑的主要參數。README 只放最短命令；要調參、複製完整命令或確認目前採用值時，以本表與本頁「如何運行」為準。
 
-## 控制規則
-
-| 判定點 | 輸出 | 維護語意 |
+| 目前最佳回測設定 | 值 | 用途 |
 |---|---:|---|
-| 底層訊號為 flat | 保持 `0.0` | Overlay 不創造新方向，只處理原本已經要持有的曝險大小。 |
-| 樣本不足 | `0.0` 或等候暖機 | 沒有足夠 close-to-close return 時，不用不穩定波動估計持倉。 |
-| realized volatility 低於目標 | 保留原曝險，上限為 `max_scale` | 目前風險沒有超標，維持底層策略曝險；預設仍不放大到超過 1。 |
-| realized volatility 高於目標 | 按比例降低曝險 | 用 `target_vol / realized_vol` 計算 scale，只降曝險、不改訊號方向。 |
-
-## 主要參數
+| `--target-annual-volatility` | `0.40` | 目前較可讀的 absolute-momentum 風控比較設定。 |
+| `--volatility-lookback-bars` | `20` | target-state overlay 的目前檢查視窗。 |
 
 | 參數 | 預設 | CLI | 用途與調整判斷 |
 |---|---:|---|---|
@@ -48,7 +42,7 @@ repo_impl: C:\Projects\signal-forge\src\signal_forge\strategies\volatility_targe
 | `min_observations` | 同 lookback 或未指定 | `--volatility-min-observations` | 啟用縮放前需要的最少報酬樣本；用來避免剛開始幾根 bar 的估計不穩。 |
 | `max_scale` | `1.0` | `--volatility-max-scale` | 曝險上限；預設 1.0 表示不加槓桿，只允許縮小持倉。 |
 
-## 怎麼跑
+## 如何運行
 
 精簡版：
 
@@ -75,6 +69,23 @@ python tools\portfolio_rotation_sweep.py `
   --summary-md reports\generated\portfolio-vol-target.md
 ```
 
+## 進場流程
+
+| 判定點 | 輸出 | 維護語意 |
+|---|---:|---|
+| 底層訊號為 flat | 保持 `0.0` | Overlay 不創造新方向，只處理原本已經要持有的曝險大小。 |
+| 樣本不足 | `0.0` 或等候暖機 | 沒有足夠 close-to-close return 時，不用不穩定波動估計持倉。 |
+| realized volatility 低於目標 | 保留原曝險，上限為 `max_scale` | 目前風險沒有超標，維持底層策略曝險；預設仍不放大到超過 1。 |
+| realized volatility 高於目標 | 按比例降低曝險 | 用 `target_vol / realized_vol` 計算 scale，只降曝險、不改訊號方向。 |
+
+## 出場流程
+
+Volatility Target 不改變進出場方向；當底層策略出場時曝險自然歸零。它只在持有期間縮小部位大小，不是 stop-loss。
+
+## 它想捕捉的 edge
+
+當近期波動過高時，同樣的 long signal 承擔的風險更大。Volatility Target 不改變底層方向，只把非零曝險往下縮，測試「降曝險」是否能改善 MDD、Sortino 或 Calmar。
+
 ## 股價走勢解說圖
 
 ![[assets/volatility-target-explainer.png]]
@@ -87,13 +98,20 @@ python tools\portfolio_rotation_sweep.py `
 - 波動估算落後於市場，快速崩跌時可能來不及反應。
 - `max_scale=1.0` 是安全邊界；不要在未審核前改成加槓桿。
 
-## 下一步
+### 後續優化方向
 
 - 同時看 excess return、MDD、Sortino、Calmar 與 OOS retention，再決定 keep / discard / compare-only。
 
 ## 最新回測註記（2026-05-24）
 
-- 最新 artifacts：`reports\generated\twse-target-state-absolute-momentum-voltarget040-coststress-20260524.md`、`reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-oos-20260524.md`
-- 單獨 overlay 結果：`absolute-momentum + vol-target 0.40` 在七檔 TWSE 1x 成本下平均報酬 `180.83%`，`1/7` beat B&H，avg excess `-271.90%`，worst MDD `-47.45%`。
-- 疊加 risk-off 的 OOS 結果：`vol-target 0.40 + dd-risk-off 25%/120` 在 OOS `0/7` beat B&H，avg excess `-127.67%`。
-- 刪減判斷：`compare-only`。它能降低部分曝險與回撤，但 benchmark-relative edge 仍不足，不能只因 MDD 下降就升級。
+| 指標 | 數值 | 解讀 |
+|---|---:|---|
+| 最新 artifacts | `reports\generated\twse-target-state-absolute-momentum-voltarget040-coststress-20260524.md`、`reports\generated\twse-target-state-absolute-momentum-voltarget040-ddriskoff25b120-oos-20260524.md` | 追溯單獨 overlay 與疊加 OOS。 |
+| 目前參數 | `target_annual_volatility=0.40` | 目前較可讀的風控錨點。 |
+| 1x 平均報酬 | `180.83%` | 低於原始 absolute momentum。 |
+| Beat B&H | `1/7` | benchmark-relative edge 不足。 |
+| Avg excess | `-271.90%` | 主動績效惡化。 |
+| Worst MDD | `-47.45%` | 比原始 `-50.74%` 改善有限。 |
+| 疊加 risk-off OOS Beat B&H | `0/7` | 疊加後仍無相對優勢。 |
+| 疊加 risk-off OOS Avg excess | `-127.67%` | 樣本外仍落後。 |
+| 刪減判斷 | `compare-only` | 可作回撤控制比較，不可單獨升級。 |
