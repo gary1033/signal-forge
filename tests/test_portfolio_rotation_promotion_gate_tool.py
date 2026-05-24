@@ -216,6 +216,7 @@ def _result(
         "rebalance_frequency": "monthly",
         "lookback_bars": 21,
         "ranking_skip_bars": 0,
+        "ranking_mode": "total-return",
         "top_n": 3,
         "min_return": 0.0,
         "breadth_filter": True,

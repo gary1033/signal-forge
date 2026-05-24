@@ -17,6 +17,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Portfolio rotation / 投組輪動**：不是逐檔股票各自判斷 long/flat，而是在同一個股票池內定期重新分配資金，讓資金集中到當下排名較好的標的。
 - **Relative momentum / 相對動能**：把多檔股票在同一日期的近期報酬互相比較，偏好近期漲幅較強的股票。
 - **Ranking skip / 排除最近報酬排名**：計算相對動能排名時，不使用最近 N 根 bar 的報酬，而是用更早一段 formation window。這用來測試短期反轉或過熱追價是否傷害輪動策略。
+- **Residual momentum / 殘差動能**：先扣除市場、產業或群組共同因子後，再比較個股自己的相對強弱。SignalForge 目前第一版只做 group residual：`個股 lookback return - 同組平均 lookback return`。
 - **Absolute momentum gate / 絕對動能門檻**：除了排名高，也要求該股票自己的近期報酬大於門檻；若沒有股票通過，資金可以留在現金。
 - **Rebalance / 再平衡**：固定頻率重新計算排名與目標權重，例如每週或每月一次。
 - **Equal-weight benchmark / 等權買進持有基準**：把資金平均分配到同一批股票並長期持有，用來檢查輪動是否真的有 portfolio-level active return。
@@ -43,13 +44,14 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 每個 rebalance timestamp 執行：
 
 1. 對每檔股票計算相對動能。若 `ranking_skip_bars=0`，公式是 `close[t] / close[t - lookback_bars] - 1`；若 `ranking_skip_bars > 0`，先令 `ranking_end = t - ranking_skip_bars`，再用 `close[ranking_end] / close[ranking_end - lookback_bars] - 1`，也就是排除最近 N 根 bar 後排名。
-2. 排除近期報酬小於或等於 `min_return` 的股票。
-3. 若啟用 breadth filter，另用 `breadth_lookback_bars` 計算股票池中正動能檔數；若低於 `breadth_min_positive_count`，本次 rebalance 全部留現金。
-4. 若啟用 liquidity filter，排除近 N 根平均成交金額低於門檻的股票。
-5. 在剩下股票中依近期報酬由高到低排序。
-6. 選前 `top_n` 檔股票。
-7. 入選股票等權配置；未入選股票權重為 `0.0`。
-8. 若沒有股票通過門檻，投組維持現金。
+2. 若 `ranking_mode=total-return`，用上述原始動能排序；若 `ranking_mode=group-residual`，先保留原始動能必須大於 `min_return` 的絕對動能 gate，再用 `原始動能 - 同組平均動能` 排序。
+3. 排除近期報酬小於或等於 `min_return` 的股票。
+4. 若啟用 breadth filter，另用 `breadth_lookback_bars` 計算股票池中正動能檔數；若低於 `breadth_min_positive_count`，本次 rebalance 全部留現金。
+5. 若啟用 liquidity filter，排除近 N 根平均成交金額低於門檻的股票。
+6. 在剩下股票中依 ranking score 由高到低排序。
+7. 選前 `top_n` 檔股票。
+8. 入選股票等權配置；未入選股票權重為 `0.0`。
+9. 若沒有股票通過門檻，投組維持現金。
 
 | 條件 | 目標權重 |
 |---|---:|
@@ -64,6 +66,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `rebalance_frequency`：預設研究候選使用 `monthly`。
 - `lookback_bars`：預設研究候選使用 `21`，約一個月交易日。
 - `ranking_skip_bars`：預設 `0`，代表直接使用最近 lookback 報酬排名；2026-05-24 已測 `5 / 10 / 21`，其中 `10` 是目前最佳 compare-only 錨點，`21` 因訊號太舊而 discard。
+- `ranking_mode`：預設 `total-return`，代表用原始 lookback return 排名；`group-residual` 會用同組平均動能作簡化版 residual momentum。TWSE16 adjusted 實測沒有升級，僅保留為 compare-only / future TWSE30+ 工具。
 - `top_n`：最高報酬錨點是 `3`；目前風險調整折衷候選改看 `4`，因為 full IR 幾乎不變但 MDD、active MDD 與 full-window top-3 concentration 較低。
 - `min_return`：目前使用 `0.0`，代表只持有近期報酬為正的股票。
 - `breadth_filter`：七檔股票池最佳折衷是 `breadth_lookback_bars=42`、`breadth_min_positive_count=2`；擴大到 14 檔 TWSE 股票池後，目前最佳折衷改為 `breadth_min_positive_count=3`。
@@ -105,6 +108,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Promotion gate 已正式化為 `tools\portfolio_rotation_promotion_gate.py`。它把 adjusted summary、raw/adjusted comparison、group regime validation 與 group breadth validation 合併成單一 `keep` / `compare-only` gate。2026-05-24 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的結果仍是 `compare-only`：full 1x IR 約 `1.141`、3x IR 約 `1.114`，但 min rolling IR 只有約 `0.264`，max rolling top3 symbol share 約 `81.40%`，max rolling top3 group share 約 `97.38%`，且 group regime / breadth gate 都失敗。
 - 單成員群組事前 gate 已測。`--min-symbols-per-selected-group 2` 會把 `shipping/2603` 這類單成員群組排除；在 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 上，full IR 從前一個錨點約 `1.141` 降到約 `0.759`，3x IR 降到約 `0.729`，`roll02` excess 轉為約 `-34.76%`、IR 約 `-0.994`。因此此參數作為 ablation 工具 keep，但 `2` 這個策略設定 discard。
 - `--ranking-skip-bars` 已測。它把 skip-recent-period / intermediate momentum 概念轉成 deterministic 參數：TWSE16 adjusted 在同一 `top4 / breadth42-min3 / maxconsec5 / liq500M` 下，`skip0` full IR 約 `0.863`、min rolling IR 約 `-1.123`、min rolling excess 約 `-29.26%`；`skip5` full IR 約 `0.758`、min rolling IR 約 `-1.159`；`skip10` full IR 約 `1.186`、3x IR 約 `1.158`、MDD 約 `-27.80%`、min rolling IR 約 `-0.856`、min rolling excess 約 `-22.55%`；`skip21` full IR 只剩約 `0.242`、min rolling IR 約 `-1.413`。因此功能與 `skip10` compare-only 錨點 keep，`skip21` discard；但 `skip10` 仍因 rolling edge 與 group concentration 失敗，不能升級。
+- `--ranking-mode group-residual` 已測。這是 residual momentum 的簡化版本，用 `個股動能 - 同組平均動能` 排序，但仍要求原始動能大於 `min_return`。TWSE16 adjusted `skip0 + group-residual` 的 full IR 約 `0.760`、MDD 約 `-34.39%`、min rolling IR 約 `-1.552`，明顯比 baseline 差；`skip10 + group-residual` 的 full IR 約 `1.059`、3x IR 約 `1.031`、MDD 約 `-35.83%`、min rolling IR 約 `-0.852`、min rolling excess 約 `-22.91%`、max rolling top3 group share 仍是 `100%`。因此工具 keep as compare tool，但 TWSE16 小池的 group-residual 設定不升級，且相對 `skip10 total-return` 屬 current improvement discard。
 - `top_n=4` 可把 full-window top-3 絕對貢獻占比降到約 `48.32%`，但 max rolling top-3 share 仍約 `81.68%`，所以它改善 full-window 集中度，還沒有解決最關鍵的 rolling concentration。
 - `top4 + breadth42/min3 + max consecutive 5` 是目前 TWSE14 績效 compare candidate：full-window IR 約 `1.515`、MDD 約 `-18.61%`、active MDD 約 `-20.21%`、min rolling IR 約 `0.814`；但 max rolling top-3 share 仍約 `82.62%`。
 - 新增 liquidity gate 後，`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 暫時是 execution-aware compare candidate：full-window return 約 `1745.89%`、excess 約 `1409.71%`、IR 約 `1.521`、MDD 約 `-18.61%`、active MDD 約 `-19.81%`，3x 成本後 IR 仍約 `1.490`。但 max rolling top-3 share 仍約 `82.62%`，所以它不是 concentration 修復。
@@ -127,6 +131,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Promotion gate 已補上。下一輪策略若要升級，不只要報 summary 指標，還要讓 promotion gate 同時通過 rolling IR、rolling excess、drawdown、symbol concentration、group concentration、raw/adjusted 降級、group regime 與 group breadth 檢查。
 - `min_symbols_per_selected_group=2` 已 discard；後續只有在擴大股票池、讓原本單成員群組有足夠同群組代表後，才值得重新打開這個 gate。
 - `ranking_skip_bars=10` 已保留為 compare-only 錨點，但不要把 skip 當成 concentration 修復；下一步若要繼續用它，應和 TWSE30+ / 更高品質股票池或 realized contribution gate 一起測，而不是繼續在 TWSE16 小池微調 skip 長度。
+- `ranking_mode=group-residual` 已在 TWSE16 小池失敗；後續只有在 TWSE30+ 或更完整產業成員數下才值得重測，不要把它和目前小股票池結果包裝成 residual momentum 有效。
 - 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
@@ -138,6 +143,9 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - Antonacci, Absolute Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2244633
 - Jegadeesh and Titman, Returns to Buying Winners and Selling Losers: https://www.jstor.org/stable/2328882
 - Jegadeesh and Titman PDF mirror, Returns to Buying Winners and Selling Losers: https://www.bauer.uh.edu/rsusmel/phd/jegadeesh-titman93.pdf
+- Blitz, Huij and Martens, Residual Momentum: https://pure.eur.nl/en/publications/residual-momentum/
+- Daniel and Moskowitz, Momentum Crashes: https://www.nber.org/papers/w20439
+- Moskowitz and Grinblatt, Do Industries Explain Momentum?: https://www.andreisimonov.com/Microstr_PhD/MSU_09/MoskowitzGrinblatt99.pdf
 - Keller and Keuning, Protective Asset Allocation (PAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2759734
 - Keller and Keuning, Breadth Momentum and Vigilant Asset Allocation (VAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3002624
 - Keller and Keuning, Defensive Asset Allocation (DAA): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3212862

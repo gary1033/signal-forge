@@ -37,6 +37,8 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
                 "3",
                 "--ranking-skip-bars",
                 "1",
+                "--ranking-mode",
+                "group-residual",
                 "--top-n",
                 "2",
                 "--min-return",
@@ -82,6 +84,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.rebalance_frequency, "monthly")
         self.assertEqual(args.lookback_bars, 3)
         self.assertEqual(args.ranking_skip_bars, 1)
+        self.assertEqual(args.ranking_mode, "group-residual")
         self.assertEqual(args.top_n, 2)
         self.assertEqual(args.min_return, 0.02)
         self.assertEqual(args.cost_multipliers_list, "1,3")
@@ -305,6 +308,67 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(result.ranking_skip_bars, 1)
         self.assertEqual(old_winner.rebalance_selected_count, 1)
         self.assertEqual(recent_winner.rebalance_selected_count, 0)
+
+    def test_group_residual_ranking_subtracts_group_momentum_before_selection(self) -> None:
+        """
+        用途與流程：驗證 group-residual ranking 會用個股報酬扣除同組平均報酬排序，讓較低總報酬但同組相對更強的股票能入選。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；若 residual ranking 沒有改變排序或 result 欄位漂移，assertion 會失敗。
+        """
+        loaded = [
+            (
+                "hot_group_leader",
+                Path("hot_group_leader.csv"),
+                [_bar("2026-01-01", 100.0), _bar("2026-01-02", 150.0)],
+            ),
+            (
+                "hot_group_peer",
+                Path("hot_group_peer.csv"),
+                [_bar("2026-01-01", 100.0), _bar("2026-01-02", 140.0)],
+            ),
+            (
+                "cold_group_leader",
+                Path("cold_group_leader.csv"),
+                [_bar("2026-01-01", 100.0), _bar("2026-01-02", 120.0)],
+            ),
+            (
+                "cold_group_peer",
+                Path("cold_group_peer.csv"),
+                [_bar("2026-01-01", 100.0), _bar("2026-01-02", 100.0)],
+            ),
+        ]
+
+        result = run_portfolio_rotation(
+            loaded,
+            config=BacktestConfig(
+                initial_equity=10_000.0,
+                commission_bps=0.0,
+                slippage_bps=0.0,
+            ),
+            cost_multiplier=1.0,
+            rebalance_frequency="daily",
+            lookback_bars=1,
+            ranking_mode="group-residual",
+            top_n=1,
+            min_return=0.0,
+            periods_per_year=252,
+            symbol_groups={
+                "hot_group_leader": "hot",
+                "hot_group_peer": "hot",
+                "cold_group_leader": "cold",
+                "cold_group_peer": "cold",
+            },
+        )
+
+        hot_group_leader = next(
+            row for row in result.symbol_attribution if row.symbol == "hot_group_leader"
+        )
+        cold_group_leader = next(
+            row for row in result.symbol_attribution if row.symbol == "cold_group_leader"
+        )
+        self.assertEqual(result.ranking_mode, "group-residual")
+        self.assertEqual(hot_group_leader.rebalance_selected_count, 0)
+        self.assertEqual(cold_group_leader.rebalance_selected_count, 1)
 
     def test_liquidity_filter_excludes_low_traded_value_momentum_leader(self) -> None:
         """
@@ -638,6 +702,7 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertIn("Max exposure group", markdown)
         self.assertIn("Top3 group avg weight", markdown)
         self.assertIn("Ranking skip", markdown)
+        self.assertIn("Ranking mode", markdown)
         self.assertIn("Liquidity min", markdown)
         self.assertIn("Liquidity blocks", markdown)
         self.assertIn("Group cap", markdown)
@@ -911,6 +976,7 @@ def _rotation_result(
         rebalance_frequency="weekly",
         lookback_bars=1,
         ranking_skip_bars=0,
+        ranking_mode="total-return",
         top_n=1,
         min_return=0.0,
         market_regime_filter=False,

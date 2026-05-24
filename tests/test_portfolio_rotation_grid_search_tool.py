@@ -273,6 +273,7 @@ def _result(
         rebalance_frequency="monthly",
         lookback_bars=21,
         ranking_skip_bars=0,
+        ranking_mode="total-return",
         top_n=top_n,
         min_return=0.0,
         market_regime_filter=False,

@@ -8730,3 +8730,100 @@ narrow_group_momentum
 - **Do not promote strategy**：`skip10` 的 min rolling IR 與 min rolling excess 仍為負，max rolling top3 group share 到 `100%`，group regime / breadth gate 仍失敗；這不是穩定營利證明。
 - **Discard skip21**：`ranking_skip_bars=21` 讓訊號太舊，full IR、MDD、rolling IR 與 rolling excess 全面惡化。
 - **Next**：不要再只在 TWSE16 小池微調 skip 長度；若要繼續測 `skip10`，應結合 TWSE30+ / 更高品質股票池、re-entry 條件或 realized group contribution concentration gate，並重新跑 universe audit、adjusted batch、raw/adjusted comparison、group validation 與 promotion gate。
+
+## 2026-05-24 Portfolio rotation group residual ranking follow-up
+
+### 目的
+
+這輪把 residual momentum 與 industry momentum 文獻轉成 deterministic ranking dimension：保留原本 lookback return 作為進場正動能 gate，但排名分數改為「個股 lookback return 減去同群組平均 lookback return」。目標是測試 TWSE16 adjusted `skip10` 是否只是追到同一 group regime，而不是找到群組內相對更強的股票。
+
+參考來源：
+
+- David Blitz, Joop Huij, Martin Martens, Residual Momentum: https://pure.eur.nl/en/publications/residual-momentum/
+- Kent Daniel and Tobias J. Moskowitz, Momentum Crashes: https://www.nber.org/papers/w20439
+- Tobias J. Moskowitz and Mark Grinblatt, Do Industries Explain Momentum?: https://www.andreisimonov.com/Microstr_PhD/MSU_09/MoskowitzGrinblatt99.pdf
+
+研究假設：
+
+> 若 portfolio rotation 的 group concentration 主要來自整個 group 同向上漲，`group-residual` ranking 應降低 group contribution concentration，並改善 `roll02` 的 rolling IR / excess；若只是降低 raw momentum edge 或惡化 MDD，則不能取代 `total-return` ranking。
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增 `--ranking-mode total-return|group-residual`。
+- `PortfolioRotationResult` 新增 `ranking_mode`，Markdown full-window table 新增 `Ranking mode` 欄位。
+- `run_portfolio_rotation()`、sweep、walk-forward 與 target weight helper 都傳遞 `ranking_mode`。
+- 新增 `_group_average_returns(...)`，用同一 rebalance date 的 candidate lookback return 計算 group average。
+- `group-residual` 只改排名分數，entry gate 仍要求 raw `momentum_return > min_return`，避免負 raw momentum 只因 residual 較高而入選。
+- `tools\portfolio_rotation_promotion_gate.py` 把 `ranking_mode` 納入 candidate parameters。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser、Markdown 欄位與 group-residual ranking regression。
+- `tests\test_portfolio_rotation_grid_search_tool.py`、`tests\test_portfolio_rotation_promotion_gate_tool.py` 補上 result schema 欄位。
+
+### 產生 artifact
+
+- Skip0 group-residual adjusted summary：`reports\generated\twse16-batch-adjusted-portfolio-rotation-monthly-lb21-grpresid-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Skip10 group-residual adjusted summary：`reports\generated\twse16-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-grpresid-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Skip10 group-residual raw summary：`reports\generated\twse16-portfolio-rotation-monthly-lb21-skip10-grpresid-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Raw / adjusted comparison：`reports\generated\twse16-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-grpresid-top4-liq500m-compare-20260524.json`
+- Group regime validation：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-skip10-grpresid-top4-liq500m-group-regime-validation-20260524.json`
+- Group breadth validation：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-skip10-grpresid-top4-liq500m-group-breadth-validation-20260524.json`
+- Promotion gate：`reports\generated\twse16-batch-adjusted-portfolio-rotation-lb21-skip10-grpresid-top4-liq500m-promotion-gate-20260524.json`
+
+### 對照結果
+
+固定參數為 TWSE16 adjusted `monthly + lookback 21 + top4 + breadth42/min3 + maxconsec5 + liq500M`。
+
+| Candidate | Full IR | Stress 3x IR | MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `skip0 total-return` | `0.863` | `0.832` | `-29.50%` | `-1.123` | `-29.26%` | `98.26%` | compare-only baseline |
+| `skip0 group-residual` | `0.760` | `0.728` | `-34.39%` | `-1.552` | `-39.08%` | `98.26%` | discard current improvement |
+| `skip10 total-return` | `1.186` | `1.158` | `-27.80%` | `-0.856` | `-22.55%` | `100.00%` | compare-only anchor |
+| `skip10 group-residual` | `1.059` | `1.031` | `-35.83%` | `-0.852` | `-22.91%` | `100.00%` | compare-only tool / discard vs skip10 |
+
+`group-residual` 讓 `skip10` 的 min rolling IR 幾乎持平，但 full IR 從 `1.186` 降到 `1.059`，MDD 從 `-27.80%` 惡化到 `-35.83%`，min rolling excess 從 `-22.55%` 小幅惡化到 `-22.91%`，且 max rolling top3 group share 仍是 `100.00%`。這代表此設定沒有解掉核心 concentration 風險，還削弱了原本 `skip10 total-return` 的 full-window edge。
+
+### Skip10 group-residual promotion gate
+
+| Field | Value |
+|---|---:|
+| Decision | `compare-only` |
+| Gate pass | `false` |
+| Full 1x IR | `1.059` |
+| Full 1x excess | `591.26%` |
+| Full 1x MDD | `-35.83%` |
+| Full 1x active MDD | `-25.51%` |
+| Full top3 symbol share | `38.12%` |
+| Full top3 group share | `96.99%` |
+| Stress 3x IR | `1.031` |
+| Stress 3x excess | `564.91%` |
+| Stress 3x MDD | `-36.02%` |
+| Min rolling IR | `-0.852` |
+| Min rolling excess | `-22.91%` |
+| Weakest rolling window | `roll02 / 2021-01-01 to 2022-12-31` |
+| Max rolling top3 symbol share | `62.84%` |
+| Max rolling top3 group share | `100.00%` |
+
+Failure reasons：
+
+```text
+rolling_ir_below_threshold
+rolling_excess_below_threshold
+drawdown_above_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+narrow_group_momentum
+```
+
+Raw / adjusted comparison gate 本身通過，但 adjusted-minus-raw IR 為 `-0.092`，adjusted-minus-raw MDD 為 `-2.50%`，仍顯示 adjusted 版本較弱。
+
+Group regime validation 失敗：`5` 個 high concentration window，其中 `3` 個屬 return-regime dominated、`3` 個屬 exposure dominated。
+
+Group breadth validation 失敗：`5` 個 high concentration window 中只有 `2` 個 broad group momentum，`4` 個 narrow group momentum，代表問題不是簡單扣除 group average 就能處理。
+
+### Keep / Discard 判斷
+
+- **Keep code/tool**：`--ranking-mode group-residual` 是 deterministic、test-covered、預設關閉的 compare dimension；它把 residual momentum / industry momentum 假設轉成可重跑實驗，而不是只留在研究文字。
+- **Discard as current improvement**：在 TWSE16 adjusted 小股票池，`group-residual` 傷害 full-window IR、stress IR 與 MDD，也沒有降低 rolling group concentration，不能取代 `skip10 total-return`。
+- **Compare-only future dimension**：若後續擴到 TWSE30+ 或更完整產業成員，`group-residual` 可再作為 ranking mode 對照；目前不應用它宣稱策略變好。
+- **Do not promote strategy**：rolling IR / excess 仍為負，MDD 惡化，group regime / breadth gate 仍失敗；這不是穩定營利證明。
+- **Next**：停止在 TWSE16 小池微調 top-N / breadth / max consecutive / skip / residual ranking；改往 TWSE30+、更高品質股票池、re-entry 條件或 realized group contribution concentration gate。
