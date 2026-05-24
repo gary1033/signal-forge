@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from calendar import monthrange
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from math import sqrt
 from pathlib import Path
 from typing import Iterable
@@ -498,6 +499,59 @@ def run_walk_forward_rotation(
     return window_results, build_portfolio_retention(window_results)
 
 
+def build_rolling_windows(
+    *,
+    start: str | None,
+    end: str | None,
+    window_months: int,
+    step_months: int,
+    min_window_months: int,
+) -> tuple[WalkForwardWindow, ...]:
+    """
+    用途與流程：由 full-window 起訖日期自動產生滑動日期窗，讓 portfolio rotation 可重複做 rolling stability 檢查。
+    參數：start/end 是整體回測日期邊界；window_months 是每個 rolling window 長度；step_months 是下一窗起點間隔；min_window_months 是最後一個不完整 window 的最低月數。
+    回傳與錯誤：回傳 WalkForwardWindow tuple；缺少日期、月份參數非正、日期反向或沒有足夠長度時拋出 ValueError。
+    """
+    if start is None or end is None:
+        raise ValueError("rolling windows require --start and --end")
+    if window_months <= 0:
+        raise ValueError("rolling window months must be positive")
+    if step_months <= 0:
+        raise ValueError("rolling step months must be positive")
+    if min_window_months <= 0:
+        raise ValueError("rolling min months must be positive")
+    if min_window_months > window_months:
+        raise ValueError("rolling min months cannot exceed window months")
+
+    start_date = _parse_timestamp(start).date()
+    end_date = _parse_timestamp(end).date()
+    if start_date > end_date:
+        raise ValueError("rolling window start must be on or before end")
+
+    windows: list[WalkForwardWindow] = []
+    cursor = start_date
+    while cursor <= end_date:
+        full_window_end = min(
+            _add_months(cursor, window_months) - timedelta(days=1),
+            end_date,
+        )
+        minimum_end = _add_months(cursor, min_window_months) - timedelta(days=1)
+        if full_window_end < minimum_end:
+            break
+        windows.append(
+            WalkForwardWindow(
+                label=f"roll{len(windows) + 1:02d}",
+                start=cursor.isoformat(),
+                end=full_window_end.isoformat(),
+            )
+        )
+        cursor = _add_months(cursor, step_months)
+
+    if not windows:
+        raise ValueError("rolling windows produced no valid date windows")
+    return tuple(windows)
+
+
 def build_portfolio_retention(
     window_results: list[PortfolioWalkForwardResult],
 ) -> list[PortfolioRetentionRow]:
@@ -714,6 +768,23 @@ def build_parser() -> argparse.ArgumentParser:
             "is:2020-01-01:2023-12-31,oos:2024-01-01:2026-05-20"
         ),
     )
+    parser.add_argument(
+        "--rolling-window-months",
+        type=int,
+        help="auto-generate rolling windows with this many calendar months",
+    )
+    parser.add_argument(
+        "--rolling-step-months",
+        type=int,
+        default=12,
+        help="calendar months between rolling window starts",
+    )
+    parser.add_argument(
+        "--rolling-min-months",
+        type=int,
+        default=12,
+        help="minimum calendar months required for the final partial rolling window",
+    )
     parser.add_argument("--summary-json")
     parser.add_argument("--summary-md")
     return parser
@@ -752,8 +823,20 @@ def main(argv: list[str] | None = None) -> int:
     walk_forward_windows: tuple[WalkForwardWindow, ...] = ()
     walk_forward_results: list[PortfolioWalkForwardResult] = []
     retention_rows: list[PortfolioRetentionRow] = []
-    if args.walk_forward_windows:
-        walk_forward_windows = parse_walk_forward_windows(args.walk_forward_windows)
+    if args.walk_forward_windows and args.rolling_window_months:
+        raise ValueError("choose either --walk-forward-windows or --rolling-window-months")
+
+    if args.walk_forward_windows or args.rolling_window_months:
+        if args.walk_forward_windows:
+            walk_forward_windows = parse_walk_forward_windows(args.walk_forward_windows)
+        else:
+            walk_forward_windows = build_rolling_windows(
+                start=args.start,
+                end=args.end,
+                window_months=args.rolling_window_months,
+                step_months=args.rolling_step_months,
+                min_window_months=args.rolling_min_months,
+            )
         walk_forward_results, retention_rows = run_walk_forward_rotation(
             windows=walk_forward_windows,
             csv_paths=csv_paths,
@@ -887,6 +970,19 @@ def _parse_timestamp(timestamp: str) -> datetime:
     回傳與錯誤：回傳 datetime；格式不合法時由 datetime.fromisoformat 拋出 ValueError。
     """
     return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+
+def _add_months(value: date, months: int) -> date:
+    """
+    用途與流程：把日期往後推指定月份，供 rolling window 起訖日期產生器使用。
+    參數：value 是原始 date；months 是正整數月份數。
+    回傳與錯誤：回傳平移後 date；若目標月份沒有原日期 day，會夾到該月最後一天。
+    """
+    target_month_index = value.month - 1 + months
+    target_year = value.year + target_month_index // 12
+    target_month = (target_month_index % 12) + 1
+    target_day = min(value.day, monthrange(target_year, target_month)[1])
+    return date(target_year, target_month, target_day)
 
 
 def _elapsed_years(timestamps: list[str]) -> float:

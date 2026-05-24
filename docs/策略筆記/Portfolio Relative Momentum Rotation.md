@@ -67,12 +67,13 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - 21 日 lookback 反應較快，但更可能吃到短期反轉、交易成本與換股噪音。
 - 月再平衡降低交易頻率，但也可能錯過月內趨勢反轉。
 - 股票池只有七檔 TWSE 大型股，樣本太小，還不能證明策略在更廣股票池穩定有效。
+- 24 個月 rolling 檢查已發現 2021-2022 失敗 window，代表策略可能需要 market regime 或 risk-off 條件，不能只看 2024-2026 強勢期。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
 
 ## 下一步
 
-- 補更多 rolling split，避免只因 2024-2026 強勢 AI / 半導體行情而看起來漂亮。
+- 針對 2021-2022 失敗 window 測 market regime、risk-off overlay 或更大股票池。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark，確認結果不只靠少數大贏家。
 - 不急著加入更複雜的風控；先確認 `monthly + 21 bars + top3` 是否在更多資料窗仍保留 active return。

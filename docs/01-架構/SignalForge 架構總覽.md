@@ -32,7 +32,7 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 | Strategy | `src\signal_forge\core\strategy.py`、`src\signal_forge\strategies\` | 提供 hook-based `BarByBarStrategy` 模板、strategy registry、entry / risk wrappers，並讓每根 bar 產生一筆 `Signal`。 |
 | Entry Edge | `src\signal_forge\backtesting\entry_edge.py` | 第一階段 long-only 固定持有期進場優勢評估；支援 precomputed signals，避免 Phase 重複產生訊號。 |
 | Target-state sweep | `tools\multi_stock_target_state_sweep.py` | Phase 2 研究用完整持倉評估工具，跨多股票、多策略與成本壓力比較 target exposure、benchmark relative、風險調整與 turnover。 |
-| Portfolio rotation sweep | `tools\portfolio_rotation_sweep.py` | Phase 2 portfolio-level 評估工具，將多檔股票視為同一資金池，檢查相對動能輪動是否勝過 equal-weight buy-and-hold portfolio，並輸出 Information Ratio、tracking error 與 active max drawdown。 |
+| Portfolio rotation sweep | `tools\portfolio_rotation_sweep.py` | Phase 2 portfolio-level 評估工具，將多檔股票視為同一資金池，檢查相對動能輪動是否勝過 equal-weight buy-and-hold portfolio，並輸出 Information Ratio、tracking error、active max drawdown 與自動 rolling windows。 |
 | Phase | `src\signal_forge\phase\` | 定義 `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。 |
 | Reporting | `src\signal_forge\reporting\` | 依 entry-edge、phase、signal digest、validator、markdown、paths 拆出 reporting API；`_legacy.py` 暫保留原 artifact contract 實作。 |
 | Readiness | `tools\phase_readiness_score.py` | bounded autoresearch 使用的輕量 deterministic readiness metric。 |

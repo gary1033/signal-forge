@@ -6560,3 +6560,67 @@ python tools\portfolio_rotation_sweep.py `
 - **Keep**：active-risk 指標與報表欄位。它們直接對應策略評估準則的 benchmark-relative gate。
 - **Promising candidate but not complete**：`monthly + 21 bars + top3` 仍是目前最強 portfolio-level 候選，但穩定性尚未被證明。
 - **下一步**：先做更多 rolling windows 或擴大股票池；不要只靠 OOS `2024-2026` 的高 IR 判定策略穩定。
+
+## 2026-05-24 Portfolio rotation rolling windows
+
+### 假設
+
+前一輪 active-risk 指標顯示 `2022-2023` 中段 IR 幾乎為零，但它仍只是手寫的三段切分。這輪不調策略參數，而是把 rolling window 產生器做進 `portfolio_rotation_sweep.py`，讓同一候選可以固定用 24 個月視窗、12 個月步進檢查穩定性。
+
+### 本輪程式改動
+
+- `tools\portfolio_rotation_sweep.py` 新增 `build_rolling_windows(...)`。
+- CLI 新增：
+  - `--rolling-window-months`
+  - `--rolling-step-months`
+  - `--rolling-min-months`
+- `--walk-forward-windows` 與 `--rolling-window-months` 互斥，避免同一份報表混入兩套 window 語意。
+- `tests\test_portfolio_rotation_sweep_tool.py` 新增 parser 與 rolling final partial window regression。
+
+### 驗證命令
+
+```powershell
+python tools\portfolio_rotation_sweep.py `
+  --csv data\processed\TWSE_2330_1D.csv `
+  --csv data\processed\TWSE_2317_1D.csv `
+  --csv data\processed\TWSE_2454_1D.csv `
+  --csv data\processed\TWSE_2308_1D.csv `
+  --csv data\processed\TWSE_2303_1D.csv `
+  --csv data\processed\TWSE_2412_1D.csv `
+  --csv data\processed\TWSE_2882_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-multipliers-list 1,3 `
+  --rebalance-frequency monthly `
+  --lookback-bars 21 `
+  --top-n 3 `
+  --min-return 0.0 `
+  --rolling-window-months 24 `
+  --rolling-step-months 12 `
+  --rolling-min-months 12 `
+  --summary-json reports\generated\twse-portfolio-rotation-monthly-lb21-top3-rolling24m-20260524.json `
+  --summary-md reports\generated\twse-portfolio-rotation-monthly-lb21-top3-rolling24m-20260524.md
+```
+
+### 24 個月 rolling 結果摘要
+
+| Window | Range | Cost | Return | Benchmark return | Excess | IR | Active MDD | 判斷 |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| `roll01` | `2020-2021` | `1x` | `104.58%` | `90.91%` | `13.67%` | `0.281` | `-16.97%` | 正，但 IR 不高 |
+| `roll02` | `2021-2022` | `1x` | `-18.74%` | `5.88%` | `-24.62%` | `-0.881` | `-23.27%` | 失敗 window |
+| `roll03` | `2022-2023` | `1x` | `0.45%` | `-1.77%` | `2.21%` | `0.056` | `-18.34%` | 幾乎沒有 edge |
+| `roll04` | `2023-2024` | `1x` | `96.83%` | `68.20%` | `28.63%` | `0.759` | `-14.88%` | 強候選水準 |
+| `roll05` | `2024-2025` | `1x` | `240.41%` | `81.93%` | `158.48%` | `2.288` | `-10.07%` | 非常強 |
+| `roll06` | `2025-2026-05` | `1x` | `226.20%` | `102.48%` | `123.72%` | `2.012` | `-16.04%` | 非常強，但 partial window |
+
+### 解讀
+
+1. **rolling windows 推翻了「穩定」假設**：`roll02` 是明確失敗區間，策略輸給等權 benchmark 且 IR 為負。
+2. **強度集中在 2023 之後**：`roll04` 到 `roll06` 都很強，代表策略可能吃到近年大型股動能環境；這不是壞事，但不能當成跨 regime 穩定證明。
+3. **中段問題需要策略層改進**：如果要繼續這條線，下一步不是再看 full-window，而是針對 2021-2022 做 market regime filter、風險降檔或擴大股票池。
+
+### Keep / Discard 判斷
+
+- **Keep**：rolling window generator 與 tests。它讓每次 portfolio rotation 調參都能固定檢查多個滑動區間。
+- **Downgrade candidate confidence**：`monthly + 21 bars + top3` 仍是目前最強候選之一，但因 `roll02` 失敗，不能稱為穩定營利候選。
+- **下一步**：先研究 market regime / risk-off overlay 對 `roll02` 的影響，或擴大股票池；不要只用 2024-2026 做主論據。

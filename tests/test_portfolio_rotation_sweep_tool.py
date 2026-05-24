@@ -7,6 +7,7 @@ from signal_forge import BacktestConfig, Bar
 from tools.portfolio_rotation_sweep import (
     build_parser,
     build_portfolio_retention,
+    build_rolling_windows,
     align_close_table,
     PortfolioRotationResult,
     run_portfolio_rotation,
@@ -45,6 +46,52 @@ class PortfolioRotationSweepToolTests(unittest.TestCase):
         self.assertEqual(args.top_n, 2)
         self.assertEqual(args.min_return, 0.02)
         self.assertEqual(args.cost_multipliers_list, "1,3")
+
+    def test_parser_accepts_rolling_window_options(self) -> None:
+        """
+        用途與流程：驗證 portfolio rotation CLI 可接收自動 rolling window 參數，避免只能手寫少數分段。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；parser 欄位漂移時 assertion 會失敗。
+        """
+        args = build_parser().parse_args(
+            [
+                "--csv",
+                "data.csv",
+                "--rolling-window-months",
+                "24",
+                "--rolling-step-months",
+                "12",
+                "--rolling-min-months",
+                "12",
+            ]
+        )
+
+        self.assertEqual(args.rolling_window_months, 24)
+        self.assertEqual(args.rolling_step_months, 12)
+        self.assertEqual(args.rolling_min_months, 12)
+
+    def test_build_rolling_windows_keeps_final_partial_window(self) -> None:
+        """
+        用途與流程：驗證 rolling window 產生器會依月份長度與最低月數建立多個穩定性檢查日期窗。
+        參數：self 是 unittest 測試案例。
+        回傳與錯誤：回傳 None；日期推進、標籤或 final partial window 規則漂移時 assertion 會失敗。
+        """
+        windows = build_rolling_windows(
+            start="2020-01-01",
+            end="2023-05-20",
+            window_months=24,
+            step_months=12,
+            min_window_months=12,
+        )
+
+        self.assertEqual(
+            [(window.label, window.start, window.end) for window in windows],
+            [
+                ("roll01", "2020-01-01", "2021-12-31"),
+                ("roll02", "2021-01-01", "2022-12-31"),
+                ("roll03", "2022-01-01", "2023-05-20"),
+            ],
+        )
 
     def test_align_close_table_uses_only_common_timestamps(self) -> None:
         """
