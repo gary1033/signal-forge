@@ -9127,3 +9127,92 @@ Raw / adjusted comparison gate 本身通過：adjusted 1x full IR `1.046` 高於
 - **Discard as current improvement**：`reentry6` 明顯犧牲 full-window IR，min rolling IR 精確值仍低於 `0.5`，且 max rolling top3 group contribution 仍可到 `100%`。
 - **Do not promote strategy**：promotion gate 仍是 `compare-only`，失敗點集中在 rolling IR 邊界、group concentration、group regime 與 group breadth。
 - **Next**：不要繼續掃 re-entry cooldown 參數。下一步應改成更高品質股票池建構，或用 group breadth / single-member diagnostics 先改善可替代標的，再回頭測 re-entry 與 contribution gate。
+
+## 2026-05-24 TWSE35 balanced-quality universe selector follow-up
+
+### 目的
+
+這輪接續 re-entry cooldown 的結論：既有 TWSE35 baseline 仍卡在 drawdown 與 group concentration，而 re-entry cooldown 雖改善 drawdown，仍犧牲 full-window IR 且 group gate 未過。因此這輪不再調策略參數，而是把「更高品質股票池」變成 deterministic selector，避免人工挑股或只靠口頭說要擴股票池。
+
+研究假設：
+
+> 若目前失敗主要來自 singleton group、低流動性股票或 electronics / semiconductor 過度代表，從 universe audit 的 eligible rows 中建立 balanced-quality 子股票池，應降低 group concentration 並保留正 rolling excess；若 rolling edge 轉負，表示只把既有 TWSE35 越篩越小不是解法，必須補新的替代標的或重建更完整 group breadth。
+
+### 本輪程式改動
+
+- 新增 `tools\portfolio_rotation_universe_select.py`：
+  - 讀取 `portfolio_rotation_universe_audit.v1` JSON。
+  - 只從 source audit 的 `eligible` rows 挑股票。
+  - 可用 `--min-average-traded-value` 加上額外成交金額門檻。
+  - 用 `--min-eligible-members-per-group` 排除 selector 層級候選數不足的 group。
+  - 用 `--max-symbols-per-group` 限制每個 group 最多入選數。
+  - group 內依 `average_traded_value desc -> row_count desc -> symbol asc` 排序，確保 deterministic。
+- 新增 `tests\test_portfolio_rotation_universe_select_tool.py`，鎖住 parser、group cap、extra liquidity threshold、JSON/Markdown 輸出。
+
+### 產生 artifact
+
+- Max4 selector：`reports\generated\twse35-balanced-quality-universe-selection-20260524.json`
+- Max4 adjusted summary：`reports\generated\twse35-balanced-quality-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Max4 raw / adjusted comparison：`reports\generated\twse35-balanced-quality-raw-vs-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-compare-20260524.json`
+- Max4 group regime validation：`reports\generated\twse35-balanced-quality-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-regime-validation-20260524.json`
+- Max4 group breadth validation：`reports\generated\twse35-balanced-quality-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-group-breadth-validation-20260524.json`
+- Max4 promotion gate：`reports\generated\twse35-balanced-quality-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-promotion-gate-20260524.json`
+- Max3 selector：`reports\generated\twse35-balanced-quality-max3-universe-selection-20260524.json`
+- Max3 adjusted summary：`reports\generated\twse35-balanced-quality-max3-batch-adjusted-portfolio-rotation-monthly-lb21-skip10-top4-breadth42-min3-maxconsec5-liq500m-rolling24m-20260524.json`
+- Max3 promotion gate：`reports\generated\twse35-balanced-quality-max3-batch-adjusted-portfolio-rotation-lb21-skip10-top4-liq500m-promotion-gate-20260524.json`
+
+### Selector 結果
+
+Max4 選出 16 檔：
+
+```text
+1301,1303,2303,2308,2317,2330,2382,2412,2454,2881,2882,2891,3037,3045,3711,5871
+```
+
+依 group：
+
+| Group | Selected symbols |
+|---|---|
+| electronics | `2317,3037,2382,2308` |
+| financial | `2882,2881,2891,5871` |
+| plastics | `1303,1301` |
+| semiconductor | `2330,2454,2303,3711` |
+| telecom | `2412,3045` |
+
+Max3 選出 13 檔，主要把每組最多入選數從 4 降到 3：
+
+```text
+1301,1303,2303,2317,2330,2382,2412,2454,2881,2882,2891,3037,3045
+```
+
+### 回測與 promotion gate
+
+固定設定：adjusted TWSE selection `monthly + lookback21 + skip10 + top4 + breadth42/min3 + maxconsec5 + liq500M/20 bars`。
+
+| Candidate | Symbols | Full IR | Stress 3x IR | MDD | Active MDD | Min rolling IR | Min rolling excess | Max rolling top3 group | Decision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `TWSE35 baseline` | `35` | `1.685` | `1.668` | `-37.80%` | `-29.98%` | `0.429` | `11.33%` | `100.00%` | compare-only |
+| `balanced max4` | `16` | `1.460` | `1.427` | `-32.09%` | `-21.80%` | `-0.367` | `-12.11%` | `99.92%` | compare-only |
+| `balanced max3` | `13` | `1.014` | `0.980` | `-31.93%` | `-21.09%` | `-0.691` | `-22.93%` | `98.79%` | compare-only |
+
+Max4 failure reasons：
+
+```text
+rolling_ir_below_threshold
+rolling_excess_below_threshold
+drawdown_above_threshold
+group_concentration_above_threshold
+group_regime_gate_failed
+group_breadth_gate_failed
+narrow_group_momentum
+```
+
+Max3 failure reasons 同樣包含 rolling IR / excess、drawdown、group concentration、group regime / breadth 與 narrow group momentum。這表示把既有 TWSE35 用流動性與 group cap 篩成較平衡的子股票池，會降低 active MDD，但也移除了對 2021-2022 rolling window 有保護效果的單成員或非主流 group exposure，造成 rolling edge 轉負。
+
+### Keep / Discard 判斷
+
+- **Keep code/tool**：`portfolio_rotation_universe_select.py` 是 deterministic、test-covered 的股票池建構工具；它讓「更高品質股票池」可以被 JSON/Markdown artifact 重跑，而不是人工挑股。
+- **Compare-only artifact**：`balanced max4` 與 `balanced max3` 都保留為股票池選取對照，證明單純縮小既有 TWSE35 並不能解決策略問題。
+- **Discard as current strategy upgrade**：兩個 balanced-quality 子股票池都讓 min rolling IR 與 min rolling excess 轉負，不能取代 TWSE35 baseline。
+- **Do not promote strategy**：promotion gate 仍是 `compare-only`，且 group concentration 仍接近 `100%`；這不是穩定營利證明。
+- **Next**：不要繼續只改 max symbols per group 或把既有 TWSE35 越篩越小。下一步要補新的替代標的，尤其是 shipping / steel / food / cement / telecom 等目前 singleton 或 eligible member 太少的 group，並重新跑 universe audit、selector、adjusted batch、raw/adjusted comparison 與 promotion gate。

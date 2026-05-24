@@ -33,6 +33,7 @@ repo_impl: C:\Projects\signal-forge\tools\portfolio_rotation_sweep.py
 - **Group exposure / 群組曝險**：把同一群組的平均權重加總，檢查報酬集中是否來自長期高曝險，還是來自特定群組在持有期間的 realized return 過強。
 - **Concentration guard / 集中度防線**：把最大單檔、前三檔、最大群組與前三群組貢獻占比拉成一級欄位，避免只看總報酬或 IR 時忽略少數大贏家或少數產業依賴。
 - **Re-entry cooldown / 重新入選冷卻期**：股票從投組退出後，強制等待 N 次 rebalance 才能再入選，用來檢查快速落榜又回補是否造成追價、換股噪音或集中度惡化。
+- **Universe selector / 股票池選取器**：先用 universe audit 確認歷史長度、流動性、adjusted CSV 與 group 成員數，再用 deterministic rule 選出可回測股票池，避免人工挑樣本。
 
 ## 策略假設
 
@@ -76,6 +77,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `liquidity_filter`：目前最新 execution-aware compare candidate 使用 `liquidity_lookback_bars=20`、`min_average_traded_value=500,000,000`，代表近 20 根平均成交金額至少約 5 億。
 - `min_symbols_per_selected_group`：預設 `1`，不影響既有策略；可設為 `2` 以上作為單成員群組依賴 ablation，但目前 adjusted TWSE14 / TWSE35 實測都顯示 `2` 會讓 rolling edge 失效，不能作為主候選規則。
 - `reentry_cooldown_rebalances`：預設 `0`，不影響既有策略；可設為 `1` 以上測試股票退出後等待幾次 rebalance 才能重新入選。此參數只使用已完成的持倉狀態，不讀未來 window。
+- `portfolio_rotation_universe_select.py`：可從 universe audit 中選出 high-quality 子股票池；目前第一版用 eligible rows、group 候選成員數下限與每組最多入選數，group 內用平均成交金額排序。
 - `cost_multipliers`：固定用 `1x` 與 `3x` 成本壓力檢查。
 - benchmark：同一批股票的 equal-weight buy-and-hold portfolio。
 
@@ -121,6 +123,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - TWSE35 `min_symbols_per_selected_group=2` 已正式測過：full IR 降到約 `1.431`，min rolling IR 轉為約 `-1.482`、min rolling excess 約 `-37.95%`，雖移除 single-member dominant failure，但把 `roll02` 打回負值，因此 discard as improvement。
 - Realized group contribution gate 已正式接進工具並測過。`gcontrib21/share0.90` 用過去 21 根已完成 bar 的群組絕對貢獻占比排除超過 `90%` 的群組；它把 TWSE35 adjusted full IR 提到約 `1.742`、3x IR 約 `1.721`，MDD 改到約 `-32.91%`、active MDD 改到約 `-25.13%`，但 min rolling IR 轉為約 `-0.022`、min rolling excess 約 `-5.93%`，max rolling top3 group share 仍約 `98.08%`，promotion gate 仍是 `compare-only`。因此功能 keep as diagnostic / compare tool，當前設定 discard as strategy upgrade；後續不要只微調 contribution threshold 或 lookback。
 - Re-entry cooldown 已正式接進工具並測過。TWSE35 adjusted `reentry6` 把 MDD 改到約 `-28.76%`、active MDD 改到約 `-25.74%`，min rolling excess 提高到約 `18.63%`，但 full IR 降到約 `1.046`、min rolling IR 精確值約 `0.4996`，max rolling top3 group contribution 仍可到 `100%`，promotion gate 仍是 `compare-only`。因此功能 keep as diagnostic / compare tool，當前設定不能升級。
+- Balanced-quality universe selector 已正式接進工具並測過。TWSE35 audit eligible rows 經 `min_eligible_members_per_group=2`、`max_symbols_per_group=4` 選出 16 檔後，adjusted full IR 約 `1.460`、active MDD 約 `-21.80%`，但 min rolling IR 轉為約 `-0.367`、min rolling excess 轉為約 `-12.11%`；更嚴格的 `max_symbols_per_group=3` 也讓 min rolling IR 約 `-0.691`。因此 selector 工具 keep，但目前 balanced-quality 子股票池 discard as strategy upgrade。
 - 因為分段貢獻仍偏集中、調整價版本明顯降級、股票池與資料邊界仍有限，所以仍不能宣稱穩定營利。
 - 目前沒有現金利息、股利、稅務、流動性容量、漲跌停無法成交或實際下單約束。
 - 這輪是回測研究與 dry-run 筆記，不是投資建議，也不是穩定營利證明。
@@ -142,6 +145,7 @@ SignalForge 第一版採用 long-only、cash-allowed 的 deterministic 版本：
 - `ranking_mode=group-residual` 已在 TWSE16 小池失敗；後續只有在 TWSE30+ 或更完整產業成員數下才值得重測，不要把它和目前小股票池結果包裝成 residual momentum 有效。
 - `group_contribution_lookback_bars` / `max_group_contribution_share` 已測第一輪。21-bar / 90% 雖改善 full-window IR 與 drawdown，但 rolling excess 轉負；63-bar variants 更差。re-entry cooldown 也已測過但未通過 promotion gate；下一步若要處理 group concentration，應先改善股票池替代性與 group breadth，而不是繼續掃 contribution gate 門檻。
 - `reentry_cooldown_rebalances` 已測第一輪。`6` 可改善 MDD、active MDD 與 rolling excess，但沒有讓 promotion gate 通過；後續不要繼續掃 cooldown 長度，應先改善股票池替代性與 group breadth。
+- `portfolio_rotation_universe_select.py` 已測第一輪。只從既有 TWSE35 中篩出 balanced-quality 子股票池會讓 rolling edge 轉負；後續若要用 selector，應先補足 singleton / thin groups 的替代標的，再重新 audit 與 selection。
 - 再檢查流動性、容量與調整價資料穩定性；不要只追求更高 total return 或微調 breadth threshold。
 - 已加入 Information Ratio、tracking error 與 active drawdown；後續調參必須同時看這三個欄位，不只看 total return。
 - 擴大股票池或加入市場 regime benchmark 時，要同時要求 min rolling excess、Information Ratio、active drawdown 與 concentration gate 過關，確認結果不只靠少數大贏家。
