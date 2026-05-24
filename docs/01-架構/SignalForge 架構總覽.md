@@ -34,6 +34,7 @@ SignalForge 是研究導向的交易訊號沙盒。它不是把 TradingView / Pi
 | Target-state sweep | `tools\multi_stock_target_state_sweep.py` | Phase 2 研究用完整持倉評估工具，跨多股票、多策略與成本壓力比較 target exposure、benchmark relative、風險調整與 turnover。 |
 | Portfolio rotation sweep | `tools\portfolio_rotation_sweep.py` | Phase 2 portfolio-level 評估工具，將多檔股票視為同一資金池，檢查相對動能輪動是否勝過 equal-weight buy-and-hold portfolio，並輸出 Information Ratio、tracking error、active max drawdown、自動 rolling windows、可選 market regime filter、breadth filter、volatility target、單檔連續入選上限、group cap、liquidity gate、逐股選股歸因、group-level attribution 與 group exposure summary。 |
 | Group regime validation | `tools\portfolio_rotation_group_regime_validation.py` | 讀取 portfolio rotation summary，將 rolling group contribution concentration 與 group exposure 對齊，判斷集中度是長期高曝險、特定 group realized return regime，或混合來源。 |
+| Group breadth validation | `tools\portfolio_rotation_group_breadth_validation.py` | 讀取 portfolio rotation summary 與同一批 OHLCV CSV，檢查 dominant contribution group 的成員數、正動能廣度與平均成員 lookback return，判斷集中度是 broad group momentum、narrow group momentum 或 single-member dependency。 |
 | Phase | `src\signal_forge\phase\` | 定義 `PhaseMode`、`PhaseConfig`、`PhaseRunner` 與 backtest/live adapters。 |
 | Reporting | `src\signal_forge\reporting\` | 依 entry-edge、phase、signal digest、validator、markdown、paths 拆出 reporting API；`_legacy.py` 暫保留原 artifact contract 實作。 |
 | Readiness | `tools\phase_readiness_score.py` | bounded autoresearch 使用的輕量 deterministic readiness metric。 |
@@ -121,7 +122,7 @@ flowchart TD
 
 這個工具不接 broker、不產生 order intent，也不改變 `live` dry-run 邊界。它只用於研究完整持倉候選是否值得進一步加入風控、volatility scaling 或 walk-forward 驗證。
 
-`tools\portfolio_rotation_sweep.py` 是另一條 Phase 2 portfolio-level 研究路徑。它不把每檔股票各自回測，而是把同一批股票對齊成共同日期表，依 rebalance frequency 做相對動能排序與等權配置，並用 equal-weight buy-and-hold portfolio 作基準。它也支援預設關閉的 market regime filter、breadth filter、volatility target、單檔連續入選上限、group cap 與 liquidity gate，並輸出 symbol attribution、group attribution 與 group exposure summary，用同一套 rolling / OOS / active-risk / contribution concentration / exposure concentration / liquidity 報表比較不同風控 overlay。這用來避免用逐檔 B&H 指標誤判輪動策略。
+`tools\portfolio_rotation_sweep.py` 是另一條 Phase 2 portfolio-level 研究路徑。它不把每檔股票各自回測，而是把同一批股票對齊成共同日期表，依 rebalance frequency 做相對動能排序與等權配置，並用 equal-weight buy-and-hold portfolio 作基準。它也支援預設關閉的 market regime filter、breadth filter、volatility target、單檔連續入選上限、group cap 與 liquidity gate，並輸出 symbol attribution、group attribution 與 group exposure summary，用同一套 rolling / OOS / active-risk / contribution concentration / exposure concentration / liquidity 報表比較不同風控 overlay。後續診斷再由 `tools\portfolio_rotation_group_regime_validation.py` 對齊群組貢獻與曝險，並由 `tools\portfolio_rotation_group_breadth_validation.py` 檢查 dominant group 內部是否為廣泛成員動能、窄廣度或單成員依賴。這用來避免用逐檔 B&H 指標誤判輪動策略，也避免只因高報酬 window 就忽略 concentration 來源。
 
 ## SignalDigest 與 trace summary
 

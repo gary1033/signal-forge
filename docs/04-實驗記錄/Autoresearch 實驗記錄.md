@@ -8210,3 +8210,86 @@ Adjusted batch manifest 摘要：
 - **Do not promote strategy**：adjusted 後 full IR 仍有 `1.156`，但 MDD 惡化到 `-27.97%`，最弱 rolling IR 只有 `0.104`，top3 group share 仍超過 `91%`；不能視為穩定營利。
 - **Current state**：`top4 + breadth42/min3 + max consecutive 5 + liquidity 500M/20 bars` 保留為 execution-aware compare candidate，但策略品質判斷以 adjusted-ratio 與 raw/adjusted comparison gate 為準。
 - **Next**：下一步不是再微調 top-N 或 breadth threshold，而是做 TWSE30+、更高品質股票池、group regime validation，或更嚴格的容量/流動性 gate，並要求 adjusted 版本的 min rolling IR、MDD 與 concentration 同時改善。
+
+## 2026-05-24 Portfolio rotation group breadth validation
+
+### 目的
+
+上一輪 group regime validation 顯示 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 在 full + 6 個 rolling windows 全部是 high concentration，且 `7 / 7` 都是 `return_regime_dominated`。本輪再補一層 group breadth validation：不改策略規則，只檢查 dominant contribution group 內部是否有足夠成員一起呈現正動能，或只是單一股票 / 窄廣度撐起貢獻。
+
+研究假設：
+
+> 如果 dominant group 的貢獻來自單成員群組或低正動能廣度，即使 adjusted IR 仍為正，也不能把它升級成穩定營利候選；下一步應改善股票池品質或設計更直接的 contribution concentration gate，而不是繼續微調同一組 top-N / breadth threshold。
+
+### 程式改動
+
+- 新增 `tools/portfolio_rotation_group_breadth_validation.py`。
+- 新增 `tests/test_portfolio_rotation_group_breadth_validation_tool.py`。
+- 工具讀取 portfolio rotation summary JSON 與同一批 OHLCV CSV，對 full-window 與 rolling windows 計算 dominant group 的：
+  - 成員數。
+  - rebalance 樣本數。
+  - 平均正動能成員比例。
+  - 多數成員正動能的 rebalance 比例。
+  - 全成員同時正動能的 rebalance 比例。
+  - 平均成員 lookback return。
+- 輸出 `broad_group_momentum`、`narrow_group_momentum`、`single_member_group` 或 `missing_breadth`，並保留 gate failure reason。
+
+### 產生 artifact
+
+```powershell
+python tools\portfolio_rotation_group_breadth_validation.py `
+  --summary-json reports\generated\twse14-batch-adjusted-portfolio-rotation-monthly-lb21-top3-breadth42-min4-maxconsec5-liq500m-rolling24m-20260524.json `
+  --csv reports\generated\adjusted-data\TWSEADJ_1301_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_1303_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2303_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2308_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2317_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2330_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2382_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2412_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2454_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2603_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2881_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2882_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_2891_1D.csv `
+  --csv reports\generated\adjusted-data\TWSEADJ_3711_1D.csv `
+  --start 2020-01-01 `
+  --end 2026-05-20 `
+  --cost-label 1x `
+  --output-json reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-breadth-validation-20260524.json `
+  --output-md reports\generated\twse14-batch-adjusted-portfolio-rotation-lb21-top3-breadth4-liq500m-group-breadth-validation-20260524.md
+```
+
+### 主要結果
+
+| Field | Value |
+|---|---:|
+| Gate pass | `false` |
+| Rows | `7` |
+| High concentration windows | `7` |
+| Broad group momentum windows | `4` |
+| Narrow group momentum windows | `1` |
+| Single-member dominant windows | `2` |
+| Missing breadth windows | `0` |
+| Weakest breadth window | `roll03`，electronics 平均正動能成員比例約 `58.82%` |
+| Weakest IR window | `roll02`，IR 約 `0.264` |
+
+Window 重點：
+
+| Window | Dominant group | Breadth type | Members | Avg positive share | Failure reason |
+|---|---|---|---:|---:|---|
+| `full` | `electronics` | `broad_group_momentum` | `3` | `60.70%` | `top3_group_contribution_concentration` |
+| `roll01` | `shipping` | `single_member_group` | `1` | `71.43%` | `top3_group_contribution_concentration`, `single_member_dominant_group` |
+| `roll02` | `shipping` | `single_member_group` | `1` | `64.71%` | `top3_group_contribution_concentration`, `single_member_dominant_group` |
+| `roll03` | `electronics` | `narrow_group_momentum` | `3` | `58.82%` | `top3_group_contribution_concentration`, `dominant_group_breadth_below_threshold` |
+| `roll04` | `electronics` | `broad_group_momentum` | `3` | `70.18%` | `top3_group_contribution_concentration` |
+| `roll05` | `electronics` | `broad_group_momentum` | `3` | `70.37%` | `top3_group_contribution_concentration` |
+| `roll06` | `electronics` | `broad_group_momentum` | `3` | `69.23%` | `top3_group_contribution_concentration` |
+
+### Keep / Discard 判斷
+
+- **Keep code**：group breadth validation 是回測可驗證性工具，能把 group regime dependency 分解成 broad / narrow / single-member evidence，並有 regression tests。
+- **Keep artifact**：這份 artifact 說明 adjusted `top3 / breadth4 / maxconsec5 / liq500M` 的 concentration 問題不是單一型態；`roll01/roll02` 是 `shipping` 單成員 dominant，`roll03` 是 `electronics` 窄廣度，其他 electronics windows 雖有 broad momentum 但仍 top3 group contribution 過高。
+- **Do not promote strategy**：即使 `top3 / breadth4` 的 adjusted min rolling IR 從 baseline `0.104` 改到 `0.264`，它仍有 `7 / 7` high concentration、`2 / 7` 單成員 dominant、`1 / 7` 窄廣度，不能視為穩定營利。
+- **Current state**：`top3 / breadth4 / maxconsec5 / liq500M` 只保留為 compare anchor；它比 adjusted top4 baseline 的最弱 rolling IR 好，但 concentration gate 仍明確失敗。
+- **Next**：下一步優先做更高品質股票池或 TWSE30+，但要同時跑 raw/adjusted、group regime、group breadth 與 concentration gate。若要設計新規則，應直接限制 realized group contribution concentration 或處理單成員群組，而不是再擴同一組 top-N / breadth / max-consecutive grid。
